@@ -46,10 +46,16 @@ include = ["governance_core*"]
 governance_core = [
     "clauses/*.md",
     "skills/*.md",
+    "skills/**/*.md",
     "commands/*.md",
     "agents/*.md",
     "contracts/*.md",
     "contracts/*.json",
     "agent_rules/*.txt",
     "default_config/*.json",
+    "default_config/*.template",
+    "hooks/*.py",
+    "tools/*.py",
+    "knowledge_governance/*.md",
+    "knowledge_governance/**/*.md",
 ]
