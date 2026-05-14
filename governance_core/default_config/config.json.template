@@ -1,0 +1,23 @@
+{
+  "$schema_version": "0.1.0",
+  "project_name": "example-project",
+  "install_root": "${HOME}/workshop-claude",
+  "shared_state_root": "${install_root}/shared_state/${project_name}",
+  "claude_dir": ".claude",
+
+  "core_agent_name": "core",
+  "core_branches": ["master", "main"],
+  "ritual_phrase": "Acknowledged",
+
+  "agents": [
+    {"name": "core", "branch": "master", "clone_dir": "agent-core"},
+    {"name": "data", "branch": "feature/data", "clone_dir": "agent-data"}
+  ],
+
+  "upstream_branch": "origin/master",
+  "constitution_layout": {
+    "total_md_path": "constitution/total.md",
+    "agent_md_path": "constitution/agent.md",
+    "claude_md_mirror": "CLAUDE.md"
+  }
+}

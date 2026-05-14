@@ -1,0 +1,55 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "governance-core"
+version = "0.1.0-alpha"
+description = "Reusable multi-agent governance infrastructure (hooks + proposal + wrap-up + constitution iteration) extracted from agent-core (P-0059)."
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "agent-core core agent"},
+]
+keywords = ["claude-code", "multi-agent", "governance", "proposal", "hooks"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+]
+
+dependencies = [
+    "filelock>=3.12",
+    "python-frontmatter>=1.0",
+    "PyYAML>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov>=4.0",
+    "black>=23.0",
+    "ruff>=0.1.0",
+]
+
+[project.scripts]
+governance-core = "governance_core.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["governance_core*"]
+
+[tool.setuptools.package-data]
+governance_core = [
+    "clauses/*.md",
+    "skills/*.md",
+    "commands/*.md",
+    "agents/*.md",
+    "contracts/*.md",
+    "contracts/*.json",
+    "agent_rules/*.txt",
+    "default_config/*.json",
+]
