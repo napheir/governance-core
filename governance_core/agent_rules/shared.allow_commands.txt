@@ -1,0 +1,34 @@
+# Read-only Git (no extra confirmation needed)
+prefix:git status
+prefix:git diff
+prefix:git log
+prefix:git branch -l
+prefix:git branch --list
+prefix:git branch -r
+prefix:git branch -a
+prefix:git show
+
+# Testing and validation
+prefix:python -m pytest
+prefix:python tools/check_scope.py
+prefix:python tools/post_turn_verify.py
+
+# Port check (Futu precheck)
+prefix:python -c "import socket
+
+# Safe rm into well-known temp / cache locations
+# (these bypass shared.deny_commands_regex.txt wide rm pattern; see
+# proposals/harden_destructive_command_guard.md sec.2.2b)
+prefix:rm /tmp/
+prefix:rm -f /tmp/
+prefix:rm -rf /tmp/
+prefix:rm -f ~/.claude/cache/
+prefix:rm -rf ~/.claude/cache/
+prefix:rm -f *.tmp
+prefix:rm -f *.log
+prefix:rm -rf __pycache__/
+prefix:rm -rf .pytest_cache/
+
+# Windows del equivalents
+prefix:del /q *.tmp
+prefix:del /q *.log

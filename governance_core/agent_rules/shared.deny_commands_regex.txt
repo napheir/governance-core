@@ -1,0 +1,61 @@
+# Regex deny patterns for command-guard.py Layer 1.5.
+#
+# Format: one Python regex per line. Blank lines and lines starting with # ignored.
+# Patterns are applied via re.search() so they match anywhere in the command.
+# Commands matching shared.allow_commands.txt prefix list (Layer 0.5) bypass
+# this layer entirely — that is the wide-rm + prefix-whitelist tradeoff
+# discussed in proposals/harden_destructive_command_guard.md sec.2.2 / sec.8 Q1.
+#
+# Bad regex in this file = fail-closed (block all commands, surface error).
+
+# rm -rf with any path argument that is not whitelisted
+# (catches absolute Windows paths, $HOME, ../, ./*, etc.)
+^\s*rm\s+(-[rRfF]+\s+)+[^|;&]*[\w./~$]
+^\s*sudo\s+rm\s+-
+
+# Force push variants (force-with-lease included; --force=anything)
+\bgit\s+push\b.*--force(-with-lease)?\b
+\bgit\s+push\b.*\s-f\b
+\bgit\s+push\b.*\s:\S+
+\bgit\s+push\b.*--delete\b
+
+# Branch / tag / remote destruction
+\bgit\s+branch\s+-D\b
+\bgit\s+tag\s+-d\b
+\bgit\s+remote\s+(rm|remove)\b
+
+# History rewriting that may not match exact literal forms
+\bgit\s+gc\b.*--prune=now
+\bgit\s+update-ref\s+-d\b
+
+# Case-insensitive SQL destruction (covers lowercase + title-case)
+(?i)\b(drop|truncate)\s+(table|database|schema)\b
+(?i)\bdelete\s+from\s+\w+\s*(;|--|$)
+
+# SQL TRUNCATE without explicit "table" keyword (some dialects accept
+# TRUNCATE <name>;). Distinguishes from unix `truncate -s SIZE FILE`
+# by requiring no `-` arg (unix truncate needs -s flag).
+(?i)\btruncate\s+\w+\s*(;|$)
+
+# find . -delete in any path-arg permutation (catches -type f -delete etc.)
+\bfind\b.*\s-delete\b
+
+# PowerShell Remove-Item with -Force or -Recurse, any order/casing.
+# Covers both PS5.1 (powershell.exe) and PS7 (pwsh) since the cmdlet name
+# is identical.
+(?i)\bRemove-Item\b.*(-Recurse|-Force)
+(?i)\bRemove-Item\b.*-r\w*\s.*-f\w*
+
+# Windows del with destructive flag combinations
+(?i)\bdel\b.*(/s|/q|/f).*(/s|/q|/f)
+
+# Redirect-truncate of sensitive files (.env, .git/, *.db, *.sqlite, config/)
+^\s*(:|cat\s+/dev/null|true|echo\s*)\s*>\s*\S+
+^\s*>\s*\S*(\.env|\.git/|\.db|\.sqlite|config/)
+
+# rm targeting .git directory anywhere (path-variant of literal above)
+\brm\s+(-[rRfF]+\s+)*\S*\.git(/|\b)
+
+# Disk-level destruction (defense in depth, low likelihood)
+\bdd\s+if=.*of=/dev/
+\bmkfs\.\w+\b

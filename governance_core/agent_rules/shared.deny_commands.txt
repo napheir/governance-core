@@ -1,0 +1,51 @@
+# Dangerous Git operations
+git push --force
+git push -f
+git reset --hard
+git clean -fd
+
+# Git remote-branch destruction (delete remote branches)
+git push origin :
+git push origin --delete
+git push --delete
+
+# Git history rewrite
+git filter-branch
+git reflog expire
+git update-ref -d
+
+# Dangerous file operations
+rm -rf /
+rm -rf ~
+rm -rf .
+
+# .git dir attacks (literal; path variants in shared.deny_commands_regex.txt)
+rm -rf .git
+
+# Find-delete pattern
+find . -delete
+
+# Windows shell raw destructive forms
+del /F /S /Q
+del /S /Q
+del /Q /F
+del /Q /S
+Remove-Item -Recurse -Force
+Remove-Item -Force -Recurse
+
+# Database destructive operations (uppercase)
+DROP TABLE
+DROP DATABASE
+TRUNCATE
+
+# Database destructive operations (common-case variants;
+# regex layer also has case-insensitive coverage in deny_commands_regex.txt)
+drop table
+Drop Table
+drop database
+Drop Database
+truncate table
+Truncate Table
+
+# Futu trade unlock (only trade agent may unlock, globally denied here)
+unlock_trade
