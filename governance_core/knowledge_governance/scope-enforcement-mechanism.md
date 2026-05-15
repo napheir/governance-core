@@ -94,7 +94,7 @@ data-source-guard.py / sensi-guard.py 等，确保 Claude Code 每次工具
 探测会话边界：
 1. **声明式 `projectRoot`** — `<cwd>/.claude/settings.json` 的
    `projectRoot` 字段（trade-agent 在 5 clone 各自声明 `projectRoot: "../"`，
-   把边界扩展到 `pythonProject1/` 覆盖全部 clone）
+   把边界扩展到 `<install-root>/` 覆盖全部 clone）
 2. **git toplevel** — 走 `git rev-parse --show-toplevel`
 3. **cwd** — fallback to current working directory
 

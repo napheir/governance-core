@@ -27,7 +27,7 @@ file.
 | simu | `artifacts/simu/{run_name}/` |
 | research | `artifacts/research/{task_name}/` |
 | tests | `artifacts/tests/` |
-| knowledge (shared dashboard) | `pythonProject1/shared_state/knowledge/` (NOT in artifacts/) |
+| knowledge (shared dashboard) | `<install-root>/shared_state/knowledge/` (NOT in artifacts/) |
 
 ## Naming conventions
 
@@ -49,7 +49,7 @@ stamped automatically; see `proposals/dataset_registry_and_unified_artifacts_lay
 - Large binary content would bloat repo
 - Per-agent isolated runs would create constant merge conflicts
 
-The exception is `pythonProject1/shared_state/knowledge/dashboard.html`,
+The exception is `<install-root>/shared_state/knowledge/dashboard.html`,
 which lives **outside any clone** in shared runtime state — gitignored at
 its physical location, single physical copy across all clones.
 

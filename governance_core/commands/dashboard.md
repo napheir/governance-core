@@ -23,7 +23,7 @@ python tools/build_knowledge_dashboard.py
 
 **必须走 `tools/` 下的统一版本**。不要用 `knowledge/build_dashboard.py`（老版本，Phase 1 已迁移；若 rules clone 还残留那个旧文件，它产出的是过时的 `artifacts/rules/knowledge/dashboard.html` 路径，不是统一产物）。
 
-输出位置由 `config/dashboard_config.json` 指定，默认是 `pythonProject1/shared_state/knowledge/dashboard.html` —— **所有 clone 共用同一物理文件**（per `proposals/shared_state_knowledge_dashboard.md`）。`filelock` 包住写入，并发安全。
+输出位置由 `config/dashboard_config.json` 指定，默认是 `<install-root>/shared_state/knowledge/dashboard.html` —— **所有 clone 共用同一物理文件**（per `proposals/shared_state_knowledge_dashboard.md`）。`filelock` 包住写入，并发安全。
 
 ### Step 2: 验证
 
@@ -36,7 +36,7 @@ stdout 必须含一行 `[OK] wrote <abs path to shared_state\knowledge\dashboard
 ### Step 3: 打开
 
 ```
-输出路径: <pythonProject1>/shared_state/knowledge/dashboard.html
+输出路径: <<install-root>>/shared_state/knowledge/dashboard.html
 ```
 
 本地浏览器直接 `file://` 打开即用。无外部依赖、无服务端、离线可用。**任一 clone 写入此处，所有 user 视图入口立即生效**——不再需要 "core agent rebuild" 的隐性步骤。

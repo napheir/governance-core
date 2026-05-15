@@ -59,13 +59,13 @@ filesystem level so even `rm -rf .git` from a privileged process fails.
 
 ```bash
 # Linux: chattr immutable bit (requires root)
-sudo chattr +i pythonProject1/agent-core/.git/refs
-sudo chattr +i pythonProject1/agent-core/.git/objects/pack
+sudo chattr +i <install-root>/agent-core/.git/refs
+sudo chattr +i <install-root>/agent-core/.git/objects/pack
 
 # To allow a legitimate gc / pack-refs op, temporarily remove:
-sudo chattr -i pythonProject1/agent-core/.git/refs
-git -C pythonProject1/agent-core/ gc
-sudo chattr +i pythonProject1/agent-core/.git/refs
+sudo chattr -i <install-root>/agent-core/.git/refs
+git -C <install-root>/agent-core/ gc
+sudo chattr +i <install-root>/agent-core/.git/refs
 ```
 
 **Threat caught**: `rm -rf .git`, `git update-ref -d`, `find . -delete`
@@ -79,13 +79,13 @@ delete) need temporary unset. Not Windows-portable as-is.
 **Action**: use Windows ACL to deny `Delete` on `.git/`:
 
 ```powershell
-$acl = Get-Acl "C:\Users\naphe\AppData\Local\Programs\Python\Python311\pythonProject1\agent-core\.git"
+$acl = Get-Acl "~/workshop-claude/agent-core\.git"
 $rule = New-Object System.Security.AccessControl.FileSystemAccessRule(
   "$env:USERNAME", "DeleteSubdirectoriesAndFiles, Delete",
   "ContainerInherit,ObjectInherit", "None", "Deny"
 )
 $acl.AddAccessRule($rule)
-Set-Acl "C:\Users\naphe\AppData\Local\Programs\Python\Python311\pythonProject1\agent-core\.git" $acl
+Set-Acl "~/workshop-claude/agent-core\.git" $acl
 ```
 
 **Threat caught**: same as 2.1.
@@ -163,7 +163,7 @@ If a SQLite database is **critical**:
 ### 2.6 Filesystem snapshots
 
 **Action**: use OS-level snapshot mechanism so even total loss of
-`pythonProject1/` is recoverable.
+`<install-root>/` is recoverable.
 
 | OS | Mechanism | Granularity |
 |----|-----------|-------------|
@@ -174,7 +174,7 @@ If a SQLite database is **critical**:
 | Linux ext4 | rsync to second disk + cron | configurable, slower |
 
 **Threat caught**: total worktree destruction (any LLM-authored
-attack that successfully wipes pythonProject1/). Recovery via snapshot
+attack that successfully wipes <install-root>/). Recovery via snapshot
 restore.
 
 **Cost**: low (snapshots are mostly free on btrfs/ZFS; modest for
@@ -189,7 +189,7 @@ Sketch (AppArmor):
 
 ```
 profile claude-code-python /usr/bin/python3 {
-  /home/naphe/AppData/Local/Programs/Python/Python311/pythonProject1/** rw,
+  /home/naphe/AppData/Local/Programs/Python/Python311/<install-root>/** rw,
   /home/naphe/.claude/cache/** rw,
   /tmp/** rw,
   deny /home/naphe/.ssh/** w,

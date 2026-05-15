@@ -14,7 +14,7 @@ phase_2_action: needs-config-injection
 用 git 管理会持续制造 stash/reset/merge 冲突（见 2026-04-08 SMIC 事件）。
 此类数据遵循以下规则：
 
-1. **禁止进任何 git repo**：物理位置统一在 `pythonProject1/shared_state/`（所有 clone 之外）
+1. **禁止进任何 git repo**：物理位置统一在 `<install-root>/shared_state/`（所有 clone 之外）
 2. **单一物理副本**：不允许跨 clone 复制或同步（git 不是传输层）
 3. **写入必须使用文件锁**：`filelock` 库 + `os.replace()` 原子写，避免半写与并发冲突
 4. **路径必须由配置文件提供**：禁止硬编码，走 `config/{agent}_config.json` 的

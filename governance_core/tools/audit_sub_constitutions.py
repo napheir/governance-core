@@ -22,7 +22,7 @@ from datetime import datetime
 
 
 # 项目根目录
-PROJECT_ROOT = Path(__file__).parent.parent.parent  # pythonProject1/
+PROJECT_ROOT = Path(__file__).parent.parent.parent  # <install-root>/
 AGENTS = ["data", "rules", "trade", "research"]
 
 # 总宪法核心条款关键词（从附录提取）

@@ -287,7 +287,7 @@ def _check_cross_clone_drift(role: str) -> str:
             pass
 
     # Compute fresh
-    parent = CORE_ROOT.parent  # pythonProject1/
+    parent = CORE_ROOT.parent  # <install-root>/
     clone_paths = [parent / name for name in _DRIFT_CLONE_NAMES]
     clone_paths = [p for p in clone_paths if p.exists()]
     if not clone_paths:

@@ -20,10 +20,10 @@ import sys
 # Cross-repo patterns blocked for non-core agents. shared_state/ is
 # intentionally absent — see CLAUDE.md 第四条之一.
 CROSS_REPO_PATTERNS = [
-    "pythonproject1/agent-rules",
-    "pythonproject1/agent-trade",
-    "pythonproject1/agent-data",
-    "pythonproject1/agent-research",
+    "<install-root>/agent-rules",
+    "<install-root>/agent-trade",
+    "<install-root>/agent-data",
+    "<install-root>/agent-research",
 ]
 
 # Branches mapped to "core" (unrestricted)
@@ -97,4 +97,4 @@ def own_repo_pattern(hook_file: str) -> str:
     repo_root = os.path.normpath(
         os.path.join(os.path.dirname(os.path.abspath(hook_file)), "..", "..")
     )
-    return f"pythonproject1/{os.path.basename(repo_root).lower()}"
+    return f"<install-root>/{os.path.basename(repo_root).lower()}"

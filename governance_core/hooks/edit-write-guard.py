@@ -61,7 +61,7 @@ except ImportError as exc:
     )
     sys.exit(2)
 
-# Shared runtime state directory (pythonProject1/shared_state) lives outside
+# Shared runtime state directory (<install-root>/shared_state) lives outside
 # any clone's git worktree. All agents may read/write here — see CLAUDE.md
 # 第四条之一. This path must be whitelisted before the cross-repo check.
 _SHARED_STATE_ROOT = os.path.normpath(os.path.join(_REPO_ROOT, "..", "shared_state"))
@@ -703,7 +703,7 @@ def main() -> None:
     if target.startswith(_user_claude_dir + os.sep):
         sys.exit(0)
 
-    # Allow shared runtime state (pythonProject1/shared_state/) — multi-clone
+    # Allow shared runtime state (<install-root>/shared_state/) — multi-clone
     # writable by design. Per CLAUDE.md 第四条之一, writers must use filelock
     # + atomic replace; the guard only governs path authorization.
     if target == _SHARED_STATE_ROOT or target.startswith(_SHARED_STATE_ROOT + os.sep):

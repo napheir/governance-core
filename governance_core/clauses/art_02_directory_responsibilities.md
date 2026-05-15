@@ -31,7 +31,7 @@ phase_2_action: needs-config-injection
 | `artifacts/` | 输出产物（不进 Git） | 各 agent 写各自子目录 | |
 | `tools/` | Scope 检查等治理工具 | core | |
 | `agent_rules/` | Scope allow/deny 规则 | core | |
-| `shared_state/`（位于 `pythonProject1/` 根，非任何 clone 内） | 多 clone 共享运行时状态 | all 5 agents（按子目录分细，见第四条之一） | **不进 git**；单一物理副本；写入需 filelock + 原子写；详见第四条之一 |
+| `shared_state/`（位于 `<install-root>/` 根，非任何 clone 内） | 多 clone 共享运行时状态 | all 5 agents（按子目录分细，见第四条之一） | **不进 git**；单一物理副本；写入需 filelock + 原子写；详见第四条之一 |
 
 **硬性约束**：
 - 非写权限目录为**只读**，违规修改必须走提案流程（第五条）

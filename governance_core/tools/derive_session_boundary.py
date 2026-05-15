@@ -16,14 +16,14 @@ The walk is cwd -> root, so closer override wins over farther one.
 
 Example: trade-agent project layout
 
-    pythonProject1/
+    <install-root>/
       agent-core/                 <- core's clone
         .claude/settings.json     <- contains "projectRoot": "../"
       agent-rules/                <- rules' clone
         .claude/settings.local.json   <- contains "projectRoot": "../"
       ...
 
-cwd=agent-core/      -> boundary = pythonProject1/  (declarative)
+cwd=agent-core/      -> boundary = <install-root>/  (declarative)
 cwd=~/projects/foo/  -> boundary = foo/             (git toplevel, if .git there)
 cwd=~/scratch/       -> boundary = ~/scratch/       (cwd fallback)
 

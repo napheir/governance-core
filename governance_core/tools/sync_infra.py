@@ -135,9 +135,9 @@ ALWAYS_COPY_FILES = [
     # Boundary anchor for session-boundary-guard.py (proposal #3).
     # Each clone's settings.json declares projectRoot=../, so the hook
     # walking up from cwd in any of the 5 clones lands on
-    # pythonProject1/ as the boundary -- enabling cross-clone work for
+    # <install-root>/ as the boundary -- enabling cross-clone work for
     # core agent + intra-project work for the others, while still
-    # blocking writes outside pythonProject1/.
+    # blocking writes outside <install-root>/.
     ".claude/settings.json",
 
     # Session-boundary-guard source files. The hook itself runs from
