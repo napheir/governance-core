@@ -45,8 +45,10 @@ read from the downstream project's `.governance/` directory at runtime:
   ├── config.json           # project_name, install_root, shared_state_root,
   │                         # core_agent_name, ritual_phrase, agents[],
   │                         # upstream_branch, constitution_layout
-  ├── core_keywords.json    # red-line clause -> keyword dict for audit
+  ├── core_keywords.json    # red-line clauses for audit +
+  │                         # extra_protected_patterns for check_constitution_change
   ├── sync_files.json       # ALWAYS_COPY_FILES for sync_infra
+  ├── data_source_entries.json  # prepare_dataset entry imports for data-source-guard
   └── clauses/              # rendered governance-core clauses with
                             # substitutions (e.g., ritual phrase)
       ├── art_00_ritual.md
@@ -54,9 +56,18 @@ read from the downstream project's `.governance/` directory at runtime:
 ```
 
 Every tool that reads config has a fallback path: if `.governance/` files
-are missing, hardcoded Trade Agent defaults (the original project) kick in
-so bootstrap doesn't deadlock. Downstream projects override by simply
-having their own `.governance/` (created by `governance-core install`).
+are missing, generic empty/placeholder defaults kick in so bootstrap
+doesn't deadlock. Onboarded projects always supply their own `.governance/`
+(created by `governance-core install`), so fallbacks never surface in
+normal operation.
+
+Since P-0063 this also covers the three scope-security hooks/tools whose
+business data was previously placeholder-substituted (which would silently
+break them if consumed verbatim): `_guard_common.py` derives cross-repo
+block patterns from `config.json`; `data-source-guard.py` reads
+prepare_dataset entry imports from `data_source_entries.json`;
+`check_constitution_change.py` appends `extra_protected_patterns` from
+`core_keywords.json`.
 
 ## CLI subcommands
 
@@ -112,6 +123,15 @@ agent-core to consume governance-core, validating:
 - 10/10 regression tests pass (see agent-core
   `tests/regression/test_governance_dogfood.py`)
 
+P-0059 Phase 2 only migrated config + clauses + a slim CLAUDE.md — agent-core
+still kept its own copies of the generic hooks/tools. P-0063 closed that gap:
+governance-core's copies were reconciled to the single authoritative version
+(config-driven + sanitized), then agent-core adopted them via
+`governance-core upgrade`. agent-core is now a *true* consumer — its generic
+hooks/tools/skills are install-managed (refreshed by `upgrade`, never
+hand-edited), so improving a common-layer capability means editing the
+governance-core repo, not a local copy.
+
 ## Phase 3 status
 
 | Capability | State |
@@ -122,6 +142,6 @@ agent-core to consume governance-core, validating:
 | Cookiecutter template companion | ✅ |
 | Cross-clone bootstrap | ✅ (surgical via render-clauses) |
 | Logging in CLI output | ⏳ (basicConfig not yet wired; cosmetic) |
-| PyPI release | ✅ [0.1.0](https://pypi.org/project/governance-core/) |
+| PyPI release | ✅ [0.1.2](https://pypi.org/project/governance-core/) |
 | GitHub repo URLs | ✅ [napheir/governance-core](https://github.com/napheir/governance-core) |
 | Multi-clone N-agent scaffold | ✅ (multi-agent-bootstrap 0.2.0) |
