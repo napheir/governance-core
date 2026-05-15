@@ -9,6 +9,9 @@ tags: [governance, artifacts, output-paths]
 
 # Artifacts Output Layout
 
+> **Example content disclaimer**: The specific examples in this document (stock symbols, pipeline names like Strangle/S50, Futu OpenAPI references, etc.) are drawn from the Trade Agent project where governance-core was first developed. The patterns and principles are project-agnostic; downstream projects should substitute their own domain examples when applying the principles described here.
+
+
 Originally constitution Article 10. Migrated here on 2026-04-28 — the
 constitution keeps the red line "artifacts/ 不进 git" + a pointer to this
 file.

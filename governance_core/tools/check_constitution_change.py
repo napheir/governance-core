@@ -123,9 +123,9 @@ def check_core_article_violation(diff_content):
         (r"豁免.*Git.*提交", "第十四条：禁止豁免 Git 提交"),
         (r"豁免.*Notion", "第十四条：禁止豁免 Notion 更新"),
 
-        # 第十五条：Futu OpenD 预检
-        (r"豁免.*预检", "第十五条：禁止豁免预检流程"),
-        (r"跳过.*预检", "第十五条：禁止跳过预检"),
+        # Note: Trade-Agent had additional clause 15 (Futu OpenD pre-check)
+        # entries here. Downstream projects with their own business clauses
+        # should add similar entries through their fork.
     ]
 
     violations = []

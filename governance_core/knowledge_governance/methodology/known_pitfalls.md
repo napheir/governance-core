@@ -13,6 +13,9 @@ related:
   - experiments/probability_compression.md
 ---
 
+> **Example content disclaimer**: The specific examples in this document (stock symbols, pipeline names like Strangle/S50, Futu OpenAPI references, etc.) are drawn from the Trade Agent project where governance-core was first developed. The patterns and principles are project-agnostic; downstream projects should substitute their own domain examples when applying the principles described here.
+
+
 > **TL;DR**: 每个陷阱都是真实踩过的坑。按类别索引，附发现日期和根因。
 
 ## 数据类

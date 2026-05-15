@@ -9,6 +9,9 @@ tags: [governance, scope, security, art12, hooks, boundary]
 
 # Scope Enforcement Mechanism — Operational Detail
 
+> **Example content disclaimer**: The specific examples in this document (stock symbols, pipeline names like Strangle/S50, Futu OpenAPI references, etc.) are drawn from the Trade Agent project where governance-core was first developed. The patterns and principles are project-agnostic; downstream projects should substitute their own domain examples when applying the principles described here.
+
+
 Originally Constitution Article 12 §第3款 技术执行机制（四层防御）.
 Migrated here on 2026-05-07 per `proposals/prefix_cost_optimization.md`
 Phase C1 (extraction commit: see git log). The constitution keeps:

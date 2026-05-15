@@ -485,7 +485,7 @@ def _destructive_content_check(rel_path: str, content: str, role: str) -> None:
 
 # ---------- Layer 4: artifacts/<pipeline>/datasets/** registry enforcement ----------
 
-# Match paths like 'artifacts/strangle50/datasets/dense/foo.csv' (any pipeline)
+# Match paths like 'artifacts/<your-pipeline>/datasets/dense/foo.csv' (any pipeline)
 _DATASETS_PATH_RE = re.compile(r"^artifacts/[^/]+/datasets/")
 
 # Match a registry method call in serialized tool_use input. Detection is
@@ -786,7 +786,7 @@ def main() -> None:
                 "'pre-O2 dense vs O2 dense' confusion (proposal\n"
                 "dataset_registry_and_unified_artifacts_layout.md §1.1).\n\n"
                 "Route:\n"
-                "  from rules.strangle.dataset_registry import DatasetRegistry\n"
+                "  from <your-agent>.<your-pipeline>.dataset_registry import DatasetRegistry\n"
                 "  reg = DatasetRegistry(\"strangle50\")\n"
                 "  reg.register({...})           # new dataset\n"
                 "  reg.refresh(dataset_id, ...)  # same kind+arch, new vintage\n"

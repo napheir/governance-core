@@ -9,6 +9,9 @@ phase_2_action: needs-config-injection
 
 ## 第一条：项目架构
 
+> **Example content note**: The specific agent names, directory paths, contract files, and pipeline references in tables below come from the Trade Agent project (where governance-core was first developed). Downstream projects substitute their own domain via `.governance/config.json` and project-specific clause files. The principle (multi-agent topology, directory ownership, contract-based exchange) is generic.
+
+
 
 基于 Futu OpenAPI 的算法交易系统，采用多 Agent 并行开发模式（Boris Cherny 方法）：
 每个 Agent 拥有独立 git clone，在物理文件系统上完全隔离，通过 git 同步工作。

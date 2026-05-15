@@ -9,6 +9,9 @@ phase_2_action: ready-to-use
 
 ## 第四条：配置管理
 
+> **Example content note**: The specific agent names, directory paths, contract files, and pipeline references in tables below come from the Trade Agent project (where governance-core was first developed). Downstream projects substitute their own domain via `.governance/config.json` and project-specific clause files. The principle (multi-agent topology, directory ownership, contract-based exchange) is generic.
+
+
 
 1. **所有配置**统一存放在 `config/` 目录，以 JSON 格式保存
 2. **永远只有一份**配置文件，不允许任何副本存在于其他目录

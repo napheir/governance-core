@@ -9,6 +9,9 @@ phase_2_action: ready-to-use
 
 ## 第三条：契约机制
 
+> **Example content note**: The specific agent names, directory paths, contract files, and pipeline references in tables below come from the Trade Agent project (where governance-core was first developed). Downstream projects substitute their own domain via `.governance/config.json` and project-specific clause files. The principle (multi-agent topology, directory ownership, contract-based exchange) is generic.
+
+
 
 ### 3.1 契约目录
 

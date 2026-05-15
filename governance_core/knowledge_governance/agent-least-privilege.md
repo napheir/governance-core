@@ -13,6 +13,9 @@ related:
 
 # Agent Runtime Least-Privilege Principle
 
+> **Example content disclaimer**: The specific examples in this document (stock symbols, pipeline names like Strangle/S50, Futu OpenAPI references, etc.) are drawn from the Trade Agent project where governance-core was first developed. The patterns and principles are project-agnostic; downstream projects should substitute their own domain examples when applying the principles described here.
+
+
 Forward-looking principle for any future RDBMS / external-API / privileged
 runtime introduced into this project. Companion to the runtime-level
 defense in `proposals/harden_destructive_command_guard.md`.

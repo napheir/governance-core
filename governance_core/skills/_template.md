@@ -4,6 +4,9 @@ theme: core-only
 
 # Skill 模板
 
+> **Example content note**: Examples below reference the Trade Agent project (where governance-core was first developed). The skill pattern itself is generic; substitute your own domain examples.
+
+
 创建新 Skill 文件时参考此模板。
 
 ## 文件位置

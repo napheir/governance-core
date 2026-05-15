@@ -35,7 +35,7 @@ Exemptions:
      by /prepare-data skill checks)
   5. Current turn transcript contains an authorized entry: a Skill call
      with skill="prepare-data" OR a tool_use whose input mentions
-     `from rules.strangle.prepare_dataset import` or `load_train_test_oos(`
+     `from <your-agent>.<your-pipeline>.prepare_dataset import` or `load_train_test_oos(`
      or `load_oos_only(` — i.e., the agent has explicitly committed to
      route through prepare_dataset
 
@@ -109,7 +109,7 @@ _AUTHORIZED_SKILL_NAMES = {"prepare-data"}
 
 # Permissive substrings that indicate the agent committed to prepare_dataset
 _PREP_ENTRY_TOKENS = (
-    "from rules.strangle.prepare_dataset import",
+    "from <your-agent>.<your-pipeline>.prepare_dataset import",
     "load_train_test_oos(",
     "load_oos_only(",
 )
@@ -223,8 +223,8 @@ def _route_hint(matched_path: str) -> str:
     return (
         f"Reason: direct read of {matched_path} bypasses prepare_dataset "
         "single entry point (proposal Layer 1 R7).\n"
-        "Route: from rules.strangle.prepare_dataset import load_train_test_oos\n"
-        "       prep = load_train_test_oos('strangle50')\n"
+        "Route: from <your-agent>.<your-pipeline>.prepare_dataset import load_train_test_oos\n"
+        "       prep = load_train_test_oos('<your-dataset-key>')\n"
         "       df = prep.train  # or .test / .oos\n"
         "Or invoke via Skill(skill=\"prepare-data\").\n"
         "Or, for ad-hoc REPL debugging, prefix the command with "

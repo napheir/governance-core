@@ -9,6 +9,9 @@ phase_2_action: needs-config-injection
 
 ## 第二条之二：Core Agent 的测试与安全审计职责
 
+> **Example content note**: The specific agent names, directory paths, contract files, and pipeline references in tables below come from the Trade Agent project (where governance-core was first developed). Downstream projects substitute their own domain via `.governance/config.json` and project-specific clause files. The principle (multi-agent topology, directory ownership, contract-based exchange) is generic.
+
+
 
 Core agent 作为项目的**审计角色**，负责整体测试体系（**P0-P4 五层金字塔**：契约 / 集成 / 契约版本化 / E2E / 每日回归）与五维安全审计（scope 合规 / 契约演进 / 配置安全 / 代码质量 / Git 纪律）。
 

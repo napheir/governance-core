@@ -11,6 +11,9 @@ related: [knowledge/methodology/known_pitfalls.md]
 
 # Dense Audit Data Source Discipline
 
+> **Example content disclaimer**: The specific examples in this document (stock symbols, pipeline names like Strangle/S50, Futu OpenAPI references, etc.) are drawn from the Trade Agent project where governance-core was first developed. The patterns and principles are project-agnostic; downstream projects should substitute their own domain examples when applying the principles described here.
+
+
 Migrated from `constitution/agent.md` R3 on 2026-04-28 per
 `proposals/migrate_agent_md_historical_lessons_to_governance.md`.
 

@@ -11,6 +11,9 @@ related:
   - methodology/known_pitfalls.md
 ---
 
+> **Example content disclaimer**: The specific examples in this document (stock symbols, pipeline names like Strangle/S50, Futu OpenAPI references, etc.) are drawn from the Trade Agent project where governance-core was first developed. The patterns and principles are project-agnostic; downstream projects should substitute their own domain examples when applying the principles described here.
+
+
 > **TL;DR**: 使用 Experiment Harness 做实验。harness 自动冻结数据、验证 baseline、标准化评估。手动对齐已被淘汰。
 
 ## 推荐流程: Experiment Harness (2026-04-09 起)

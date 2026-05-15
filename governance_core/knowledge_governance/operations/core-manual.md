@@ -9,6 +9,9 @@ tags: [manual, runbook, dashboard, knowledge, notification]
 
 # Core Operations Manual
 
+> **Example content disclaimer**: The specific examples in this document (stock symbols, pipeline names like Strangle/S50, Futu OpenAPI references, etc.) are drawn from the Trade Agent project where governance-core was first developed. The patterns and principles are project-agnostic; downstream projects should substitute their own domain examples when applying the principles described here.
+
+
 操作手册：知识库在哪里看、dashboard 怎么生成、跨 agent 知识发布。
 
 ---
