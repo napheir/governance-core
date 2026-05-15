@@ -13,7 +13,7 @@ prefix:python -m pytest
 prefix:python tools/check_scope.py
 prefix:python tools/post_turn_verify.py
 
-# Port check (Futu precheck)
+# Port check (network precheck commands)
 prefix:python -c "import socket
 
 # Safe rm into well-known temp / cache locations

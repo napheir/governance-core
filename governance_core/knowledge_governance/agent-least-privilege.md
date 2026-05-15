@@ -68,7 +68,7 @@ If automation needs these, give it a separate identity that runs a fixed
 playbook with human review before execution — not the Agent's
 interactive session credentials.
 
-## 4. Futu trade unlock
+## 4. External API credential isolation (Futu trade unlock as example)
 
 This principle is **already partially enforced** in the project:
 
@@ -76,7 +76,7 @@ This principle is **already partially enforced** in the project:
   (blocked at the shell layer)
 - Trade unlock + execution is gated by trade-only role scope in
   `agent_rules/trade.allow.txt`
-- The actual Futu trade password is stored in user-managed config
+- The actual external API/broker password is stored in user-managed config
   outside any Agent-scoped path
 
 But the principle could be tightened further: the Agent could in

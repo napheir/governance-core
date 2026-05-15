@@ -47,5 +47,5 @@ Drop Database
 truncate table
 Truncate Table
 
-# Futu trade unlock (only trade agent may unlock, globally denied here)
+# External broker trade-unlock commands (only the trade-role agent may unlock, globally denied here)
 unlock_trade
