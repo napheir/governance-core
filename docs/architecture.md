@@ -124,4 +124,4 @@ agent-core to consume governance-core, validating:
 | Logging in CLI output | ⏳ (basicConfig not yet wired; cosmetic) |
 | PyPI release | ✅ [0.1.0](https://pypi.org/project/governance-core/) |
 | GitHub repo URLs | ✅ [napheir/governance-core](https://github.com/napheir/governance-core) |
-| Multi-clone N-agent scaffold | ⏳ (cookiecutter post-gen hook deferred) |
+| Multi-clone N-agent scaffold | ✅ (multi-agent-bootstrap 0.2.0) |
