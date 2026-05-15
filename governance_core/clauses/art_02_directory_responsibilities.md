@@ -24,7 +24,7 @@ phase_2_action: needs-config-injection
 | `proposals/` | 跨 agent 变更提案 | all | 见第五条 |
 | `skills/` | 共享基础设施（指标、模型、数据） | core | rules/trade/data 只读消费 |
 | `agents/` | Agent 框架代码 | core | |
-| `common/` | 公共工具函数（Futu API 封装等） | core | |
+| `common/` | 公共工具函数（外部 API 封装等示例） | core | |
 | `audit/` | 审计日志基础设施 | core | |
 | `knowledge/` | 项目知识库（模型演化、实验结论、领域知识、决策记录） | 各 agent 写各自归属子目录（见 AGENTS.md 知识库治理节） | 联邦模型，按概念组织 |
 | `research/` | 工具调研、原型、评估报告 | research | sandbox/ 不进 Git |

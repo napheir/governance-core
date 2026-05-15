@@ -28,7 +28,7 @@ phase_2_action: ready-to-use
 违宪；commit 阻塞，必须重构合并为单实现后才能继续。
 
 **子宪法扩展点**：各 agent 可在子宪法或 `knowledge/operations/<agent>-manual.md`
-补充本 agent 测试与生产对齐的具体场景（如 Futu paper trade vs live 的连接配置），
+补充本 agent 测试与生产对齐的具体场景（如外部 broker paper vs live 模式连接配置），
 但不得放宽 §8.1 红线或 governance file 的 anti-pattern 检查。
 
 ---

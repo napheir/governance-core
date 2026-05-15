@@ -13,7 +13,7 @@ phase_2_action: needs-config-injection
 
 
 
-某些数据本质上是"机器对外部真实状态的转录"（典型：持仓 = Futu broker 状态镜像），
+某些数据本质上是"机器对外部真实状态的转录"（典型例子：持仓 = 外部 broker 状态镜像），
 用 git 管理会持续制造 stash/reset/merge 冲突（见 2026-04-08 SMIC 事件）。
 此类数据遵循以下规则：
 
