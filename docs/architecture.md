@@ -132,6 +132,22 @@ hooks/tools/skills are install-managed (refreshed by `upgrade`, never
 hand-edited), so improving a common-layer capability means editing the
 governance-core repo, not a local copy.
 
+## Releasing
+
+Both `governance-core` and `multi-agent-bootstrap` publish to PyPI via
+**Trusted Publisher** (OIDC) — no API tokens. Each repo has
+`.github/workflows/release.yml`:
+
+- **GitHub Release published** -> build + publish to production PyPI
+  (`environment: pypi`).
+- **workflow_dispatch** (manual) -> build + publish to TestPyPI
+  (`environment: testpypi`, `skip-existing`) — a rehearsal run.
+
+To cut a release: bump the version in `pyproject.toml` + `__init__.py`,
+commit, then draft & publish a GitHub Release — the workflow does the
+rest. The local `twine` + `~/.pypirc` path remains as an emergency
+fallback. Introduced by P-0064.
+
 ## Phase 3 status
 
 | Capability | State |
