@@ -122,6 +122,6 @@ agent-core to consume governance-core, validating:
 | Cookiecutter template companion | ✅ |
 | Cross-clone bootstrap | ✅ (surgical via render-clauses) |
 | Logging in CLI output | ⏳ (basicConfig not yet wired; cosmetic) |
-| PyPI release | ⏳ |
-| GitHub repo URLs | ⏳ |
+| PyPI release | ✅ [0.1.0](https://pypi.org/project/governance-core/) |
+| GitHub repo URLs | ✅ [napheir/governance-core](https://github.com/napheir/governance-core) |
 | Multi-clone N-agent scaffold | ⏳ (cookiecutter post-gen hook deferred) |
