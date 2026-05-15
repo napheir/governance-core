@@ -2,7 +2,7 @@
   "$schema_version": "0.1.0",
   "project_name": "example-project",
   "install_root": "${HOME}/workshop-claude",
-  "shared_state_root": "${install_root}/shared_state/${project_name}",
+  "shared_state_root": "${install_root}/${project_name}/shared_state",
   "claude_dir": ".claude",
 
   "core_agent_name": "core",

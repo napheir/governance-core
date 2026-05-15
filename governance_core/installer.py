@@ -82,7 +82,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "$schema_version": "0.1.0",
     "project_name": "example-project",
     "install_root": str(Path.home() / "workshop-claude"),
-    "shared_state_root": str(Path.home() / "workshop-claude" / "shared_state" / "example-project"),
+    "shared_state_root": str(Path.home() / "workshop-claude" / "example-project" / "shared_state"),
     "claude_dir": ".claude",
     "core_agent_name": "core",
     "core_branches": ["master", "main"],
