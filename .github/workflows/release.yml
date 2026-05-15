@@ -43,6 +43,9 @@ jobs:
       - uses: pypa/gh-action-pypi-publish@release/v1
         with:
           repository-url: https://test.pypi.org/legacy/
+          # TestPyPI is a rehearsal index; a re-dispatch of an existing
+          # version should skip gracefully, not fail the run.
+          skip-existing: true
 
   publish-pypi:
     needs: build
