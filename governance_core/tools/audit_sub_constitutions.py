@@ -27,15 +27,17 @@ AGENTS = ["data", "rules", "trade", "research"]
 
 # 总宪法核心条款关键词（从附录提取）
 CORE_KEYWORDS = {
-    "第零条": ["如君所愿"],
+    # Generic-only fallback. Trade-Agent's original CORE_KEYWORDS (including
+    # 第零条 specific ritual phrase + 第八条 paper/live + 第十五条 Futu OpenD
+    # pre-check) is genericized here. Downstream projects override via
+    # .governance/core_keywords.json with their own clause -> keyword map.
+    "第零条": ["<your_ritual_phrase>"],
     "第四条": ["禁止", ".get(", "default", "硬编码", "配置"],
     "第五条": ["classify", "PROPOSAL_REQUIRED", "NO_PROPOSAL", "入口", "非平凡"],
-    "第八条": ["is_paper", "is_live", "分叉", "测试", "生产"],
     "第九条": ["feat:", "fix:", "docs:", "Conventional Commits", "分支"],
     "第十二条": ["scope", "pre-commit", "hook", "三层防御"],
     "第十三条": ["宪法", "修改权限", "附录", "红线"],
-    "第十四条": ["STATE.md", "Git", "Notion", "阶段总结", "阻塞"],
-    "第十五条": ["Futu OpenD", "预检", "端口检测"],
+    "第十四条": ["STATE.md", "Git", "阶段总结", "阻塞"],
 }
 
 
