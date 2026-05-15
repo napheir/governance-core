@@ -104,7 +104,7 @@ chmod 700 ~/.ssh ~/.aws ~/.gnupg
 chmod 600 ~/.ssh/id_* ~/.aws/credentials ~/.gnupg/*
 
 # Linux audit (auditd):
-sudo auditctl -w /home/naphe/.ssh -p wa -k claude_ssh_access
+sudo auditctl -w /home/<user>/.ssh -p wa -k claude_ssh_access
 ```
 
 **Threat caught**: defense-in-depth even if `session-boundary-guard.py`
@@ -189,11 +189,11 @@ Sketch (AppArmor):
 
 ```
 profile claude-code-python /usr/bin/python3 {
-  /home/naphe/AppData/Local/Programs/Python/Python311/<install-root>/** rw,
-  /home/naphe/.claude/cache/** rw,
+  /home/<user>/AppData/Local/Programs/Python/Python311/<install-root>/** rw,
+  /home/<user>/.claude/cache/** rw,
   /tmp/** rw,
-  deny /home/naphe/.ssh/** w,
-  deny /home/naphe/.aws/** w,
+  deny /home/<user>/.ssh/** w,
+  deny /home/<user>/.aws/** w,
   deny /etc/** w,
 }
 ```

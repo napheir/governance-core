@@ -52,7 +52,7 @@ DESTRUCTIVE = [
     ("Drop Database x", 2, "title-case drop database"),
     ("truncate logs", 2, "lowercase truncate (literal)"),
     ("delete from positions;", 2, "DELETE FROM regex"),
-    (r"del /F /S /Q C:\Users\naphe\test", 2, "Windows del destructive"),
+    (r"del /F /S /Q C:\Users\<user>\test", 2, "Windows del destructive"),
     ('powershell -Command "Remove-Item -Recurse -Force C:\\Users\\naphe\\test"',
      2, "PS5.1 Remove-Item -Recurse -Force"),
     ('pwsh -Command "Remove-Item -Recurse -Force C:\\Users\\naphe\\test"',
