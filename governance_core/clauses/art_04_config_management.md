@@ -29,14 +29,15 @@ phase_2_action: ready-to-use
 3. 修改参数需要改代码而非改配置文件
 4. 代码中只允许出现"无争议的常量"（如 `weekday() >= 5` 判断周末、数学常数、协议固定值）
 
-### 现有配置文件
+### 配置文件示例
+
+项目按需在 `config/` 添加配置文件。命名约定：`<pipeline-or-component>_config.json`。
+示例：
 
 | 文件 | 用途 | 主要消费者 |
 |------|------|-----------|
-| `config/strangle_config.json` | Strangle 管线参数 | rules |
-| `config/training_config.json` | Legacy 训练参数 | rules |
-| `config/trade_config.json` | 交易策略参数 | trade |
-| `config/weight_file.json` | 股票权重表 | all |
+| `config/<your-pipeline>_config.json` | 业务管线参数 | `<producer-agent>` |
+| `config/<consumer-agent>_config.json` | 消费方策略参数 | `<consumer-agent>` |
 
 ### 技术债
 

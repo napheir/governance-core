@@ -19,10 +19,10 @@ phase_2_action: ready-to-use
 
 | 契约文件 | 用途 | 生产者 | 消费者 |
 |----------|------|--------|--------|
-| `features_schema.json` | 特征列定义（strangle/strangle50 v3.0.0） | rules | rules（自用）, simu, data |
-| `strangle_signal_contract.md` | Strangle 信号格式 | rules | trade |
+| `<your-feature-schema>.json` | 项目特征/数据列定义（示例） | `<producer-agent>` | `<consumer-agent-1>, <consumer-agent-2>` |
+| `<your-signal-contract>.md` | 项目信号/事件格式（示例） | `<producer-agent>` | `<consumer-agent>` |
 | `knowledge_frontmatter_schema.md` | `knowledge/**/*.md` frontmatter 必填字段与枚举（含 owner） | core | all agents（写/读 knowledge 的都受约束） |
-| `knowledge_index_schema.md` | `knowledge/**/INDEX.md` 结构（顶层 Subdirectory Overview 表 + 类别级格式） | core | `tools/build_knowledge_dashboard.py`, `tools/audit_knowledge.py`, all agents |
+| `knowledge_index_schema.md` | `knowledge/**/INDEX.md` 结构 | core | `tools/build_knowledge_dashboard.py`, `tools/audit_knowledge.py`, all agents |
 
 ### 3.2 契约变更流程
 
@@ -34,7 +34,7 @@ phase_2_action: ready-to-use
 
 | 方向 | 路径 | 格式定义 |
 |------|------|---------|
-| rules → trade (strangle) | `artifacts/strangle/signals/{YYYYMMDD}/signals.jsonl` | `contracts/strangle_signal_contract.md` |
-| rules → simu | `artifacts/strangle/` | `contracts/strangle_signal_contract.md` |
+| `<producer> → <consumer>` | `artifacts/<your-pipeline>/signals/{YYYYMMDD}/signals.jsonl` | `contracts/<your-signal-contract>.md` |
+| `<producer> → <simu/test-agent>` | `artifacts/<your-pipeline>/` | `contracts/<your-signal-contract>.md` |
 
 ---

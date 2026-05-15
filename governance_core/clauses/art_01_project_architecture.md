@@ -13,20 +13,22 @@ phase_2_action: needs-config-injection
 
 
 
-基于 Futu OpenAPI 的算法交易系统，采用多 Agent 并行开发模式（Boris Cherny 方法）：
-每个 Agent 拥有独立 git clone，在物理文件系统上完全隔离，通过 git 同步工作。
+采用多 Agent 并行开发模式（Boris Cherny 方法）：每个 Agent 拥有独立
+git clone，在物理文件系统上完全隔离，通过 git 同步工作。
 
 ### Agent 体系
 
+> Agent 列表由项目 `.governance/config.json` 的 `agents` 字段定义。下表展示
+> "core + N 业务 agent" 拓扑的最小例子（精确名称、分支、职责由项目自定义）：
+
 | Agent | 工作目录 | 分支 | 职责 |
 |-------|---------|------|------|
-| core | agent-core/（主仓库） | master | **治理、共享基础设施、契约管理、测试体系、安全审计** |
-| rules | agent-rules/（独立 clone） | feature/rules-algorithm | 规则挖掘、模型训练、信号生成 |
-| trade | agent-trade/（独立 clone） | feature/trade-strategy | 交易策略、执行、风控 |
-| data | agent-data/（独立 clone） | feature/data-analysis | 数据采集、清洗、分析、质量监控 |
-| research | agent-research/（独立 clone） | feature/research | 工具调研、可行性评估、原型验证 |
+| `core` | `agent-core/`（主仓库） | `master` | **治理、共享基础设施、契约管理、测试体系、安全审计** |
+| `<business-agent-1>` | `agent-<business-1>/`（独立 clone） | `feature/<business-1>` | 业务领域 1 职责 |
+| `<business-agent-2>` | `agent-<business-2>/`（独立 clone） | `feature/<business-2>` | 业务领域 2 职责 |
+| ... | ... | ... | ... |
 
-详细 scope 定义见 `AGENTS.md`。
+详细 scope 定义见 `AGENTS.md`（项目自维护）。
 
 ### 角色定义规范
 

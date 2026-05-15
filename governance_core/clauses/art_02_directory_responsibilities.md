@@ -15,14 +15,11 @@ phase_2_action: needs-config-injection
 
 | 目录 | 职责 | 写权限 | 说明 |
 |------|------|--------|------|
-| `rules/` | 规则挖掘、模型训练、信号生成 | rules | |
-| `trade/` | 交易筛选、执行、风控 | trade | |
-| `simu/` | 回测、仿真 | rules | |
-| `models/tests/` | 业务测试代码（Legacy） | rules | `test_*.py` + 入口脚本 |
+| `<business-dir-1>/` | 业务领域 1 代码（示例） | `<business-agent-1>` | 项目自定义 |
+| `<business-dir-2>/` | 业务领域 2 代码（示例） | `<business-agent-2>` | 项目自定义 |
 | `tests/` | **质量保证测试体系（P0-P4）** | **core** | 契约测试、集成测试、E2E 测试、每日回归测试 |
-| `data/` | 数据采集、清洗、缓存 | **data** | data agent 可写，其他 agent 只读 |
-| `analysis/` | 数据分析、探索、质量监控 | data | |
-| `config/` | **所有配置文件（唯一来源）** | rules(strangle), trade(trade), data(data), core(共享) | 见第四条 |
+| `data/` | 数据采集、清洗、缓存 | `<data-agent>` | 通常 data agent 可写，其他只读 |
+| `config/` | **所有配置文件（唯一来源）** | 按业务子目录细分 | 见第四条 |
 | `contracts/` | 跨 agent 数据接口契约 | core（审核后合并） | 见第三条 |
 | `proposals/` | 跨 agent 变更提案 | all | 见第五条 |
 | `skills/` | 共享基础设施（指标、模型、数据） | core | rules/trade/data 只读消费 |
