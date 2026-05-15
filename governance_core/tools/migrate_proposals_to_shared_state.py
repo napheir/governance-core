@@ -43,10 +43,12 @@ import sys
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
 
-from config import load_proposals_config  # noqa: E402
-from tools.proposal_lib import (  # noqa: E402
+# proposal_lib is a sibling module in this tools/ directory; when this script
+# is run directly its directory is on sys.path[0], so a plain sibling import
+# works without any sys.path manipulation (P-0066 Phase 1 — dropped the old
+# `sys.path.insert` + project-root `config` import).
+from proposal_lib import (
     _FILENAME_ID_RE, allocate_next_id, parse_proposal,
     TERMINAL_STATUS, write_atomic, _agents,
 )
@@ -224,7 +226,7 @@ def _execute_one(plan: dict) -> tuple[bool, str]:
     if "agent" not in fm:
         fm["agent"] = plan["agent"]
     # Re-serialize via simple key:val (avoid reordering legacy fm fields drastically)
-    from tools.proposal_lib import serialize_frontmatter
+    from proposal_lib import serialize_frontmatter
     new_text = serialize_frontmatter(fm) + "\n" + body.lstrip("\n")
     write_atomic(dst, new_text)
     src.unlink()

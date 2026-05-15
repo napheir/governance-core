@@ -19,7 +19,9 @@ os.replace().
 Contracts:
   - contracts/proposal_frontmatter_schema.md v1.1.0 (id / agent / status /
     state-conditional fields)
-  - config/proposals_config.json (paths, lock, agents enum)
+  - .governance/config.json — proposal paths / lock / agents enum are derived
+    from it by governance_core.config.load_proposals_config (P-0066 Phase 1;
+    replaced the legacy project-root config/proposals_config.json).
 
 CLI exit codes: 0 = success, 1 = validation / state error, 2 = lock timeout.
 """
@@ -39,8 +41,12 @@ import filelock
 
 # Resolve repo root from this file's location (tools/proposal_lib.py).
 REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(REPO_ROOT))
-from config import load_proposals_config  # noqa: E402
+
+# Proposal config is derived from <REPO_ROOT>/.governance/config.json by the
+# governance_core package (P-0066 Phase 1). The package is always pip-installed
+# (the `governance-core` console script lives in it), so this import resolves
+# from both the package source tree and any installed project's tools/ copy.
+from governance_core.config import load_proposals_config
 
 
 # ---------------------------------------------------------------------------
@@ -48,13 +54,17 @@ from config import load_proposals_config  # noqa: E402
 # ---------------------------------------------------------------------------
 
 def _config() -> dict:
-    """Load proposal config (raises FileNotFoundError if missing)."""
-    return load_proposals_config()
+    """Load proposal config (raises FileNotFoundError if config.json missing)."""
+    return load_proposals_config(REPO_ROOT)
 
 
-def _resolve(rel_path: str) -> Path:
-    """Resolve a config-relative path to absolute Path (anchored at repo root)."""
-    return (REPO_ROOT / rel_path).resolve()
+def _resolve(path_str: str) -> Path:
+    """Normalize a proposal-config path string to an absolute Path.
+
+    load_proposals_config() already returns absolute paths; this just resolves
+    them (collapses any `..`/symlink components).
+    """
+    return Path(path_str).resolve()
 
 
 def _in_flight_root() -> Path:
