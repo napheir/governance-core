@@ -10,7 +10,7 @@ updated: 2026-04-17
 
 # Lesson Classification
 
-> **Example content note**: Examples below reference the Trade Agent project (where governance-core was first developed). The skill pattern itself is generic; substitute your own domain examples.
+> **Example content note**: Examples below reference the upstream project where governance-core was first developed. The skill pattern itself is generic; substitute your own domain examples.
 
 
 Use this guide whenever a session yields a lesson worth capturing — typically during `/wrap-up` step 4 or `/learn`. The goal is to pick the **one** storage target that makes the lesson reappear in the right future context.

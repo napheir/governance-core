@@ -95,11 +95,11 @@ preserves your `.governance/config.json` but refreshes clauses/hooks/skills).
 ## Example content disclaimer
 
 Some clauses and knowledge docs in this package contain examples drawn from
-the **Trade Agent project** where governance-core was first developed
-(references to Strangle/Futu pipelines, K_60M data, specific agent names like
-`rules`/`trade`). These are **explanatory examples**, not requirements. Your
-project's `.governance/config.json` supplies its own agent names, ritual
-phrase, and clause keywords; the package's logic is project-agnostic.
+the **upstream project** where governance-core was first developed (domain
+terminology, pipeline names, broker/API references, agent name conventions).
+These are **explanatory examples**, not requirements. Your project's
+`.governance/config.json` supplies its own agent names, ritual phrase, and
+clause keywords; the package's logic is project-agnostic.
 
 A v1.0 release will template-ize all example tables; v0.1.0 ships with
 disclaimers attached to mixed clauses and methodology docs.

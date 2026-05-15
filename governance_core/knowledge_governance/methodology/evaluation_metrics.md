@@ -10,7 +10,7 @@ related:
   - methodology/experiment_protocol.md
 ---
 
-> **Example content disclaimer**: The specific examples in this document (stock symbols, pipeline names like Strangle/S50, Futu OpenAPI references, etc.) are drawn from the Trade Agent project where governance-core was first developed. The patterns and principles are project-agnostic; downstream projects should substitute their own domain examples when applying the principles described here.
+> **Example content disclaimer**: The specific examples in this document (domain terminology, pipeline names, external API references, stock or asset identifiers, etc.) are drawn from the upstream project where governance-core was first developed. The patterns and principles are project-agnostic; downstream projects should substitute their own domain examples when applying the principles described here.
 
 
 > **TL;DR**: Dense test precision 是主指标。Event-sampled 仅参考。OOS 一票否决但不做选择。跨 regime 比较用 lift 不用 raw precision。
