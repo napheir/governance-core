@@ -145,7 +145,22 @@ def _plan_migration(path: Path, used_ids: set) -> dict:
         target_dir = REPO_ROOT / "proposals" / "_archive" / _year_for(fm, status)
         action = "ARCHIVE"
     elif status in {"draft", "pending", "approved", "in-progress"}:
-        target_dir = REPO_ROOT / "../shared_state/proposals" / agent
+        # P-0059 Phase 2.3d: prefer .governance/config.json's shared_state_root;
+        # fall back to relative "../shared_state/proposals" if config missing.
+        shared_state_root = None
+        try:
+            import json
+            cfg_path = REPO_ROOT / ".governance" / "config.json"
+            if cfg_path.exists():
+                cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+                if cfg.get("shared_state_root"):
+                    shared_state_root = Path(cfg["shared_state_root"])
+        except Exception:
+            pass
+        if shared_state_root is None:
+            target_dir = REPO_ROOT / "../shared_state/proposals" / agent
+        else:
+            target_dir = shared_state_root / "proposals" / agent
         action = "MOVE_TO_INFLIGHT"
     else:
         return {

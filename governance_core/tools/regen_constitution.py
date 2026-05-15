@@ -82,11 +82,24 @@ def detect_role(root: Path) -> str:
         )
         return guessed
 
+    # P-0059 Phase 2.3c: derive agent enum from .governance/config.json if available
+    agent_hint = "<core|...>"
+    try:
+        import json
+        cfg_path = root / ".governance" / "config.json"
+        if cfg_path.exists():
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            names = [a["name"] for a in cfg.get("agents", [])]
+            if names:
+                agent_hint = "<" + "|".join(names) + ">"
+    except Exception:
+        pass  # fallback to hardcoded hint
+
     print(
         f"[ERROR] Cannot detect role for {root}.\n"
         f"  .role file missing or empty: {role_file}\n"
         f"  Directory name '{dirname}' does not start with 'agent-'.\n"
-        f"  Fix: echo <core|rules|trade|data|research> > {role_file}",
+        f"  Fix: echo {agent_hint} > {role_file}",
         file=sys.stderr,
     )
     sys.exit(1)

@@ -72,6 +72,20 @@ KNOWLEDGE_COPY_MAP = [
     ("knowledge_governance/operations", "knowledge/operations"),
 ]
 
+# Mixed clauses (P-0063 方案 A): generic frame + project-specific business
+# tables. The installer renders a generic stub on first install but never
+# overwrites an existing copy — the downstream project owns the business
+# content of these clauses in full.
+MIXED_CLAUSES = {
+    "art_01_project_architecture.md",
+    "art_02_directory_responsibilities.md",
+    "art_02b_core_audit_responsibilities.md",
+    "art_03_contracts.md",
+    "art_04_config_management.md",
+    "art_04b_shared_runtime_state.md",
+    "art_10_artifacts_layout.md",
+}
+
 GITATTRIBUTES_RULE = (
     "# governance-core: per-branch agent.md isolation via merge=ours driver\n"
     "constitution/agent.md merge=ours\n"
@@ -155,10 +169,14 @@ def _render_clauses(project_root: Path, config: dict[str, Any]) -> int:
     n = 0
     ritual = config.get("ritual_phrase", "Acknowledged")
     for s in src.glob("art_*.md"):
+        dst_file = dst / s.name
+        # Mixed clauses are business-owned (P-0063 方案 A): render a generic
+        # stub on first install, but never overwrite an existing copy.
+        if s.name in MIXED_CLAUSES and dst_file.exists():
+            continue
         content = s.read_text(encoding="utf-8")
-        # Only substitute the ritual phrase. Other placeholders TBD.
         content = content.replace("如君所愿", ritual)
-        (dst / s.name).write_text(content, encoding="utf-8")
+        dst_file.write_text(content, encoding="utf-8")
         n += 1
     return n
 

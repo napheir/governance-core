@@ -12,6 +12,7 @@ Usage:
 4. 如有 HIGH 违规，返回 exit code 1
 """
 
+import json
 import os
 import sys
 import subprocess
@@ -21,16 +22,12 @@ from typing import List, Dict, Any
 from datetime import datetime
 
 
-# 项目根目录
-PROJECT_ROOT = Path(__file__).parent.parent.parent  # <install-root>/
-AGENTS = ["data", "rules", "trade", "research"]
-
-# 总宪法核心条款关键词（从附录提取）
-CORE_KEYWORDS = {
-    # Generic-only fallback. Trade-Agent's original CORE_KEYWORDS (including
-    # 第零条 specific ritual phrase + 第八条 paper/live + 第十五条 Futu OpenD
-    # pre-check) is genericized here. Downstream projects override via
-    # .governance/core_keywords.json with their own clause -> keyword map.
+# Fallback values (P-0059 Phase 2.3 refactor): used only when
+# .governance/config.json / .governance/core_keywords.json are absent (e.g.
+# a non-onboarded clone). Onboarded projects always supply both, so these
+# generic placeholders never surface in normal operation.
+_DEFAULT_AGENTS: List[str] = []
+_DEFAULT_CORE_KEYWORDS = {
     "第零条": ["<your_ritual_phrase>"],
     "第四条": ["禁止", ".get(", "default", "硬编码", "配置"],
     "第五条": ["classify", "PROPOSAL_REQUIRED", "NO_PROPOSAL", "入口", "非平凡"],
@@ -39,6 +36,49 @@ CORE_KEYWORDS = {
     "第十三条": ["宪法", "修改权限", "附录", "红线"],
     "第十四条": ["STATE.md", "Git", "阶段总结", "阻塞"],
 }
+
+
+def _load_governance_config():
+    """Load .governance/config.json + .governance/core_keywords.json from the
+    consuming project's repo root; fall back to generic defaults on miss.
+
+    Returns: (project_root, agents_list, core_keywords_dict).
+    """
+    repo_root = Path(__file__).parent.parent  # consuming project root
+    cfg_path = repo_root / ".governance" / "config.json"
+    keywords_path = repo_root / ".governance" / "core_keywords.json"
+
+    project_root = repo_root.parent
+    agents = list(_DEFAULT_AGENTS)
+    keywords = dict(_DEFAULT_CORE_KEYWORDS)
+
+    if cfg_path.exists():
+        try:
+            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+            install_root = cfg.get("install_root")
+            if install_root:
+                project_root = Path(install_root)
+            core_name = cfg.get("core_agent_name", "core")
+            agents_field = cfg.get("agents", [])
+            if agents_field:
+                agents = [a["name"] for a in agents_field if a.get("name") != core_name]
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            print(f"[audit_sub_constitutions] WARN: failed to parse {cfg_path}: {e}; using fallback", file=sys.stderr)
+
+    if keywords_path.exists():
+        try:
+            kw_data = json.loads(keywords_path.read_text(encoding="utf-8"))
+            kw_field = kw_data.get("keywords")
+            if isinstance(kw_field, dict):
+                keywords = kw_field
+        except (json.JSONDecodeError, KeyError, TypeError) as e:
+            print(f"[audit_sub_constitutions] WARN: failed to parse {keywords_path}: {e}; using fallback", file=sys.stderr)
+
+    return project_root, agents, keywords
+
+
+# Module-level config load (cached for the run)
+PROJECT_ROOT, AGENTS, CORE_KEYWORDS = _load_governance_config()
 
 
 def run_command(cmd: List[str], cwd: Path) -> str:

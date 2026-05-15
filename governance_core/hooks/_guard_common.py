@@ -13,18 +13,43 @@ checks; only the shared cross-cutting concerns live here.
 Sync: this file is in sync_infra.ALWAYS_COPY_FILES, so every clone has
 its own copy (each guard resolves _REPO_ROOT relative to its own clone).
 """
+import json
 import os
 import subprocess
 import sys
+from pathlib import Path
+
+
+def _load_cross_repo_patterns():
+    """Derive cross-repo block patterns from .governance/config.json.
+
+    Pattern format: '<install-root-basename>/<clone-dir>' lowercased, matched
+    as a substring against paths. Returns [] on any error — fail-open, the
+    same posture as detect_role(): a config outage must not spuriously block.
+    """
+    try:
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        cfg_path = repo_root / ".governance" / "config.json"
+        if not cfg_path.exists():
+            return []
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        root_name = Path(cfg.get("install_root", "")).name.lower()
+        if not root_name:
+            return []
+        core_name = cfg.get("core_agent_name", "core")
+        return [
+            f"{root_name}/{a['clone_dir'].lower()}"
+            for a in cfg.get("agents", [])
+            if a.get("name") != core_name and a.get("clone_dir")
+        ]
+    except Exception:
+        return []
+
 
 # Cross-repo patterns blocked for non-core agents. shared_state/ is
-# intentionally absent — see CLAUDE.md 第四条之一.
-CROSS_REPO_PATTERNS = [
-    "<install-root>/agent-rules",
-    "<install-root>/agent-trade",
-    "<install-root>/agent-data",
-    "<install-root>/agent-research",
-]
+# intentionally absent — see the shared-runtime-state clause. Derived from
+# .governance/config.json; empty (fail-open) when config is missing.
+CROSS_REPO_PATTERNS = _load_cross_repo_patterns()
 
 # Branches mapped to "core" (unrestricted)
 CORE_BRANCHES = {"master", "main"}
@@ -97,4 +122,5 @@ def own_repo_pattern(hook_file: str) -> str:
     repo_root = os.path.normpath(
         os.path.join(os.path.dirname(os.path.abspath(hook_file)), "..", "..")
     )
-    return f"<install-root>/{os.path.basename(repo_root).lower()}"
+    install_root_name = os.path.basename(os.path.dirname(repo_root)).lower()
+    return f"{install_root_name}/{os.path.basename(repo_root).lower()}"

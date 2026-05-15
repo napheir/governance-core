@@ -16,6 +16,7 @@ Pre-commit hook：检查子宪法修改是否符合规范
 - 2: 修改违规，阻断提交
 """
 
+import json
 import os
 import sys
 import subprocess
@@ -93,6 +94,25 @@ def check_commit_message_format(commit_msg):
     return errors
 
 
+def _load_extra_protected_patterns():
+    """Project-specific (regex, description) pairs from
+    .governance/core_keywords.json's optional 'extra_protected_patterns'
+    field. Returns [] when the file or field is absent."""
+    try:
+        repo_root = Path(__file__).resolve().parent.parent
+        cfg = repo_root / ".governance" / "core_keywords.json"
+        if not cfg.exists():
+            return []
+        data = json.loads(cfg.read_text(encoding="utf-8"))
+        out = []
+        for item in data.get("extra_protected_patterns", []):
+            if isinstance(item, (list, tuple)) and len(item) == 2:
+                out.append((item[0], item[1]))
+        return out
+    except Exception:
+        return []
+
+
 def check_core_article_violation(diff_content):
     """检查修改内容是否违反总宪法核心条款"""
     # 核心条款关键词（简化版，与 audit_sub_constitutions.py 一致）
@@ -123,10 +143,10 @@ def check_core_article_violation(diff_content):
         (r"豁免.*Git.*提交", "第十四条：禁止豁免 Git 提交"),
         (r"豁免.*Notion", "第十四条：禁止豁免 Notion 更新"),
 
-        # Note: Trade-Agent had additional clause 15 (Futu OpenD pre-check)
-        # entries here. Downstream projects with their own business clauses
-        # should add similar entries through their fork.
+        # Project-specific extra patterns are appended from
+        # .governance/core_keywords.json's optional 'extra_protected_patterns'.
     ]
+    protected_keywords += _load_extra_protected_patterns()
 
     violations = []
     for pattern, description in protected_keywords:

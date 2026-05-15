@@ -23,6 +23,7 @@ import json
 import logging
 import re
 import shutil
+import sys
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -30,12 +31,38 @@ logger = logging.getLogger(__name__)
 CORE_ROOT = Path(__file__).resolve().parent.parent
 PARENT_DIR = CORE_ROOT.parent
 
-AGENT_CLONES = {
-    "rules": PARENT_DIR / "agent-rules",
-    "trade": PARENT_DIR / "agent-trade",
-    "data": PARENT_DIR / "agent-data",
-    "research": PARENT_DIR / "agent-research",
-}
+# Fallback (P-0059 Phase 2.3b): empty when .governance/config.json is absent.
+# Onboarded projects always supply the agent list; an un-onboarded clone
+# simply syncs nothing rather than guessing a topology.
+_DEFAULT_AGENT_CLONES: dict = {}
+
+
+def _load_agent_clones_from_config():
+    """Map agent name -> clone dir from .governance/config.json (non-core only).
+
+    Returns: dict[str, Path]. Empty dict on any error / missing config.
+    """
+    cfg_path = CORE_ROOT / ".governance" / "config.json"
+    if not cfg_path.exists():
+        return dict(_DEFAULT_AGENT_CLONES)
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        install_root = Path(cfg.get("install_root", PARENT_DIR))
+        core_name = cfg.get("core_agent_name", "core")
+        agents = cfg.get("agents", [])
+        if not agents:
+            return dict(_DEFAULT_AGENT_CLONES)
+        return {
+            a["name"]: install_root / a["clone_dir"]
+            for a in agents
+            if a.get("name") != core_name
+        }
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        print(f"[sync_infra] WARN: failed to parse {cfg_path}: {e}; using fallback agent list", file=sys.stderr)
+        return dict(_DEFAULT_AGENT_CLONES)
+
+
+AGENT_CLONES = _load_agent_clones_from_config()
 
 # Non-skill files that are always propagated core → all clones.
 #
@@ -54,7 +81,10 @@ AGENT_CLONES = {
 #    cross-clone reads. When a contract or tool evolves in core, next
 #    sync_infra --execute propagates it. This replaces the pattern where
 #    agents only got tooling updates through full master merges.
-ALWAYS_COPY_FILES = [
+# P-0059 Phase 2.3b: the list below is the FALLBACK only. Authoritative
+# source is .governance/sync_files.json (project-specific). The fallback
+# stays verbatim so an un-onboarded clone still syncs core infrastructure.
+_FALLBACK_ALWAYS_COPY_FILES = [
     # Generator source
     "constitution/total.md",
 
@@ -164,6 +194,27 @@ ALWAYS_COPY_FILES = [
     "tools/test_repo_health_alarm.py",
     "knowledge/governance/resource-layer-hardening.md",
 ]
+
+
+def _load_always_copy_files():
+    """Try .governance/sync_files.json:always_copy_files; fallback to hardcoded.
+
+    Returns: list of relative paths (preserving order).
+    """
+    sf_path = CORE_ROOT / ".governance" / "sync_files.json"
+    if not sf_path.exists():
+        return list(_FALLBACK_ALWAYS_COPY_FILES)
+    try:
+        data = json.loads(sf_path.read_text(encoding="utf-8"))
+        files = data.get("always_copy_files")
+        if isinstance(files, list) and files:
+            return files
+    except (json.JSONDecodeError, KeyError, TypeError) as e:
+        print(f"[sync_infra] WARN: failed to parse {sf_path}: {e}; using fallback", file=sys.stderr)
+    return list(_FALLBACK_ALWAYS_COPY_FILES)
+
+
+ALWAYS_COPY_FILES = _load_always_copy_files()
 
 # Scope-guard hook filenames referenced in settings.local.json. Used by
 # _fix_guard_references to rewrite any command that accidentally points

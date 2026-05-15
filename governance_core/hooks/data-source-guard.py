@@ -45,6 +45,7 @@ import sys
 import json
 import os
 import re
+from pathlib import Path
 
 _HOOK_DIR = os.path.dirname(os.path.abspath(__file__))
 _REPO_ROOT = os.path.normpath(os.path.join(_HOOK_DIR, "..", ".."))
@@ -107,9 +108,26 @@ def _matches_data_path(text: str) -> str | None:
 
 _AUTHORIZED_SKILL_NAMES = {"prepare-data"}
 
-# Permissive substrings that indicate the agent committed to prepare_dataset
-_PREP_ENTRY_TOKENS = (
-    "from <your-agent>.<your-pipeline>.prepare_dataset import",
+def _load_prep_entry_imports():
+    """Project-specific prepare_dataset import prefixes from
+    .governance/data_source_entries.json. Returns [] when the file is absent
+    (the two generic function-call tokens below still apply)."""
+    try:
+        repo_root = Path(__file__).resolve().parent.parent.parent
+        cfg = repo_root / ".governance" / "data_source_entries.json"
+        if not cfg.exists():
+            return []
+        data = json.loads(cfg.read_text(encoding="utf-8"))
+        return [s for s in data.get("prep_entry_imports", []) if isinstance(s, str)]
+    except Exception:
+        return []
+
+
+# Permissive substrings that indicate the agent committed to prepare_dataset.
+# The import-path prefix is project-specific (config-injected via
+# .governance/data_source_entries.json); the two function-call tokens are
+# generic and always apply.
+_PREP_ENTRY_TOKENS = tuple(_load_prep_entry_imports()) + (
     "load_train_test_oos(",
     "load_oos_only(",
 )
