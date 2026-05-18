@@ -174,6 +174,30 @@ date-keyed, so an expired code is never served a stale `valid` verdict).
 The printed `GC1.<...>` string is the authorization code; deliver it to the
 consumer out-of-band.
 
+### Revoking a consumer (maintainer side)
+
+To eject a consumer that has left the organization, add it to the signed
+revocation feed:
+
+```pwsh
+python maintainer/revoke_consumer.py --consumer-id <id> --reason "left org"
+```
+
+This appends the consumer to `revocation.json`, re-signs it as
+`revocation.json.sig`, and marks the consumer revoked in
+`consumer_registry.json`. **Commit and push both feed files** -- the feed
+is published at `revocation.json` on `master` and fetched raw by every
+consumer's `auth-guard` (the runtime poll lands in P-0071 Phase 3).
+`--list` verifies and prints the current feed; `--init` writes a fresh
+empty signed feed (`--force` overwrites an existing one).
+
+The feed is signed with the same private key as authorization codes and
+verified with the bundled public key, so it cannot be forged or replayed
+empty. Revocation reaches a consumer on its next feed poll -- it does not
+require the consumer to upgrade or cooperate. A determined consumer who
+edits or deletes their own `auth-guard.py` cannot be frozen this way (the
+verifier runs on their hardware) -- see the P-0071 proposal Non-Goals.
+
 ### Self-hosted governance-core
 
 governance-core is its own first authorized consumer. Its

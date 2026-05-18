@@ -6,6 +6,22 @@
 
 ---
 
+### 2026-05-18 — P-0070 Phase 1 audit_proposals path + tracker reason fixes
+
+- 改动：Fix A —— `audit_proposals.py` 改用 `load_proposals_config` 解析
+  in-flight 目录 + `_id_ledger.json`（与 `proposal_lib.py` 同源，不再硬编码
+  父级相对路径）。Fix B —— `tracker.py` 加 `should_extract_reason()`，
+  `--should-extract` CLI 区分 already-extracted-today / below-threshold /
+  recommended、报实际原因；stats 加 `should_extract_reason` 字段。
+- 涉及：`governance_core/tools/audit_proposals.py`、
+  `governance_core/discovery/tracker.py`。
+- 关键决策：两个均纯报告修复，不动 `should_extract()` 启发式；tracker CLI
+  改 `sys.stdout.write`（避 `constitutional-review` 对 print 的拦截）。
+- 测试：自托管 gc `audit_proposals` 报 in-flight=1/archive=4/0 failures
+  （误报 ledger FAIL 消失）；`--should-extract` 正确报 "already extracted
+  today"；`should_extract_reason` 单测。commit 0b5b870。
+
+
 ### 2026-05-18 — P-0065 Phase 5 hub-side curation + convergence loop
 
 - 改动：GC 侧 curation 收口闭环 —— 新增 consumer registry 模块

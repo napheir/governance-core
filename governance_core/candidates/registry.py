@@ -67,6 +67,29 @@ def record_consumer(path: Path, consumer_id: str, issued: str,
     save_registry(path, registry)
 
 
+def mark_revoked(path: Path, consumer_id: str, revoked_on: str,
+                 reason: str = "") -> bool:
+    """Mark a consumer entry as revoked; return True iff the entry existed.
+
+    Sets `status='revoked'`, `revoked_on`, and `revocation_reason` on the
+    matching consumer entry (P-0071 Phase 2 -- the registry's revocation
+    side; Phase 4 extends the consumer schema further). A consumer absent
+    from the registry yields False and changes nothing; the caller decides
+    whether that is an error (revoking a never-issued id is a no-op here).
+    """
+    registry = load_registry(path)
+    found = False
+    for entry in registry["consumers"]:
+        if entry["consumer_id"] == consumer_id:
+            entry["status"] = "revoked"
+            entry["revoked_on"] = revoked_on
+            entry["revocation_reason"] = reason
+            found = True
+    if found:
+        save_registry(path, registry)
+    return found
+
+
 def record_candidate(path: Path, candidate_id: str, origin: str, kind: str,
                      title: str, decision: str, note: str = "") -> None:
     """Append (or refresh) a curated-candidate entry in the registry."""

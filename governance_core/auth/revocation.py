@@ -1,0 +1,155 @@
+"""Revocation feed: format, signing, verification (P-0071 Phase 2).
+
+A revocation feed is a signed JSON document the maintainer publishes and
+every consumer's `auth-guard` polls (P-0071 Phase 3). A `consumer_id`
+present in the feed is frozen at runtime -- this is how the maintainer
+actively ejects a project that has left the organization, without needing
+the consumer to cooperate or upgrade.
+
+The feed and its detached signature are two files:
+
+    revocation.json       the feed document
+    revocation.json.sig   b64url Ed25519 signature over the feed bytes
+
+The signature is computed over the *exact* serialized bytes of
+revocation.json, so a verifier checks the bytes it received (or fetched)
+without re-canonicalizing. The feed is signed by the same maintainer key
+that signs authorization codes; consumers verify it with the bundled
+public key (`governance_core/auth/pubkey.json`).
+
+Feed shape:
+
+    {"schema": 1, "updated": "<ISO-8601 Z>",
+     "revoked": [{"consumer_id": str, "revoked_on": "YYYY-MM-DD",
+                  "reason": str}, ...]}
+"""
+
+from __future__ import annotations
+
+import datetime
+import json
+from pathlib import Path
+from typing import Any
+
+from governance_core import auth
+from governance_core.auth import codec
+
+FEED_SCHEMA = 1
+
+
+class RevocationFeedError(Exception):
+    """Raised when a revocation feed is malformed or its signature is bad."""
+
+
+def _now() -> str:
+    """Return the current UTC time as an ISO-8601 'Z' string."""
+    return datetime.datetime.now(datetime.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ")
+
+
+def _revoked_list(feed: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the feed's revoked entries, tolerating an absent key."""
+    revoked = feed.get("revoked")
+    return revoked if isinstance(revoked, list) else []
+
+
+def new_feed() -> dict[str, Any]:
+    """Return a fresh, empty revocation feed."""
+    return {"schema": FEED_SCHEMA, "updated": _now(), "revoked": []}
+
+
+def serialize_feed(feed: dict[str, Any]) -> bytes:
+    """Return the canonical bytes of `feed` -- the exact signed payload."""
+    return (json.dumps(feed, sort_keys=True, indent=2, ensure_ascii=False)
+            + "\n").encode("utf-8")
+
+
+def validate_feed(feed: Any) -> None:
+    """Raise RevocationFeedError if `feed` is not a well-formed feed."""
+    if not isinstance(feed, dict):
+        raise RevocationFeedError("revocation feed is not a JSON object")
+    if feed.get("schema") != FEED_SCHEMA:
+        raise RevocationFeedError(
+            f"unsupported revocation feed schema: {feed.get('schema')!r}")
+    if not feed.get("updated"):
+        raise RevocationFeedError("revocation feed missing 'updated'")
+    revoked = feed.get("revoked")
+    if not isinstance(revoked, list):
+        raise RevocationFeedError("revocation feed 'revoked' must be a list")
+    for entry in revoked:
+        if not isinstance(entry, dict) or not entry.get("consumer_id"):
+            raise RevocationFeedError(
+                "every revoked entry needs a non-empty consumer_id")
+
+
+def is_revoked(feed: dict[str, Any], consumer_id: str) -> bool:
+    """Return True iff `consumer_id` appears in the feed's revoked list."""
+    return any(e.get("consumer_id") == consumer_id
+               for e in _revoked_list(feed))
+
+
+def add_revocation(feed: dict[str, Any], consumer_id: str, reason: str,
+                   revoked_on: str | None = None) -> dict[str, Any]:
+    """Return a new feed with `consumer_id` revoked (idempotent).
+
+    Re-revoking an already-listed consumer refreshes its entry rather than
+    duplicating it. `updated` is bumped to now; entries stay sorted by id.
+    """
+    if not consumer_id:
+        raise RevocationFeedError("consumer_id must be non-empty")
+    revoked_on = revoked_on or datetime.date.today().isoformat()
+    kept = [e for e in _revoked_list(feed)
+            if e.get("consumer_id") != consumer_id]
+    kept.append({"consumer_id": consumer_id, "revoked_on": revoked_on,
+                 "reason": reason})
+    kept.sort(key=lambda e: e["consumer_id"])
+    return {"schema": FEED_SCHEMA, "updated": _now(), "revoked": kept}
+
+
+def sign_feed(feed_bytes: bytes, seed: bytes) -> str:
+    """Return the b64url Ed25519 signature over `feed_bytes`."""
+    return codec.b64url_encode(auth.sign(feed_bytes, seed))
+
+
+def verify_feed(feed_bytes: bytes, signature_b64: str,
+                public_key: bytes) -> dict[str, Any]:
+    """Verify the detached signature over `feed_bytes`; return the feed.
+
+    Raises RevocationFeedError if the signature does not verify, the bytes
+    are not JSON, or the parsed feed shape is invalid.
+    """
+    try:
+        sig = codec.b64url_decode(signature_b64.strip())
+    except (ValueError, TypeError) as exc:
+        raise RevocationFeedError(f"signature is not valid base64url: {exc}")
+    if not auth.verify(feed_bytes, sig, public_key):
+        raise RevocationFeedError("revocation feed signature does not verify")
+    try:
+        feed = json.loads(feed_bytes.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise RevocationFeedError(f"revocation feed is not valid JSON: {exc}")
+    validate_feed(feed)
+    return feed
+
+
+def write_feed(feed_path: Path, sig_path: Path, feed: dict[str, Any],
+               seed: bytes) -> bytes:
+    """Serialize, sign, and write the feed + detached signature.
+
+    Returns the exact feed bytes that were written and signed.
+    """
+    feed_bytes = serialize_feed(feed)
+    feed_path.write_bytes(feed_bytes)
+    sig_path.write_text(sign_feed(feed_bytes, seed) + "\n", encoding="utf-8")
+    return feed_bytes
+
+
+def load_feed(feed_path: Path, sig_path: Path,
+              public_key: bytes) -> dict[str, Any]:
+    """Read and verify a feed + detached signature from disk; return it."""
+    if not feed_path.exists():
+        raise RevocationFeedError(f"revocation feed missing: {feed_path}")
+    if not sig_path.exists():
+        raise RevocationFeedError(f"revocation signature missing: {sig_path}")
+    return verify_feed(feed_path.read_bytes(),
+                       sig_path.read_text(encoding="utf-8"), public_key)

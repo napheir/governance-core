@@ -17,6 +17,27 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-18 — P-0071 Phase 2 signed revocation feed
+
+- 改动：新增 `governance_core/auth/revocation.py` —— 撤销源格式
+  （`{schema, updated, revoked[]}`）+ detached 签名;签名覆盖**精确字节**，
+  verifier 信任收到的字节、不重新规范化。`candidates/registry.py` 加
+  `mark_revoked()`（消费者条目打 `status:revoked` + `revoked_on` +
+  `revocation_reason`）。新增 `maintainer/revoke_consumer.py`（`--consumer-id`
+  撤销 / `--init [--force]` / `--list`，改源前先验旧源签名）。仓根 committed
+  空签名源 `revocation.json` + `revocation.json.sig`。
+- 涉及：新增 `governance_core/auth/revocation.py`、`tools/test_revocation.py`、
+  `maintainer/revoke_consumer.py`、`revocation.json`、`revocation.json.sig`;
+  改 `governance_core/candidates/registry.py`、`docs/core-manual.md`。
+- 关键决策：签名覆盖文件精确字节（verifier 不 re-canonicalize，规避序列化
+  漂移）;撤销源走仓根文件（被 `governance_core*` 白名单天然排除出 wheel）;
+  改源前验旧签名 —— 拒绝给被篡改的源重签（防止洗白篡改）。
+- 测试：`test_revocation` 14/14（往返、篡改/错密钥/非 JSON/未知 schema/缺
+  consumer_id 拒、磁盘读写、`mark_revoked` 正负路径）;`revoke_consumer`
+  dogfood（init→撤销测试消费者→list 验签→重置空）;wheel 0.3.0 含
+  `revocation.py`、不含 `revocation.json` / `maintainer/`;upgrade/doctor
+  exit 0。
+
 ### 2026-05-18 — P-0071 Phase 1 auth-code schema v2 + leasing + auth-guard cache fix
 
 - 改动：codec payload schema 接受 `{1,2}` —— schema 2 携带 `expiry` /
@@ -51,18 +72,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 测试：`_prune_stale` 单测 5 项、探针文件真实 dogfood（装入→源删→upgrade
   prune）、upgrade/doctor exit 0、build 0.2.1。commit f09648c。P-0070 两 phase
   全部完成。
-
-### 2026-05-18 — P-0070 Phase 1 audit_proposals path + tracker reason fixes
-
-- 改动：Fix A —— `audit_proposals.py` 改用 `load_proposals_config` 解析
-  in-flight 目录 + `_id_ledger.json`（与 `proposal_lib.py` 同源，不再硬编码
-  父级相对路径）。Fix B —— `tracker.py` 加 `should_extract_reason()`，
-  `--should-extract` CLI 区分 already-extracted-today / below-threshold /
-  recommended、报实际原因；stats 加 `should_extract_reason` 字段。
-- 涉及：`governance_core/tools/audit_proposals.py`、
-  `governance_core/discovery/tracker.py`。
-- 关键决策：两个均纯报告修复，不动 `should_extract()` 启发式；tracker CLI
-  改 `sys.stdout.write`（避 `constitutional-review` 对 print 的拦截）。
-- 测试：自托管 gc `audit_proposals` 报 in-flight=1/archive=4/0 failures
-  （误报 ledger FAIL 消失）；`--should-extract` 正确报 "already extracted
-  today"；`should_extract_reason` 单测。commit 0b5b870。
