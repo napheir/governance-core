@@ -17,6 +17,21 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-18 — P-0070 Phase 2 upgrade prune (stale autonomy-layer files)
+
+- 改动：Fix C —— `installer.py` 加 `_prune_stale`，`upgrade` 在 `_capture_drift`
+  后、写新 manifest 前比对旧 manifest 与新 install 集，旧有新无的
+  install-managed 路径删除（manifest-diff = 安全边界）+ `[prune]` 报告 + 空
+  目录清理；`cli.py` 加 `--no-prune`；版本 0.2.0→0.2.1。一次性清掉 P-0069
+  早于 manifest 残留的 `shared-code-per-agent-state.md`。
+- 涉及：`governance_core/installer.py`、`cli.py`、`pyproject.toml`、
+  `__init__.py`、`docs/{architecture,core-manual}.md`。
+- 关键决策：manifest-diff 安全边界 —— business/authored/`learned/` 从不进
+  manifest，故从不被 prune；prune 在 drift 捕获之后（被改过的陈旧文件先成候选）。
+- 测试：`_prune_stale` 单测 5 项、探针文件真实 dogfood（装入→源删→upgrade
+  prune）、upgrade/doctor exit 0、build 0.2.1。commit f09648c。P-0070 两 phase
+  全部完成。
+
 ### 2026-05-18 — P-0070 Phase 1 audit_proposals path + tracker reason fixes
 
 - 改动：Fix A —— `audit_proposals.py` 改用 `load_proposals_config` 解析
@@ -48,23 +63,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 测试：`issue_auth_code` 登记 registry、curation 11 项（review/promote/
   reject、registry 内容）、upgrade/doctor exit 0、build 隔离。commit f5b23f7。
   P-0065 六 phase 全部实现完成。
-
-### 2026-05-18 — P-0065 Phase 4 candidate collection + submit + uplink
-
-- 改动：候选管道三来源 —— 脱敏扫描器 `sensitive_scan.py`（HIGH/MEDIUM 分级）
-  + `sensitive-data-guard` PreToolUse hook（user 选 Option B：补全 README 一直
-  宣称却缺失的安全 hook）；`candidates/collect.py`（净新增 candidate-common
-  skill 收集）；`candidates/uplink.py`（脱敏扫描 + `gh issue` 传输 + dry-run +
-  体积上限）；CLI `tools/candidate.py`（collect/submit/uplink，consent 门）；
-  `/submit-candidate` 命令；installer `_capture_drift`（upgrade 覆盖前捕获
-  install-managed 文件漂移成 drift 候选 + stderr 报告）。
-- 涉及：新增 `governance_core/sensitive_scan.py`、`hooks/sensitive-data-guard.py`、
-  `candidates/{collect,uplink}.py`、`tools/candidate.py`、
-  `commands/submit-candidate.md`；改 `installer.py`、`hooks_manifest.json`、
-  `.gitignore`、`.claude/settings.local.json`。
-- 关键决策：`sensitive-data-guard` 原不存在 → Option B 补全；payload 内联
-  issue body（~60KB 上限）；漂移=捕获后覆盖（不留 override）；uplink 带
-  `--dry-run`。
-- 测试：扫描器+hook 16 项、Part A 8 项（collect/submit/uplink/secret-abort/
-  consent-gate）、Part B 漂移真实 dogfood、upgrade/doctor exit 0、build 隔离。
-  commit 47fdf8f。

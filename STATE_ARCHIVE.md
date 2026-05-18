@@ -6,6 +6,27 @@
 
 ---
 
+### 2026-05-18 — P-0065 Phase 4 candidate collection + submit + uplink
+
+- 改动：候选管道三来源 —— 脱敏扫描器 `sensitive_scan.py`（HIGH/MEDIUM 分级）
+  + `sensitive-data-guard` PreToolUse hook（user 选 Option B：补全 README 一直
+  宣称却缺失的安全 hook）；`candidates/collect.py`（净新增 candidate-common
+  skill 收集）；`candidates/uplink.py`（脱敏扫描 + `gh issue` 传输 + dry-run +
+  体积上限）；CLI `tools/candidate.py`（collect/submit/uplink，consent 门）；
+  `/submit-candidate` 命令；installer `_capture_drift`（upgrade 覆盖前捕获
+  install-managed 文件漂移成 drift 候选 + stderr 报告）。
+- 涉及：新增 `governance_core/sensitive_scan.py`、`hooks/sensitive-data-guard.py`、
+  `candidates/{collect,uplink}.py`、`tools/candidate.py`、
+  `commands/submit-candidate.md`；改 `installer.py`、`hooks_manifest.json`、
+  `.gitignore`、`.claude/settings.local.json`。
+- 关键决策：`sensitive-data-guard` 原不存在 → Option B 补全；payload 内联
+  issue body（~60KB 上限）；漂移=捕获后覆盖（不留 override）；uplink 带
+  `--dry-run`。
+- 测试：扫描器+hook 16 项、Part A 8 项（collect/submit/uplink/secret-abort/
+  consent-gate）、Part B 漂移真实 dogfood、upgrade/doctor exit 0、build 隔离。
+  commit 47fdf8f。
+
+
 ### 2026-05-18 — P-0065 Phase 3 candidate envelope + layer tagging
 
 - 改动：新增 `governance_core/candidates/`（envelope 模块：三 kind
