@@ -6,6 +6,21 @@
 
 ---
 
+### 2026-05-18 — P-0065 Phase 2 installed-files manifest + baseline hash
+
+- 改动：`install`/`upgrade` 写 `.governance/installed_files.json`（128 文件，
+  逐文件 path + baseline_sha256 + source_version + category）；新增查询工具
+  `whichlayer.py`（路径 → install-managed / business）；manifest 进 `.gitignore`
+  （纯派生物）。附带修 Phase 1 遗留：`verified_at` 码不变则保留，committed
+  config.json 不再 churn。
+- 涉及：`governance_core/installer.py`、新增 `governance_core/tools/whichlayer.py`、
+  `.gitignore`、`docs/{architecture,core-manual}.md`。
+- 关键决策：Phase 0 category 枚举执行修正（去 `config`、补 `knowledge`）；
+  版本维持 0.2.0（P-0065 六 phase 整体一次发版）。
+- 测试：gc dogfood upgrade（128 文件 manifest）、`whichlayer` 6 路抽检、
+  `doctor` exit 0。commit ef791c1。
+
+
 ### 2026-05-18 — P-0065 Phase 1 authorization double-gate + runtime enforcement
 
 - 改动：governance-core 授权机制 —— install 双门（Ed25519 授权码离线验签 +

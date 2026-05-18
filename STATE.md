@@ -17,6 +17,23 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-18 — P-0065 Phase 5 hub-side curation + convergence loop
+
+- 改动：GC 侧 curation 收口闭环 —— 新增 consumer registry 模块
+  `governance_core/candidates/registry.py` + committed 台账
+  `maintainer/consumer_registry.json`（记已签发消费者 + 候选评审决策）；
+  `issue_auth_code.py` 签发即登记消费者；`tools/candidate.py` 加
+  `review`/`promote` 子命令；GC 侧 incoming `candidates/` 进 `.gitignore`；
+  收口 hub 模型写入 `docs/architecture.md` + `docs/core-manual.md §11`。
+- 涉及：新增 `candidates/registry.py`、`maintainer/consumer_registry.json`；
+  改 `tools/candidate.py`、`maintainer/issue_auth_code.py`、`.gitignore`、
+  `docs/{architecture,core-manual}.md`。
+- 关键决策：registry 落 maintainer 侧、committed（durable 台账）；`promote`
+  按 kind 复制进包源、judgment 人工/agent；GitHub issue 为候选权威记录。
+- 测试：`issue_auth_code` 登记 registry、curation 11 项（review/promote/
+  reject、registry 内容）、upgrade/doctor exit 0、build 隔离。commit f5b23f7。
+  P-0065 六 phase 全部实现完成。
+
 ### 2026-05-18 — P-0065 Phase 4 candidate collection + submit + uplink
 
 - 改动：候选管道三来源 —— 脱敏扫描器 `sensitive_scan.py`（HIGH/MEDIUM 分级）
@@ -52,17 +69,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   （过报便宜、漏报无声）；envelope 目录式（candidate.json + payload 子目录）。
 - 测试：13 项单测、真实 extractor `--layer` 跑通、upgrade/doctor exit 0、
   build 隔离。commit 1d2a575。
-
-### 2026-05-18 — P-0065 Phase 2 installed-files manifest + baseline hash
-
-- 改动：`install`/`upgrade` 写 `.governance/installed_files.json`（128 文件，
-  逐文件 path + baseline_sha256 + source_version + category）；新增查询工具
-  `whichlayer.py`（路径 → install-managed / business）；manifest 进 `.gitignore`
-  （纯派生物）。附带修 Phase 1 遗留：`verified_at` 码不变则保留，committed
-  config.json 不再 churn。
-- 涉及：`governance_core/installer.py`、新增 `governance_core/tools/whichlayer.py`、
-  `.gitignore`、`docs/{architecture,core-manual}.md`。
-- 关键决策：Phase 0 category 枚举执行修正（去 `config`、补 `knowledge`）；
-  版本维持 0.2.0（P-0065 六 phase 整体一次发版）。
-- 测试：gc dogfood upgrade（128 文件 manifest）、`whichlayer` 6 路抽检、
-  `doctor` exit 0。commit ef791c1。
