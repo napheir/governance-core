@@ -17,6 +17,26 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-18 — P-0065 Phase 4 candidate collection + submit + uplink
+
+- 改动：候选管道三来源 —— 脱敏扫描器 `sensitive_scan.py`（HIGH/MEDIUM 分级）
+  + `sensitive-data-guard` PreToolUse hook（user 选 Option B：补全 README 一直
+  宣称却缺失的安全 hook）；`candidates/collect.py`（净新增 candidate-common
+  skill 收集）；`candidates/uplink.py`（脱敏扫描 + `gh issue` 传输 + dry-run +
+  体积上限）；CLI `tools/candidate.py`（collect/submit/uplink，consent 门）；
+  `/submit-candidate` 命令；installer `_capture_drift`（upgrade 覆盖前捕获
+  install-managed 文件漂移成 drift 候选 + stderr 报告）。
+- 涉及：新增 `governance_core/sensitive_scan.py`、`hooks/sensitive-data-guard.py`、
+  `candidates/{collect,uplink}.py`、`tools/candidate.py`、
+  `commands/submit-candidate.md`；改 `installer.py`、`hooks_manifest.json`、
+  `.gitignore`、`.claude/settings.local.json`。
+- 关键决策：`sensitive-data-guard` 原不存在 → Option B 补全；payload 内联
+  issue body（~60KB 上限）；漂移=捕获后覆盖（不留 override）；uplink 带
+  `--dry-run`。
+- 测试：扫描器+hook 16 项、Part A 8 项（collect/submit/uplink/secret-abort/
+  consent-gate）、Part B 漂移真实 dogfood、upgrade/doctor exit 0、build 隔离。
+  commit 47fdf8f。
+
 ### 2026-05-18 — P-0065 Phase 3 candidate envelope + layer tagging
 
 - 改动：新增 `governance_core/candidates/`（envelope 模块：三 kind
@@ -46,22 +66,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   版本维持 0.2.0（P-0065 六 phase 整体一次发版）。
 - 测试：gc dogfood upgrade（128 文件 manifest）、`whichlayer` 6 路抽检、
   `doctor` exit 0。commit ef791c1。
-
-### 2026-05-18 — P-0065 Phase 1 authorization double-gate + runtime enforcement
-
-- 改动：governance-core 授权机制 —— install 双门（Ed25519 授权码离线验签 +
-  强制 candidate-uplink 同意，双门通过才 materialize 自治层）；upgrade/doctor
-  复验；运行时硬冻结（`auth-guard` PreToolUse hook，matcher `*`，授权无效即
-  阻断全部工具调用，验签结果按 repo/code/key 缓存）；纯 Python Ed25519
-  （RFC 8032，零运行时依赖）；`maintainer/` 签发工具；license MIT→自定义
-  source-available（DRAFT）；版本 0.1.6→0.2.0。
-- 涉及：新增 `governance_core/auth/`、`governance_core/hooks/auth-guard.py`、
-  `maintainer/`；改 `installer.py`、`cli.py`、`hooks_manifest.json`、
-  `pyproject.toml`、`__init__.py`、`LICENSE`、`README.md`、`docs/{architecture,
-  core-manual}.md`、`.governance/config.json`、`.claude/settings.local.json`。
-- 关键决策：授权 gate 两层（materialize 门 + 运行时硬冻结）—— user 修订原
-  "install 门即够"设计；签名库=纯 Python Ed25519；uplink=GitHub issue；
-  多 owner 签发台账推迟到 Phase 5 consumer registry。
-- 测试：auth 自测 10/10；install/upgrade/doctor 门控；负向门（无/坏码→7、
-  拒同意→8）；`auth-guard` hook（valid/篡改/缺失/缓存）；build 隔离
-  （`maintainer/` + 私钥不入包）；gc 自托管 dogfood。commit 581f7e5。
