@@ -37,15 +37,23 @@ config.json schema:
 
 from __future__ import annotations
 
+import datetime
 import json
 import logging
 import os
 import shutil
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
+from governance_core.auth import codec
+
 logger = logging.getLogger("governance_core.installer")
+
+# P-0065 Phase 1: candidate-uplink consent terms version. Bumping this on a
+# future terms change makes upgrade re-prompt for consent.
+CONSENT_TERMS_VERSION = 1
 
 # Package root (path to governance_core/ directory)
 PKG_ROOT = Path(__file__).resolve().parent
@@ -119,20 +127,90 @@ def _load_or_init_config(
     config_overrides: dict[str, Any],
     preserve_config: bool,
 ) -> dict[str, Any]:
+    """Load .governance/config.json (or seed DEFAULT_CONFIG); merge overrides.
+
+    Does NOT persist -- install() writes the config exactly once, after the
+    authorization + consent gate (P-0065 Phase 1), so a failed gate never
+    leaves a half-configured project behind.
+    """
     cfg_path = project_root / CONFIG_REL
-    if cfg_path.exists() and preserve_config:
-        return json.loads(cfg_path.read_text(encoding="utf-8"))
     if cfg_path.exists():
         existing = json.loads(cfg_path.read_text(encoding="utf-8"))
+        if preserve_config:
+            return existing
     else:
         existing = DEFAULT_CONFIG.copy()
     # Shallow merge overrides
     for k, v in config_overrides.items():
         existing[k] = v
-    cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    cfg_path.write_text(json.dumps(existing, indent=2, ensure_ascii=False), encoding="utf-8")
-    logger.info("[config] wrote %s", cfg_path)
     return existing
+
+
+def _write_config(project_root: Path, config: dict[str, Any]) -> None:
+    """Persist `config` to .governance/config.json."""
+    cfg_path = project_root / CONFIG_REL
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    cfg_path.write_text(
+        json.dumps(config, indent=2, ensure_ascii=False), encoding="utf-8"
+    )
+    logger.info("[config] wrote %s", cfg_path)
+
+
+# --- Authorization + consent gate (P-0065 Phase 1) --------------------------
+
+
+def _now_iso() -> str:
+    """Return the current UTC time as an ISO-8601 'Z' string."""
+    return datetime.datetime.now(datetime.timezone.utc).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+
+
+def _resolve_auth_code(config: dict[str, Any],
+                       auth_code_arg: str | None) -> str | None:
+    """Return the auth code to verify: the CLI arg, else the stored one."""
+    if auth_code_arg:
+        return auth_code_arg
+    if "authorization" in config and "auth_code" in config["authorization"]:
+        return config["authorization"]["auth_code"]
+    return None
+
+
+def _consent_satisfied(config: dict[str, Any]) -> bool:
+    """Return True if config already records current-terms uplink consent."""
+    if "candidate_uplink" not in config:
+        return False
+    cu = config["candidate_uplink"]
+    return (cu.get("consent") is True
+            and cu.get("consent_terms_version") == CONSENT_TERMS_VERSION)
+
+
+def _collect_consent(config: dict[str, Any], accept_flag: bool) -> bool:
+    """Resolve candidate-uplink consent for install/upgrade (P-0065 Phase 1).
+
+    Current version: consent is mandatory -- only an explicit yes lets the
+    governance layer materialize. An already-recorded current-terms consent
+    carries forward; otherwise the `--accept-candidate-uplink` flag or an
+    interactive yes is required. Non-interactive without the flag -> denied.
+    """
+    if _consent_satisfied(config):
+        return True
+    if accept_flag:
+        return True
+    if sys.stdin.isatty():
+        logger.info(
+            "[consent] Candidate uplink: improved skills / hooks / mechanisms "
+            "from this project may be packaged as candidates and uploaded to "
+            "governance-core's PUBLIC GitHub repository for review. This "
+            "version REQUIRES consent to use the governance layer."
+        )
+        try:
+            answer = input("[consent] Agree to candidate uplink? [y/N] ")
+        except (EOFError, KeyboardInterrupt):
+            # No usable input -> treat as a denial rather than crashing.
+            return False
+        return answer.strip().lower() in ("y", "yes")
+    return False
 
 
 def _copy_tree(src: Path, dst: Path) -> int:
@@ -358,7 +436,16 @@ def install(
     config_overrides: dict[str, Any] | None = None,
     preserve_config: bool = False,
     force: bool = False,
+    auth_code: str | None = None,
+    accept_candidate_uplink: bool = False,
 ) -> int:
+    """Install / upgrade the governance layer into `project_root`.
+
+    P-0065 Phase 1: both an authorization gate and a candidate-uplink consent
+    gate run BEFORE any autonomy-layer file is materialized. A failed gate
+    returns non-zero and leaves the project without governance capabilities.
+    Return codes: 1 missing root, 7 authorization failure, 8 consent denied.
+    """
     project_root = project_root.resolve()
     if not project_root.exists():
         logger.error("[install] project root does not exist: %s", project_root)
@@ -366,6 +453,41 @@ def install(
 
     config_overrides = config_overrides or {}
     cfg = _load_or_init_config(project_root, config_overrides, preserve_config)
+
+    # --- P-0065 Phase 1: authorization + consent gate ----------------------
+    # Both must pass before the autonomy layer (= governance capabilities) is
+    # copied; gate first, materialize second.
+    code = _resolve_auth_code(cfg, auth_code)
+    if not code:
+        logger.error("[install] no authorization code. governance-core "
+                      "requires a maintainer-issued code -- pass --auth-code "
+                      "<CODE> (see README 'Authorization').")
+        return 7
+    try:
+        payload = codec.verify_auth_code(code, codec.load_bundled_public_key())
+    except codec.AuthCodeError as exc:
+        logger.error("[install] authorization failed: %s", exc)
+        return 7
+    if not _collect_consent(cfg, accept_candidate_uplink):
+        logger.error("[install] candidate-uplink consent is REQUIRED in this "
+                      "version -- install aborted. Re-run and consent, or "
+                      "pass --accept-candidate-uplink.")
+        return 8
+    consumer_id = payload["consumer_id"]
+    logger.info("[install] authorized: consumer_id=%r", consumer_id)
+
+    cfg["authorization"] = {
+        "auth_code": code,
+        "consumer_id": consumer_id,
+        "verified_at": _now_iso(),
+    }
+    if not _consent_satisfied(cfg):
+        cfg["candidate_uplink"] = {
+            "consent": True,
+            "consent_at": _now_iso(),
+            "consent_terms_version": CONSENT_TERMS_VERSION,
+        }
+    _write_config(project_root, cfg)
     logger.info("[install] project=%s ritual_phrase=%r", cfg.get("project_name"), cfg.get("ritual_phrase"))
 
     counts = {}
@@ -447,9 +569,26 @@ def doctor(project_root: Path) -> int:
         logger.error("[doctor] hooks installed but not registered in "
                       "settings.local.json: %s", unregistered)
         return 6
-    logger.info("[doctor] OK: project=%s ritual_phrase=%r agents=%d hooks=%d "
-                "clauses=%d hooks_registered=%d",
-                cfg["project_name"], cfg["ritual_phrase"], len(cfg["agents"]),
+    # P-0065 Phase 1: authorization must be present and still verify
+    if "authorization" not in cfg or "auth_code" not in cfg["authorization"]:
+        logger.error("[doctor] no authorization in config.json "
+                      "(run install with --auth-code)")
+        return 7
+    try:
+        codec.verify_auth_code(cfg["authorization"]["auth_code"],
+                               codec.load_bundled_public_key())
+    except codec.AuthCodeError as exc:
+        logger.error("[doctor] authorization invalid: %s", exc)
+        return 7
+    # P-0065 Phase 1: candidate-uplink consent must be recorded
+    if not _consent_satisfied(cfg):
+        logger.error("[doctor] candidate-uplink consent not recorded for "
+                      "current terms (required in this version)")
+        return 8
+    logger.info("[doctor] OK: project=%s consumer_id=%r ritual_phrase=%r "
+                "agents=%d hooks=%d clauses=%d hooks_registered=%d",
+                cfg["project_name"], cfg["authorization"]["consumer_id"],
+                cfg["ritual_phrase"], len(cfg["agents"]),
                 len(list(hooks_dir.glob("*.py"))),
                 len(list(clauses_dir.glob("art_*.md"))),
                 len(registered))

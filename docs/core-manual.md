@@ -123,3 +123,61 @@ agent-core into `governance_core.discovery`, so `/extract-skill` and
 `/wrap-up` Steps 4a–4c run the packaged tracker / extractor / registry
 directly — no `../agent-core` sibling clone, no `PYTHONPATH`. Learned-skill
 state stays in the consuming project's `.claude/skills/learned/`.
+
+## 9. Authorization (P-0065)
+
+Since P-0065, `governance-core install` / `upgrade` are gated on a
+maintainer-issued **authorization code** plus a **candidate-uplink consent**.
+Both gates run before any autonomy-layer file is materialized — a failed gate
+leaves the project with no governance capabilities.
+
+Authorization is also enforced **at runtime**: the `auth-guard.py` PreToolUse
+hook (matcher `*`) re-verifies the stored code before every tool call and
+blocks it if authorization is invalid — so a project installed with a valid
+code that later loses authorization (code tampered, key rotated, code
+deleted) is frozen, not silently allowed to keep running. The freeze affects
+the agent only; recover by re-running `governance-core install` from a
+terminal.
+
+The package ships an Ed25519 public key (`governance_core/auth/pubkey.json`);
+the matching private key stays with the maintainer, outside the repo. Codes
+are verified offline (no network) — see `constitution/total.md` and the
+P-0065 proposal for the model.
+
+### Issuing codes (maintainer side)
+
+The signing keypair is generated once:
+
+```pwsh
+python maintainer/gen_signing_key.py
+```
+
+It writes the private key to `~/.governance-core/signing_key.json` (never
+committed, never packaged — `maintainer/` is excluded from the pip build) and
+the public key to `governance_core/auth/pubkey.json` (committed, shipped).
+**Back up the private key offline** — it cannot be recovered and signs every
+code.
+
+Issue one code per consumer:
+
+```pwsh
+python maintainer/issue_auth_code.py --consumer-id <project-or-org>
+```
+
+The printed `GC1.<...>` string is the authorization code; deliver it to the
+consumer out-of-band.
+
+### Self-hosted governance-core
+
+governance-core is its own first authorized consumer. Its
+`.governance/config.json` carries an `authorization` block (consumer_id
+`governance-core`) and a `candidate_uplink` consent block. `upgrade`
+re-verifies the stored code on every run, so the dogfood loop is unchanged
+except that `upgrade` now also checks authorization. `doctor` reports the
+consumer id and fails (exit 7 / 8) if authorization or consent is missing.
+
+### Rotating the key
+
+If the private key leaks: regenerate (`gen_signing_key.py --force`), commit
+the new `pubkey.json`, release a new package version, and re-issue codes.
+Old codes stop verifying once the new public key ships.

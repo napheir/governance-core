@@ -21,5 +21,15 @@
     "total_md_path": "constitution/total.md",
     "agent_md_path": "constitution/agent.core.md",
     "claude_md_mirror": "CLAUDE.md"
+  },
+  "authorization": {
+    "auth_code": "GC1.eyJjb25zdW1lcl9pZCI6ImdvdmVybmFuY2UtY29yZSIsImlzc3VlZCI6IjIwMjYtMDUtMTgiLCJzY2hlbWEiOjF9.BHRoTHeEWXRimzJxMxrZcjMwpBNd9Iu4i2rYm42gDAek5iMDob98zaB2ZWxeUBOFdPVo2zpYpsWvVNMlxUXmAw",
+    "consumer_id": "governance-core",
+    "verified_at": "2026-05-18T07:34:47Z"
+  },
+  "candidate_uplink": {
+    "consent": true,
+    "consent_at": "2026-05-18T07:11:24Z",
+    "consent_terms_version": 1
   }
 }

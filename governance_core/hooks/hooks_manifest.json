@@ -2,6 +2,7 @@
   "$comment": "P-0067: single source of truth mapping each shipped hook to its Claude Code event + tool matcher. The installer reads this to generate .claude/settings.local.json hook registrations. matcher is null for events that have no tool (UserPromptSubmit, SessionStart). Adding a hook requires an entry here; governance-core doctor flags installed hooks missing from the manifest.",
   "schema_version": "1.0.0",
   "hooks": {
+    "auth-guard.py":            {"event": "PreToolUse",      "matcher": "*"},
     "command-guard.py":         {"event": "PreToolUse",      "matcher": "Bash"},
     "scope-guard.py":           {"event": "PreToolUse",      "matcher": "Bash"},
     "edit-write-guard.py":      {"event": "PreToolUse",      "matcher": "Edit|Write"},

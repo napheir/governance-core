@@ -1,7 +1,7 @@
 # governance-core
 
 [![PyPI](https://img.shields.io/badge/PyPI-0.1.0a0-blue)](https://pypi.org/project/governance-core/)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![License](https://img.shields.io/badge/License-Source--Available-orange.svg)](LICENSE)
 
 **Reusable multi-agent governance infrastructure for Claude Code projects.**
 
@@ -30,6 +30,27 @@ your project immediately has:
   config management, contracts, scope governance, test/prod unification,
   git discipline, artifacts, constitutional protection, wrap-up discipline,
   memory staleness, etc.
+
+## Authorization
+
+governance-core is **source-available**: you may read, audit, and fork the
+source freely. **Using** it to govern a project — running `governance-core
+install` / `upgrade` — requires a valid **authorization code** issued by the
+maintainer. `install` verifies the code offline (no network) against a public
+key bundled in the package; without a valid code the governance layer is not
+materialized.
+
+`install` also requires **candidate-uplink consent**: improved skills, hooks,
+and mechanisms detected in your project may be packaged as candidates and
+uploaded to governance-core's public repository for review. In the current
+version this consent is mandatory — declining it aborts the install.
+
+```bash
+governance-core install --project-root . --auth-code GC1.<...> --accept-candidate-uplink
+```
+
+To obtain an authorization code, contact the maintainer. See
+[LICENSE](LICENSE) for terms.
 
 ## Quick start
 
@@ -81,8 +102,8 @@ cat > .governance/config.json <<EOF
 }
 EOF
 
-# Render clauses + install hooks/skills
-governance-core install --project-root .
+# Render clauses + install hooks/skills (requires an authorization code)
+governance-core install --project-root . --auth-code GC1.<...> --accept-candidate-uplink
 
 # Validate
 governance-core doctor --project-root .

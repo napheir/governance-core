@@ -73,7 +73,7 @@ prepare_dataset entry imports from `data_source_entries.json`;
 
 | Subcommand | Purpose |
 |------------|---------|
-| `install` | First-time setup: write config.json, copy assets to .claude/, render clauses, configure .gitattributes |
+| `install` | First-time setup: verify authorization code + candidate-uplink consent (P-0065), write config.json, copy assets to .claude/, render clauses, configure .gitattributes |
 | `upgrade` | Refresh assets while preserving config.json (post-`git pull` of governance-core) |
 | `doctor` | Verify config + hooks + clauses present and valid |
 | `render-clauses` | Standalone clause render (used by template bootstrap; useful for surgical clone updates) |
@@ -189,6 +189,43 @@ directly (no `../agent-core` sibling clone, no `PYTHONPATH`). The installer
 also seeds an initial `STATE.md` and emits `.claude/settings.local.json` — registering
 every shipped hook from `hooks/hooks_manifest.json` (P-0067) — so a
 consumer's hooks are wired on install, with no hand-authoring.
+
+## Authorization model (P-0065)
+
+From version 0.2.0 governance-core is **source-available, authorized-use**:
+the source is public, but *using* it to govern a project requires a
+maintainer-issued authorization code.
+
+- **Codes are Ed25519-signed.** The maintainer holds the private signing key
+  offline; the package ships only the public key
+  (`governance_core/auth/pubkey.json`). `install` / `upgrade` verify codes
+  **offline** — no phone-home, no network.
+- **Two install-time gates.** `install` verifies the authorization code, then
+  requires candidate-uplink consent (mandatory in the current version). Both
+  must pass *before* the autonomy layer is materialized — so no valid code,
+  or declined consent, means the governance capabilities are never copied
+  into the project.
+- **Runtime enforcement.** The install-time gate alone does not cover a
+  project that was installed with a valid code and later loses authorization
+  (code tampered, key rotated, code deleted) — its already-materialized hooks
+  and tools would keep running. So a PreToolUse hook (`auth-guard.py`,
+  matcher `*`) re-verifies the stored code before *every* tool call and
+  blocks it when authorization is invalid. With all tool calls blocked the
+  agent is frozen — hooks fail directly, proposal/wrap-up/skills fail
+  transitively (their tools are frozen). The verdict is cached per (repo,
+  code, public key) so the Ed25519 verify runs once, not per call. The freeze
+  affects the agent only; a human re-authorizes from a terminal.
+- **The code doubles as identity.** The verified `consumer_id` is written to
+  `.governance/config.json` and will stamp the `origin` of capability
+  candidates uploaded back to governance-core (later P-0065 phases).
+- **Not DRM.** The source is readable Python; the check can be patched out.
+  The code is a deterrent + an identity + a terms-of-use boundary, not an
+  unbreakable lock. The license changed from MIT to a source-available
+  authorized-use license at 0.2.0; releases 0.1.2–0.1.6 remain MIT.
+
+Maintainer tooling (`maintainer/gen_signing_key.py`,
+`maintainer/issue_auth_code.py`) is committed for auditability but excluded
+from the pip package. See `docs/core-manual.md` §9 for the issuing workflow.
 
 ## Releasing
 

@@ -2,16 +2,20 @@
 
 Subcommands:
 
-    governance-core install [--project-root PATH] [--config-overrides JSON]
+    governance-core install --auth-code CODE [--accept-candidate-uplink]
+                            [--project-root PATH] [--config-overrides JSON]
         Set up .governance/ in the downstream project: write config.json,
         copy hooks/skills/commands/agents/contracts/agent_rules from this
         package to .claude/<category>/, render clauses to .governance/clauses/.
-        Idempotent: re-running refreshes content without touching business
-        files at the project root.
+        Requires a maintainer-issued authorization code and candidate-uplink
+        consent (P-0065); the governance layer is materialized only after
+        both gates pass. Idempotent: re-running refreshes content without
+        touching business files at the project root.
 
-    governance-core upgrade [--project-root PATH]
+    governance-core upgrade [--auth-code CODE] [--project-root PATH]
         Same as install but only refreshes governance assets; preserves
-        existing .governance/config.json.
+        existing .governance/config.json. Re-verifies the stored
+        authorization code (or --auth-code if given).
 
     governance-core doctor [--project-root PATH]
         Validate downstream project's governance configuration:
@@ -40,6 +44,8 @@ def cmd_install(args: argparse.Namespace) -> int:
         project_root=Path(args.project_root).resolve(),
         config_overrides=json.loads(args.config_overrides) if args.config_overrides else {},
         force=args.force,
+        auth_code=args.auth_code,
+        accept_candidate_uplink=args.accept_candidate_uplink,
     )
 
 
@@ -50,6 +56,8 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
         config_overrides={},  # preserve existing config
         preserve_config=True,
         force=True,
+        auth_code=args.auth_code,
+        accept_candidate_uplink=args.accept_candidate_uplink,
     )
 
 
@@ -77,10 +85,18 @@ def main() -> int:
     p_install.add_argument("--project-root", default=".")
     p_install.add_argument("--config-overrides", default="", help="JSON dict to merge into config.json")
     p_install.add_argument("--force", action="store_true")
+    p_install.add_argument("--auth-code", default=None,
+                           help="maintainer-issued authorization code (required)")
+    p_install.add_argument("--accept-candidate-uplink", action="store_true",
+                           help="consent to candidate uplink (required this version)")
     p_install.set_defaults(func=cmd_install)
 
     p_upgrade = sub.add_parser("upgrade")
     p_upgrade.add_argument("--project-root", default=".")
+    p_upgrade.add_argument("--auth-code", default=None,
+                           help="authorization code (defaults to the stored one)")
+    p_upgrade.add_argument("--accept-candidate-uplink", action="store_true",
+                           help="consent to candidate uplink if not already recorded")
     p_upgrade.set_defaults(func=cmd_upgrade)
 
     p_doctor = sub.add_parser("doctor")
