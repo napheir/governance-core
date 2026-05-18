@@ -181,3 +181,22 @@ consumer id and fails (exit 7 / 8) if authorization or consent is missing.
 If the private key leaks: regenerate (`gen_signing_key.py --force`), commit
 the new `pubkey.json`, release a new package version, and re-issue codes.
 Old codes stop verifying once the new public key ships.
+
+## 10. Install-managed manifest (P-0065)
+
+`install` / `upgrade` write `.governance/installed_files.json` — a manifest
+of every file the installer materialized, each with a content sha256
+baseline, source `governance-core` version, and category. It is the
+authoritative answer to "is this path install-managed or business?" and the
+baseline for drift detection in later P-0065 phases.
+
+Query a path with the shipped tool:
+
+```pwsh
+python tools/whichlayer.py .claude/hooks/scope-guard.py   # -> install-managed
+python tools/whichlayer.py CLAUDE.md                      # -> business
+```
+
+Exit codes: `0` install-managed, `1` business, `2` error (no manifest). The
+manifest is a pure derivative — regenerated every install/upgrade — so it is
+gitignored, like the autonomy layer it indexes.
