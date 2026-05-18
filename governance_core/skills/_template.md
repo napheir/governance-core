@@ -60,4 +60,4 @@ theme: core-only
 - frontmatter 不是必需的，Claude Code commands 直接识别 `.md` 文件名作为命令名
 - 文件内容即为 Agent 执行时的指令提示
 - 引用的路径和命令必须真实存在
-- 跨 Agent 共享的 skill 放在 agent-core，各 Agent 通过 git pull 同步
+- 共享 skill 由 governance-core 包分发；改其源在 `governance_core/` 包源，经 `governance-core upgrade` 回流到各消费项目

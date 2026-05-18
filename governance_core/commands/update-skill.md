@@ -68,8 +68,8 @@ Hooks 不需要复制（`CENTRAL_HOOKS` 走中央引用，clones 自动看到新
 ```bash
 for clone in agent-rules agent-trade agent-data agent-research; do
   echo "=== $clone ==="
-  cd ../$clone && echo '{}' | python ~/workshop-claude/agent-core/.claude/hooks/session-context.py 2>&1 | grep -E "SKILL DRIFT" || echo "(clean)"
-  cd ~/workshop-claude/agent-core
+  cd ../$clone && echo '{}' | python "$CLAUDE_PROJECT_DIR/.claude/hooks/session-context.py" 2>&1 | grep -E "SKILL DRIFT" || echo "(clean)"
+  cd "$CLAUDE_PROJECT_DIR"
 done
 ```
 

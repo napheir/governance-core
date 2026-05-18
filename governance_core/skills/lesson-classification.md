@@ -43,7 +43,7 @@ Ask in order — stop at the first yes.
 
 3. **Is this a principle or workflow that should be actively applied when a specific pattern reappears?**
    Ask: can I describe the trigger pattern in one sentence?
-   - **Cross-agent** design principle, convention, or reusable pattern → **Skill guide** (`.claude/skills/<name>.md`, type `guide`). Lives in `agent-core`, visible to all agents via Registry scan.
+   - **Cross-agent** design principle, convention, or reusable pattern → **Skill guide** (`.claude/skills/<name>.md`, type `guide`), discoverable via Registry scan.
    - **Workflow extracted from this session**, likely to replay → **Learned skill** (`.claude/skills/learned/<name>.md`, type `learned`, via `/extract-skill`). Lives in the invoking agent's repo; tracker scoring boosts recency.
 
 4. **Is this a project-wide rule that must never be violated?**

@@ -59,3 +59,7 @@ htmlcov/
 # Runtime state — in-flight proposals etc. (constitution Art.4.1: never in git;
 # terminal proposals are archived to /proposals/_archive/ which IS committed).
 /shared_state/
+
+# Proposal-transition snapshots written by proposal_lib (derived audit copies
+# of in-flight proposals; the durable governance record is /proposals/_archive/).
+/audit/

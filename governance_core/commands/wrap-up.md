@@ -15,7 +15,7 @@ owner: core
 - 格式与已有条目保持一致
 - **Rotation**: 新增条目后运行以下命令将超过 7 天的条目归档到 `STATE_ARCHIVE.md`：
   ```bash
-  python "$(git rev-parse --show-toplevel)/../agent-core/tools/rotate_state.py" --root "$(git rev-parse --show-toplevel)" --execute
+  python "$(git rev-parse --show-toplevel)/tools/rotate_state.py" --root "$(git rev-parse --show-toplevel)" --execute
   ```
 
 ## 2. Git 提交
