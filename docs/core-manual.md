@@ -101,14 +101,14 @@ included. A consumer's topology — read from `.governance/config.json`'s
   Skill guide in the package source `governance_core/skills/`, while learned
   skills stay in `.claude/skills/learned/` (kept committed by a `.gitignore`
   carve-out).
-- **Skill extraction is capability-gated.** `/extract-skill` and `/wrap-up`
-  Steps 4a–4c need the `skills.discovery` machinery, not yet packaged — they
-  skip with `[capability pending P-0069]` until P-0069 lands.
+- **Skill extraction runs.** `/extract-skill` and `/wrap-up` Steps 4a–4c use
+  the `governance_core.discovery` machinery, packaged by P-0069 — they run
+  directly, no agent-core sibling clone, no `PYTHONPATH`.
 
 Running `/wrap-up` in self-hosted governance-core therefore completes with
 every step either applied or cleanly skipped — no broken step.
 
-## 8. Hook wiring + remaining follow-up
+## 8. Hook wiring + skill-learning
 
 `governance-core install` / `upgrade` emit `.claude/settings.local.json`,
 registering every shipped hook from `hooks/hooks_manifest.json` (P-0067) —
@@ -118,6 +118,8 @@ own hook groups are preserved (a pre-P-0067 hand-authored governance group is
 auto-detected and migrated). The installer is a subprocess, so it can write
 this critical-path file that an interactive agent cannot.
 
-Remaining follow-up: **P-0069** — the `skills.discovery` skill-learning
-machinery is not yet packaged; `/extract-skill` + `/wrap-up` Steps 4a–4c are
-capability-gated until it lands (draft proposal in `shared_state/proposals/core/`).
+The skill-learning machinery is packaged too: P-0069 extracted it from
+agent-core into `governance_core.discovery`, so `/extract-skill` and
+`/wrap-up` Steps 4a–4c run the packaged tracker / extractor / registry
+directly — no `../agent-core` sibling clone, no `PYTHONPATH`. Learned-skill
+state stays in the consuming project's `.claude/skills/learned/`.

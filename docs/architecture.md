@@ -182,10 +182,11 @@ Each shipped skill step is one of three buckets:
 | **B — genuinely multi-agent** | Cross-clone / cross-agent steps — under single-agent topology they degrade to **not-run** (an explicit `[N/A — single-agent topology — skipped]`). The multi-agent capability stays fully shipped. |
 | **C — runs single-agent too** | Lesson classification, skill extraction, STATE.md — **fixed so they run**, not skipped: the existing decision logic is reused verbatim, only topology-dependent edges (paths, git treatment) adapt. |
 
-The skill-learning machinery (`skills.discovery`) was found unpackaged and
-spun out to P-0069; until it lands, `/extract-skill` + `/wrap-up` Steps
-4a–4c are capability-gated (skip cleanly). The installer also seeds an
-initial `STATE.md` and emits `.claude/settings.local.json` — registering
+The skill-learning machinery was found unpackaged and spun out to P-0069,
+which extracted it from agent-core into `governance_core.discovery` — so
+`/extract-skill` and `/wrap-up` Steps 4a–4c run the packaged machinery
+directly (no `../agent-core` sibling clone, no `PYTHONPATH`). The installer
+also seeds an initial `STATE.md` and emits `.claude/settings.local.json` — registering
 every shipped hook from `hooks/hooks_manifest.json` (P-0067) — so a
 consumer's hooks are wired on install, with no hand-authoring.
 
