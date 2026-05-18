@@ -38,6 +38,7 @@ config.json schema:
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
 import logging
 import os
@@ -60,6 +61,7 @@ PKG_ROOT = Path(__file__).resolve().parent
 
 CONFIG_REL = ".governance/config.json"
 CLAUSES_REL = ".governance/clauses"
+INSTALLED_FILES_REL = ".governance/installed_files.json"
 CLAUDE_DIR = ".claude"
 
 # Category -> (source-subdir-in-pkg, destination-subdir-in-project)
@@ -72,6 +74,18 @@ COPY_CATEGORIES = [
     ("agent_rules", "agent_rules"),
     ("tools",     "tools"),
 ]
+
+# P-0065 Phase 2: copy-category source subdir -> installed_files.json
+# category. Clause and knowledge files are tagged inline in install().
+CATEGORY_OF = {
+    "hooks": "hook",
+    "skills": "skill",
+    "commands": "command",
+    "agents": "agent",
+    "contracts": "contract",
+    "agent_rules": "agent_rule",
+    "tools": "tool",
+}
 
 KNOWLEDGE_COPY_MAP = [
     ("knowledge_governance", "knowledge/governance"),
@@ -213,12 +227,16 @@ def _collect_consent(config: dict[str, Any], accept_flag: bool) -> bool:
     return False
 
 
-def _copy_tree(src: Path, dst: Path) -> int:
-    """Copy a directory tree; returns file count. Overwrites existing files."""
+def _copy_tree(src: Path, dst: Path) -> list[Path]:
+    """Copy a directory tree; return the destination paths written.
+
+    Overwrites existing files. Per-category README.md files at the package
+    subdir root are skipped (docs, not governance assets).
+    """
     if not src.exists():
         logger.warning("[copy] source missing: %s", src)
-        return 0
-    n = 0
+        return []
+    written: list[Path] = []
     for s in src.rglob("*"):
         if s.is_dir():
             continue
@@ -229,22 +247,22 @@ def _copy_tree(src: Path, dst: Path) -> int:
         d = dst / rel
         d.parent.mkdir(parents=True, exist_ok=True)
         shutil.copy2(s, d)
-        n += 1
-    return n
+        written.append(d)
+    return written
 
 
-def _render_clauses(project_root: Path, config: dict[str, Any]) -> int:
+def _render_clauses(project_root: Path, config: dict[str, Any]) -> list[Path]:
     """Copy clauses to .governance/clauses/ with placeholder substitution.
 
-    Phase 1.4 substitution: only `如君所愿` -> config["ritual_phrase"].
-    Phase 2 will add more (agent enums, paths, etc.) — but those tools are
-    refactored individually to read from config at runtime, not via clause
-    text substitution.
+    Returns the clause files written. Substitution: `如君所愿` ->
+    config ritual_phrase. Mixed clauses (P-0063 方案 A) are business-owned --
+    a generic stub is rendered on first install but an existing copy is
+    never overwritten (so they are not recorded as install-managed here).
     """
     src = PKG_ROOT / "clauses"
     dst = project_root / CLAUSES_REL
     dst.mkdir(parents=True, exist_ok=True)
-    n = 0
+    written: list[Path] = []
     ritual = config.get("ritual_phrase", "Acknowledged")
     for s in src.glob("art_*.md"):
         dst_file = dst / s.name
@@ -255,8 +273,46 @@ def _render_clauses(project_root: Path, config: dict[str, Any]) -> int:
         content = s.read_text(encoding="utf-8")
         content = content.replace("如君所愿", ritual)
         dst_file.write_text(content, encoding="utf-8")
-        n += 1
-    return n
+        written.append(dst_file)
+    return written
+
+
+def _write_installed_manifest(project_root: Path,
+                              installed: list[tuple[Path, str]]) -> None:
+    """Write .governance/installed_files.json (P-0065 Phase 2).
+
+    Records every install-managed file materialized this run: project-root
+    relative POSIX path, content sha256 baseline, source governance-core
+    version, and category. The manifest answers "is this path install-managed
+    or business?" (membership) and is the baseline for drift detection
+    (later P-0065 phases).
+    """
+    from governance_core import __version__
+    files = []
+    for dest_path, category in installed:
+        if not dest_path.exists():
+            continue
+        files.append({
+            "path": dest_path.relative_to(project_root).as_posix(),
+            "baseline_sha256": hashlib.sha256(
+                dest_path.read_bytes()).hexdigest(),
+            "source_version": __version__,
+            "category": category,
+        })
+    files.sort(key=lambda f: f["path"])
+    manifest = {
+        "schema": 1,
+        "governance_core_version": __version__,
+        "generated_at": _now_iso(),
+        "files": files,
+    }
+    manifest_path = project_root / INSTALLED_FILES_REL
+    manifest_path.parent.mkdir(parents=True, exist_ok=True)
+    manifest_path.write_text(
+        json.dumps(manifest, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+    logger.info("[manifest] wrote installed_files.json (%d files)", len(files))
 
 
 def _configure_gitattributes(project_root: Path) -> None:
@@ -476,10 +532,17 @@ def install(
     consumer_id = payload["consumer_id"]
     logger.info("[install] authorized: consumer_id=%r", consumer_id)
 
+    # Preserve verified_at when the code is unchanged, so a repeated upgrade
+    # does not churn a committed config.json (P-0065 Phase 2 dogfood finding).
+    verified_at = _now_iso()
+    if ("authorization" in cfg
+            and cfg["authorization"].get("auth_code") == code
+            and "verified_at" in cfg["authorization"]):
+        verified_at = cfg["authorization"]["verified_at"]
     cfg["authorization"] = {
         "auth_code": code,
         "consumer_id": consumer_id,
-        "verified_at": _now_iso(),
+        "verified_at": verified_at,
     }
     if not _consent_satisfied(cfg):
         cfg["candidate_uplink"] = {
@@ -491,11 +554,15 @@ def install(
     logger.info("[install] project=%s ritual_phrase=%r", cfg.get("project_name"), cfg.get("ritual_phrase"))
 
     counts = {}
+    # P-0065 Phase 2: collect every install-managed file written, for the
+    # installed_files.json manifest.
+    installed: list[tuple[Path, str]] = []
     for src_sub, dst_sub in COPY_CATEGORIES:
         src = PKG_ROOT / src_sub
         dst = project_root / dst_sub
-        n = _copy_tree(src, dst)
-        counts[f".claude/{src_sub}" if src_sub != "tools" and src_sub != "contracts" and src_sub != "agent_rules" else dst_sub] = n
+        written = _copy_tree(src, dst)
+        counts[f".claude/{src_sub}" if src_sub not in ("tools", "contracts", "agent_rules") else dst_sub] = len(written)
+        installed.extend((p, CATEGORY_OF[src_sub]) for p in written)
     for src_sub, dst_sub in KNOWLEDGE_COPY_MAP:
         src = PKG_ROOT / src_sub
         dst = project_root / dst_sub
@@ -508,15 +575,18 @@ def install(
                     d = dst / s.name
                     d.parent.mkdir(parents=True, exist_ok=True)
                     shutil.copy2(s, d)
+                    installed.append((d, "knowledge"))
                     n += 1
         counts[dst_sub] = n
 
-    n_clauses = _render_clauses(project_root, cfg)
-    counts[".governance/clauses"] = n_clauses
+    clause_files = _render_clauses(project_root, cfg)
+    counts[".governance/clauses"] = len(clause_files)
+    installed.extend((p, "clause") for p in clause_files)
 
     _configure_gitattributes(project_root)
     _seed_state_md(project_root, cfg)
     _write_settings_local_json(project_root)
+    _write_installed_manifest(project_root, installed)
 
     logger.info("[install] complete. Files installed:")
     for k, v in counts.items():

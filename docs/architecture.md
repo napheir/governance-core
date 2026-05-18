@@ -49,11 +49,24 @@ read from the downstream project's `.governance/` directory at runtime:
   │                         # extra_protected_patterns for check_constitution_change
   ├── sync_files.json       # ALWAYS_COPY_FILES for sync_infra
   ├── data_source_entries.json  # prepare_dataset entry imports for data-source-guard
+  ├── installed_files.json  # P-0065 manifest: every install-managed file +
+  │                         # baseline sha256 + source version + category
   └── clauses/              # rendered governance-core clauses with
                             # substitutions (e.g., ritual phrase)
       ├── art_00_ritual.md
       └── ...
 ```
+
+`install` / `upgrade` write `installed_files.json` (P-0065 Phase 2) — a
+manifest of every file the installer materialized, each with its content
+sha256, source `governance-core` version, and category (`hook` / `skill` /
+`tool` / `clause` / ...). It serves two purposes: it answers, mechanically,
+whether a path is **install-managed** (in the manifest — the installer owns
+it, `upgrade` overwrites local edits) or **business** (absent — project-owned);
+and the baseline hashes are the reference for drift detection in later P-0065
+phases. `tools/whichlayer.py <path>` is the query front-end. The manifest is
+a pure derivative — regenerated every install/upgrade — so a self-hosted
+project gitignores it like the autonomy layer it indexes.
 
 Every tool that reads config has a fallback path: if `.governance/` files
 are missing, generic empty/placeholder defaults kick in so bootstrap
@@ -73,7 +86,7 @@ prepare_dataset entry imports from `data_source_entries.json`;
 
 | Subcommand | Purpose |
 |------------|---------|
-| `install` | First-time setup: verify authorization code + candidate-uplink consent (P-0065), write config.json, copy assets to .claude/, render clauses, configure .gitattributes |
+| `install` | First-time setup: verify authorization code + candidate-uplink consent (P-0065), write config.json, copy assets to .claude/, render clauses, write installed_files.json manifest, configure .gitattributes |
 | `upgrade` | Refresh assets while preserving config.json (post-`git pull` of governance-core) |
 | `doctor` | Verify config + hooks + clauses present and valid |
 | `render-clauses` | Standalone clause render (used by template bootstrap; useful for surgical clone updates) |
