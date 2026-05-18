@@ -132,6 +132,37 @@ hooks/tools/skills are install-managed (refreshed by `upgrade`, never
 hand-edited), so improving a common-layer capability means editing the
 governance-core repo, not a local copy.
 
+## Dogfood case: governance-core itself (self-hosting)
+
+Since P-0066, `governance-core` is also its **own** consumer. The repo was
+onboarded as a single-core-agent governed project: `governance-core install`
+self-installs the governance layer into the repo, so changes to the package
+are now made *in governance-core's own Claude Code session, in-boundary* —
+no more cross-boundary reach-in from another project.
+
+The "repo ⊃ package" split keeps source and self-installed instance distinct:
+
+| | Path | git |
+|--|------|-----|
+| Package **source** (authoritative) | `governance_core/` | committed |
+| **Autonomy layer** (self-installed instance — pure derivative) | root `.claude/{hooks,skills,commands,agents}/`, `tools/`, `contracts/`, `agent_rules/`, `knowledge/`, `.governance/clauses/` | **gitignored** |
+| Runtime state | `shared_state/` (in-flight proposals) | gitignored |
+| Authored config / constitution | `.governance/config.json`, `.role`, `constitution/`, `CLAUDE.md`, `.claude/settings.local.json` | committed |
+
+The autonomy layer is gitignored because, for a single-repo single-agent
+project, install artifacts are pure derivatives (`governance-core install`
+regenerates them) with no other clone to propagate to — committing them would
+be committing `dist/`. A fresh clone runs `governance-core install
+--project-root .` to materialize the layer. The pip build is unaffected:
+`packages.find` is limited to `governance_core*`, so wheel + sdist never
+contain the autonomy layer.
+
+The dogfood loop: edit `governance_core/` → `governance-core upgrade
+--project-root .` → test. Because the installer is copy-based, the autonomy
+layer is a snapshot — a source change is only exercised after the reinstall.
+See `docs/core-manual.md` for the operations manual and
+`constitution/total.md` 第十一条 for the governing clause.
+
 ## Releasing
 
 Both `governance-core` and `multi-agent-bootstrap` publish to PyPI via
