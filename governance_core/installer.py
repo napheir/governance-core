@@ -233,6 +233,50 @@ def _seed_state_md(project_root: Path, config: dict[str, Any]) -> None:
     logger.info("[state] seeded initial STATE.md")
 
 
+# --- Hook auto-wiring (P-0067) ----------------------------------------------
+
+HOOKS_MANIFEST_REL = "hooks/hooks_manifest.json"
+MANAGED_MARKER = "governance-core"
+HOOK_COMMAND_TIMEOUT_SEC = 15
+
+
+def _load_hooks_manifest() -> dict[str, Any]:
+    """Load the package hook manifest: hook filename -> {event, matcher}."""
+    path = PKG_ROOT / HOOKS_MANIFEST_REL
+    return json.loads(path.read_text(encoding="utf-8"))["hooks"]
+
+
+def _build_hooks_block(manifest_hooks: dict[str, Any]) -> dict[str, Any]:
+    """Build the settings.local.json `hooks` block from the hook manifest.
+
+    `manifest_hooks` maps hook filename -> {"event": str, "matcher": str|None}.
+    Returns {event: [group, ...]}; each group is tagged
+    `"_managed": MANAGED_MARKER` so install/upgrade can regenerate only the
+    governance-owned region without touching a project's own hook groups
+    (P-0067). Command paths use ${CLAUDE_PROJECT_DIR} for portability.
+    """
+    by_key: dict[tuple[str, Any], list[str]] = {}
+    for fname in sorted(manifest_hooks):
+        meta = manifest_hooks[fname]
+        by_key.setdefault((meta["event"], meta["matcher"]), []).append(fname)
+    block: dict[str, Any] = {}
+    for event, matcher in sorted(by_key, key=lambda k: (k[0], k[1] or "")):
+        group: dict[str, Any] = {}
+        if matcher is not None:
+            group["matcher"] = matcher
+        group["_managed"] = MANAGED_MARKER
+        group["hooks"] = [
+            {
+                "type": "command",
+                "command": f'python "${{CLAUDE_PROJECT_DIR}}/.claude/hooks/{fn}"',
+                "timeout": HOOK_COMMAND_TIMEOUT_SEC,
+            }
+            for fn in by_key[(event, matcher)]
+        ]
+        block.setdefault(event, []).append(group)
+    return block
+
+
 def install(
     project_root: Path,
     config_overrides: dict[str, Any] | None = None,

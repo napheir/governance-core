@@ -55,6 +55,7 @@ governance_core = [
     "default_config/*.json",
     "default_config/*.template",
     "hooks/*.py",
+    "hooks/*.json",
     "tools/*.py",
     "knowledge_governance/*.md",
     "knowledge_governance/**/*.md",

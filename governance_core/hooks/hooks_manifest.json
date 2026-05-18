@@ -1,0 +1,19 @@
+{
+  "$comment": "P-0067: single source of truth mapping each shipped hook to its Claude Code event + tool matcher. The installer reads this to generate .claude/settings.local.json hook registrations. matcher is null for events that have no tool (UserPromptSubmit, SessionStart). Adding a hook requires an entry here; governance-core doctor flags installed hooks missing from the manifest.",
+  "schema_version": "1.0.0",
+  "hooks": {
+    "command-guard.py":         {"event": "PreToolUse",      "matcher": "Bash"},
+    "scope-guard.py":           {"event": "PreToolUse",      "matcher": "Bash"},
+    "edit-write-guard.py":      {"event": "PreToolUse",      "matcher": "Edit|Write"},
+    "constitutional-review.py": {"event": "PreToolUse",      "matcher": "Edit|Write"},
+    "data-source-guard.py":     {"event": "PreToolUse",      "matcher": "Bash|Edit|Write"},
+    "merge-audit.py":           {"event": "PostToolUse",     "matcher": "Bash"},
+    "repo-health.py":           {"event": "PostToolUse",     "matcher": "Bash"},
+    "direction-guard.py":       {"event": "PostToolUse",     "matcher": "Edit|Write"},
+    "skill-usage-tracker.py":   {"event": "PostToolUse",     "matcher": "Skill"},
+    "cache-watchdog.py":        {"event": "UserPromptSubmit", "matcher": null},
+    "constitution-reminder.py": {"event": "UserPromptSubmit", "matcher": null},
+    "prompt-context-router.py": {"event": "UserPromptSubmit", "matcher": null},
+    "session-context.py":       {"event": "SessionStart",    "matcher": null}
+  }
+}
