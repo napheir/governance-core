@@ -201,6 +201,15 @@ Exit codes: `0` install-managed, `1` business, `2` error (no manifest). The
 manifest is a pure derivative — regenerated every install/upgrade — so it is
 gitignored, like the autonomy layer it indexes.
 
+The manifest also drives **prune** (P-0070): on `upgrade`, a path the
+*previous* manifest recorded but the new install no longer produces is a
+stale file (its package source was removed) and is deleted, with a `[prune]`
+report on stderr. Manifest-diff is the safety boundary — only previously
+install-managed paths are eligible, so business / authored files and the
+`.claude/skills/learned/` carve-out are never pruned. Prune runs after drift
+capture, so a stale file that was locally edited is first captured as a
+candidate. `governance-core upgrade --no-prune` keeps stale files.
+
 ## 11. Candidate pipeline (P-0065)
 
 governance-core is the convergence hub for common-layer improvements: the

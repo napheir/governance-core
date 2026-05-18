@@ -363,6 +363,55 @@ def _capture_drift(project_root: Path, consumer_id: str) -> list[str]:
     return drifted
 
 
+def _prune_stale(project_root: Path,
+                 installed: list[tuple[Path, str]]) -> list[str]:
+    """Delete autonomy-layer files dropped from the package source (P-0070).
+
+    Compares the *previous* installed_files.json against the set just
+    materialized: a path the old manifest recorded as install-managed but
+    that the new install no longer produces is a stale file (its package
+    source was removed) and is deleted.
+
+    Manifest-diff is the safety boundary -- only paths the old manifest
+    recorded as install-managed are eligible. Business files, authored
+    files, and the `.claude/skills/learned/` carve-out are never in the
+    manifest, so are never pruned. Prune runs *after* `_capture_drift`, so a
+    stale file the consumer had locally edited is first captured as a drift
+    candidate, then removed -- no silent loss. Returns the pruned paths.
+    """
+    manifest_path = project_root / INSTALLED_FILES_REL
+    if not manifest_path.exists():
+        return []
+    try:
+        old = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    new_paths = {p.relative_to(project_root).as_posix() for p, _ in installed}
+    pruned: list[str] = []
+    touched_dirs: set[Path] = set()
+    for entry in old["files"]:
+        rel = entry["path"]
+        if rel in new_paths:
+            continue
+        target = project_root / rel
+        if not target.exists():
+            continue  # already gone
+        try:
+            target.unlink()
+            pruned.append(rel)
+            touched_dirs.add(target.parent)
+        except OSError as exc:
+            logger.warning("[prune] could not remove %s: %s", rel, exc)
+    # Remove directories left empty by pruning.
+    for directory in touched_dirs:
+        try:
+            if directory.is_dir() and not any(directory.iterdir()):
+                directory.rmdir()
+        except OSError:
+            pass
+    return pruned
+
+
 def _configure_gitattributes(project_root: Path) -> None:
     """Append the per-branch agent.md merge=ours driver to .gitattributes."""
     ga = project_root / ".gitattributes"
@@ -542,6 +591,7 @@ def install(
     force: bool = False,
     auth_code: str | None = None,
     accept_candidate_uplink: bool = False,
+    prune: bool = True,
 ) -> int:
     """Install / upgrade the governance layer into `project_root`.
 
@@ -549,6 +599,10 @@ def install(
     gate run BEFORE any autonomy-layer file is materialized. A failed gate
     returns non-zero and leaves the project without governance capabilities.
     Return codes: 1 missing root, 7 authorization failure, 8 consent denied.
+
+    P-0070: `prune` (default True) removes autonomy-layer files dropped from
+    the package source since the last install (manifest-diff). Pass False to
+    keep stale files.
     """
     project_root = project_root.resolve()
     if not project_root.exists():
@@ -644,6 +698,17 @@ def install(
     _configure_gitattributes(project_root)
     _seed_state_md(project_root, cfg)
     _write_settings_local_json(project_root)
+
+    # P-0070: prune autonomy-layer files dropped from the package source,
+    # BEFORE the manifest is rewritten (the diff needs the old manifest).
+    if prune:
+        pruned = _prune_stale(project_root, installed)
+        if pruned:
+            sys.stderr.write(
+                f"[prune] {len(pruned)} stale install-managed file(s) "
+                "removed (dropped from the package source):\n"
+                + "".join(f"  - {p}\n" for p in pruned))
+
     _write_installed_manifest(project_root, installed)
 
     logger.info("[install] complete. Files installed:")

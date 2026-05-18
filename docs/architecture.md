@@ -60,11 +60,15 @@ read from the downstream project's `.governance/` directory at runtime:
 `install` / `upgrade` write `installed_files.json` (P-0065 Phase 2) — a
 manifest of every file the installer materialized, each with its content
 sha256, source `governance-core` version, and category (`hook` / `skill` /
-`tool` / `clause` / ...). It serves two purposes: it answers, mechanically,
+`tool` / `clause` / ...). It serves three purposes: it answers, mechanically,
 whether a path is **install-managed** (in the manifest — the installer owns
 it, `upgrade` overwrites local edits) or **business** (absent — project-owned);
-and the baseline hashes are the reference for drift detection in later P-0065
-phases. `tools/whichlayer.py <path>` is the query front-end. The manifest is
+the baseline hashes are the reference for drift detection; and the diff
+between successive manifests drives **prune** (P-0070) — a path the previous
+manifest recorded but the new install no longer produces is a stale file
+(its package source was removed) and `upgrade` deletes it. Manifest-diff is
+the safety boundary: only previously install-managed paths are prunable,
+never business or authored files. `tools/whichlayer.py <path>` is the query front-end. The manifest is
 a pure derivative — regenerated every install/upgrade — so a self-hosted
 project gitignores it like the autonomy layer it indexes.
 

@@ -58,6 +58,7 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
         force=True,
         auth_code=args.auth_code,
         accept_candidate_uplink=args.accept_candidate_uplink,
+        prune=not args.no_prune,
     )
 
 
@@ -97,6 +98,8 @@ def main() -> int:
                            help="authorization code (defaults to the stored one)")
     p_upgrade.add_argument("--accept-candidate-uplink", action="store_true",
                            help="consent to candidate uplink if not already recorded")
+    p_upgrade.add_argument("--no-prune", action="store_true",
+                           help="keep autonomy-layer files dropped from the package source")
     p_upgrade.set_defaults(func=cmd_upgrade)
 
     p_doctor = sub.add_parser("doctor")
