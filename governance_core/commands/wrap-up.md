@@ -26,6 +26,11 @@ owner: core
 
 ## 2b. 知识库跨 agent 发布（若本阶段碰过 knowledge/）
 
+> **Topology gate (P-0068)** — multi-agent step. If `.governance/config.json`
+> has a single agent (`agents` length 1), print `[N/A — single-agent
+> topology — skipped]` and skip this step (no other agents to publish to).
+> Otherwise proceed.
+
 检查本阶段的 git diff 是否包含 `knowledge/**` 路径：
 
 ```bash
@@ -163,6 +168,13 @@ python -m skills.discovery.registry --format table
 
 ## 5. 基础设施同步（仅 core agent）
 
+> **Topology gate (P-0068)** — multi-agent step. If `.governance/config.json`
+> has a single agent (`agents` length 1), print `[N/A — single-agent
+> topology — skipped]` and skip this step — there are no other clones to
+> sync to. (A self-hosted single-agent repo reflects package-source changes
+> via `governance-core upgrade`, a separate mechanism — see core-manual.)
+> Otherwise proceed.
+
 如果本阶段修改了共享基础设施文件，自动同步到全体 agent clone。
 
 **权威源（唯一）：`tools/sync_infra.py` 的 `ALWAYS_COPY_FILES` + `SKILL_DIRS` + 中心化 hook 列表**。本 skill 不复列具体文件清单——drift 风险已被前次事故证伪（2026-04-27 此 trigger list 漏列 `edit-write-guard.py` / `build_knowledge_dashboard.py` / `contracts/**` 等导致 sync 误判跳过）。
@@ -193,6 +205,11 @@ for d in s.SKILL_DIRS: print(d + '/**')
 凡是不确定属于哪一类，以 `tools/sync_infra.py --execute` 的 dry-run 输出为准（先跑一次看会动哪些文件，再决定是否真同步）。
 
 ## 5b. /sync-repos 触发判断（fast-path）
+
+> **Topology gate (P-0068)** — multi-agent step. If `.governance/config.json`
+> has a single agent (`agents` length 1), print `[N/A — single-agent
+> topology — skipped]` and skip this step (no other clones to merge).
+> Otherwise proceed.
 
 `/sync-repos` 把 master 最新内容跨 4 个 clone merge 一遍——开销大（每 clone
 stash + fetch + merge + 冲突解 + 推 feature 远程 ≈ 总 5-10s + ~3KB skill body

@@ -7,6 +7,14 @@ owner: core
 
 Deploy core harness capabilities to all agent clones. Run this after any architectural upgrade in agent-core.
 
+> **Topology gate (P-0068)** — multi-agent command. First read
+> `.governance/config.json`; if `agents` has length 1 (single-agent
+> topology), print `[N/A — single-agent topology — skipped]` and stop —
+> there are no other clones to deploy to (a self-hosted single-agent repo
+> reflects package-source changes via `governance-core upgrade`, not this
+> command). Otherwise proceed: the full capability below is retained for
+> multi-agent consumers.
+
 ## When to Use
 
 - After adding or modifying shared harness components (hooks, commands, skill infrastructure)

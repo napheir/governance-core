@@ -8,6 +8,12 @@ theme: universal
 能看见此次内容。若是 core agent 调用，还会跨 clone 采集其他 agent 未推的 knowledge
 到 master。
 
+> **Topology gate (P-0068)** — multi-agent command. First read
+> `.governance/config.json`; if `agents` has length 1 (single-agent
+> topology), print `[N/A — single-agent topology — skipped]` and stop —
+> there are no other clones to publish to. Otherwise proceed: the full
+> capability below is retained for multi-agent consumers.
+
 ## 存在原因
 
 知识库联邦模型：

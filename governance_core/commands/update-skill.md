@@ -51,6 +51,12 @@ skill 步骤随工程实践演化，本宪法不复述其内容。
 
 ## Step 3：传播到各 clone
 
+> **Topology gate (P-0068)** — Steps 3-4 are multi-agent. If
+> `.governance/config.json` has a single agent (`agents` length 1), print
+> `[N/A — single-agent topology — skipped]` and skip Steps 3 and 4 — there
+> are no other clones to propagate to or drift-check. Resume at Step 5.
+> Otherwise proceed.
+
 ```bash
 python tools/sync_infra.py            # dry-run 预览
 python tools/sync_infra.py --execute  # 有 [COPY] 项则执行

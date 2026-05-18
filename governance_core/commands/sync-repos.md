@@ -8,6 +8,12 @@ owner: core
 将 master 最新变更同步到所有 agent clone 仓库。
 **Core agent 专属命令**：只有 core agent 有权执行跨仓库 merge（宪法第十二条第2款）。
 
+> **Topology gate (P-0068)** — multi-agent command. First read
+> `.governance/config.json`; if `agents` has length 1 (single-agent
+> topology), print `[N/A — single-agent topology — skipped]` and stop —
+> there are no other clones to sync. Otherwise proceed: the full
+> capability below is retained for multi-agent consumers.
+
 ## 前置条件
 
 1. Core 的所有变更已 commit 并 push 到 origin/master
