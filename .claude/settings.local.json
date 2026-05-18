@@ -93,6 +93,11 @@
             "type": "command",
             "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/edit-write-guard.py\"",
             "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/sensitive-data-guard.py\"",
+            "timeout": 15
           }
         ]
       }

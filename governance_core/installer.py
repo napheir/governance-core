@@ -315,6 +315,54 @@ def _write_installed_manifest(project_root: Path,
     logger.info("[manifest] wrote installed_files.json (%d files)", len(files))
 
 
+def _capture_drift(project_root: Path, consumer_id: str) -> list[str]:
+    """Capture locally-edited install-managed files as drift candidates.
+
+    Before upgrade overwrites the autonomy layer, each install-managed file
+    whose content no longer matches its installed_files.json baseline is a
+    local edit. It is packaged as a `drift` candidate envelope in the outbox
+    -- so the edit is preserved as a reviewable candidate -- and then left
+    for the normal copy to overwrite (capture, then overwrite: no silent
+    fork; P-0065 Phase 4). Returns the list of drifted paths.
+    """
+    from governance_core.candidates import collect, envelope
+    manifest_path = project_root / INSTALLED_FILES_REL
+    if not manifest_path.exists():
+        return []
+    try:
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return []
+    outbox = collect.outbox_dir(project_root)
+    drifted: list[str] = []
+    for entry in manifest["files"]:
+        path = project_root / entry["path"]
+        if not path.exists():
+            continue
+        current = hashlib.sha256(path.read_bytes()).hexdigest()
+        if current == entry["baseline_sha256"]:
+            continue
+        drifted.append(entry["path"])
+        category = entry["category"]
+        kind = category if category in ("hook", "skill") else "mechanism"
+        try:
+            envelope.build_envelope(
+                outbox,
+                kind=kind,
+                origin=consumer_id,
+                title=f"drift {Path(entry['path']).name}",
+                rationale=(f"install-managed file locally edited: "
+                           f"{entry['path']}"),
+                payload_files=[path],
+                drift_target=entry["path"],
+                baseline_sha256=entry["baseline_sha256"],
+            )
+        except envelope.EnvelopeError as exc:
+            logger.warning("[drift] could not capture %s: %s",
+                           entry["path"], exc)
+    return drifted
+
+
 def _configure_gitattributes(project_root: Path) -> None:
     """Append the per-branch agent.md merge=ours driver to .gitattributes."""
     ga = project_root / ".gitattributes"
@@ -552,6 +600,16 @@ def install(
         }
     _write_config(project_root, cfg)
     logger.info("[install] project=%s ritual_phrase=%r", cfg.get("project_name"), cfg.get("ritual_phrase"))
+
+    # P-0065 Phase 4: capture locally-edited install-managed files as drift
+    # candidates BEFORE the copy below overwrites them.
+    drifted = _capture_drift(project_root, consumer_id)
+    if drifted:
+        sys.stderr.write(
+            f"[drift] {len(drifted)} install-managed file(s) were locally "
+            "edited; captured as drift candidates in the outbox "
+            "(.governance/candidate-outbox/):\n"
+            + "".join(f"  - {p}\n" for p in drifted))
 
     counts = {}
     # P-0065 Phase 2: collect every install-managed file written, for the
