@@ -6,6 +6,24 @@
 
 ---
 
+### 2026-05-18 — P-0065 Phase 5 hub-side curation + convergence loop
+
+- 改动：GC 侧 curation 收口闭环 —— 新增 consumer registry 模块
+  `governance_core/candidates/registry.py` + committed 台账
+  `maintainer/consumer_registry.json`（记已签发消费者 + 候选评审决策）；
+  `issue_auth_code.py` 签发即登记消费者；`tools/candidate.py` 加
+  `review`/`promote` 子命令；GC 侧 incoming `candidates/` 进 `.gitignore`；
+  收口 hub 模型写入 `docs/architecture.md` + `docs/core-manual.md §11`。
+- 涉及：新增 `candidates/registry.py`、`maintainer/consumer_registry.json`；
+  改 `tools/candidate.py`、`maintainer/issue_auth_code.py`、`.gitignore`、
+  `docs/{architecture,core-manual}.md`。
+- 关键决策：registry 落 maintainer 侧、committed（durable 台账）；`promote`
+  按 kind 复制进包源、judgment 人工/agent；GitHub issue 为候选权威记录。
+- 测试：`issue_auth_code` 登记 registry、curation 11 项（review/promote/
+  reject、registry 内容）、upgrade/doctor exit 0、build 隔离。commit f5b23f7。
+  P-0065 六 phase 全部实现完成。
+
+
 ### 2026-05-18 — P-0065 Phase 4 candidate collection + submit + uplink
 
 - 改动：候选管道三来源 —— 脱敏扫描器 `sensitive_scan.py`（HIGH/MEDIUM 分级）

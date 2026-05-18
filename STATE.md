@@ -17,6 +17,26 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-18 — P-0071 Phase 1 auth-code schema v2 + leasing + auth-guard cache fix
+
+- 改动：codec payload schema 接受 `{1,2}` —— schema 2 携带 `expiry` /
+  `revocation_feed_url` / `max_offline_days`，schema 1 保留（自托管 upgrade
+  不中断，Art.8）。`auth-guard` 验证缓存键加 `verified_on` 日期维度 —— 过期码
+  不再被陈旧 `valid:true` 命中（原 P-0065 缓存遗漏日期，本阶段先决修复）。
+  `issue_auth_code` 默认签发 schema-2 365 天租约（`--schema` / `--expiry` /
+  `--revocation-feed-url` / `--max-offline-days` 覆盖）。gc 自身重签 schema-2
+  码、`config.json` 更新；版本 0.2.1→0.3.0。
+- 涉及：`governance_core/auth/codec.py`、`hooks/auth-guard.py`、
+  `maintainer/issue_auth_code.py`、`consumer_registry.json`、
+  `.governance/config.json`、新增 `tools/test_auth_codec.py` +
+  `test_auth_guard.py`、`pyproject.toml`、`__init__.py`、`docs/core-manual.md`。
+- 关键决策：单一签名密钥对保留（区分 owner 靠 `consumer_id`，不分密钥）；
+  schema 1 永久码仍被接受 = 过渡期不破；撤销源 URL 已嵌入新码，但拉取与
+  执行属 Phase 3。
+- 测试：`test_auth_codec` 11/11（双 schema 往返、过期/缺字段/篡改/未知 schema
+  拒）；`test_auth_guard` 4/4（陈旧隔日 `valid` 缓存不再被信任的回归守卫）；
+  upgrade/doctor exit 0；wheel 0.3.0 仅含 `governance_core*`。commit 172ee5c。
+
 ### 2026-05-18 — P-0070 Phase 2 upgrade prune (stale autonomy-layer files)
 
 - 改动：Fix C —— `installer.py` 加 `_prune_stale`，`upgrade` 在 `_capture_drift`
@@ -46,20 +66,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 测试：自托管 gc `audit_proposals` 报 in-flight=1/archive=4/0 failures
   （误报 ledger FAIL 消失）；`--should-extract` 正确报 "already extracted
   today"；`should_extract_reason` 单测。commit 0b5b870。
-
-### 2026-05-18 — P-0065 Phase 5 hub-side curation + convergence loop
-
-- 改动：GC 侧 curation 收口闭环 —— 新增 consumer registry 模块
-  `governance_core/candidates/registry.py` + committed 台账
-  `maintainer/consumer_registry.json`（记已签发消费者 + 候选评审决策）；
-  `issue_auth_code.py` 签发即登记消费者；`tools/candidate.py` 加
-  `review`/`promote` 子命令；GC 侧 incoming `candidates/` 进 `.gitignore`；
-  收口 hub 模型写入 `docs/architecture.md` + `docs/core-manual.md §11`。
-- 涉及：新增 `candidates/registry.py`、`maintainer/consumer_registry.json`；
-  改 `tools/candidate.py`、`maintainer/issue_auth_code.py`、`.gitignore`、
-  `docs/{architecture,core-manual}.md`。
-- 关键决策：registry 落 maintainer 侧、committed（durable 台账）；`promote`
-  按 kind 复制进包源、judgment 人工/agent；GitHub issue 为候选权威记录。
-- 测试：`issue_auth_code` 登记 registry、curation 11 项（review/promote/
-  reject、registry 内容）、upgrade/doctor exit 0、build 隔离。commit f5b23f7。
-  P-0065 六 phase 全部实现完成。
