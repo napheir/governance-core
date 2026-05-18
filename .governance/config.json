@@ -23,9 +23,9 @@
     "claude_md_mirror": "CLAUDE.md"
   },
   "authorization": {
-    "auth_code": "GC1.eyJjb25zdW1lcl9pZCI6ImdvdmVybmFuY2UtY29yZSIsImlzc3VlZCI6IjIwMjYtMDUtMTgiLCJzY2hlbWEiOjF9.BHRoTHeEWXRimzJxMxrZcjMwpBNd9Iu4i2rYm42gDAek5iMDob98zaB2ZWxeUBOFdPVo2zpYpsWvVNMlxUXmAw",
+    "auth_code": "GC1.eyJjb25zdW1lcl9pZCI6ImdvdmVybmFuY2UtY29yZSIsImV4cGlyeSI6IjIwMjctMDUtMTgiLCJpc3N1ZWQiOiIyMDI2LTA1LTE4IiwibWF4X29mZmxpbmVfZGF5cyI6MzAsInJldm9jYXRpb25fZmVlZF91cmwiOiJodHRwczovL3Jhdy5naXRodWJ1c2VyY29udGVudC5jb20vbmFwaGVpci9nb3Zlcm5hbmNlLWNvcmUvbWFzdGVyL3Jldm9jYXRpb24uanNvbiIsInNjaGVtYSI6Mn0.V5vwVvch-0DD3XWG1Y8MsfTISol-MAUSfcxikPdIrASP3SpPR9sR6p_jHkMNH4VNFNY6W5CoWk9yw-C3yxnlCA",
     "consumer_id": "governance-core",
-    "verified_at": "2026-05-18T07:34:47Z"
+    "verified_at": "2026-05-18T12:53:49Z"
   },
   "candidate_uplink": {
     "consent": true,

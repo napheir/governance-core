@@ -1,17 +1,30 @@
-"""Authorization-code codec for governance-core (P-0065 Phase 1).
+"""Authorization-code codec for governance-core (P-0065 Phase 1, P-0071).
 
 Auth-code format (single copy-pasteable line):
 
     GC1.<b64url(payload_json)>.<b64url(signature)>
 
 `payload_json` is canonical JSON -- `json.dumps(obj, sort_keys=True,
-separators=(",", ":"))`, UTF-8 -- of:
+separators=(",", ":"))`, UTF-8. `signature` is the Ed25519 signature over the
+exact payload_json bytes.
 
-    {"consumer_id": str, "issued": "YYYY-MM-DD", "schema": 1, "expiry"?: "..."}
+Two payload schemas coexist:
 
-`signature` is the Ed25519 signature over the exact payload_json bytes.
-`expiry` (ISO date) is optional: present and in the past -> verification
-fails; absent -> the code never expires.
+  schema 1 (P-0065, legacy perpetual):
+      {"consumer_id": str, "issued": "YYYY-MM-DD", "schema": 1,
+       "expiry"?: "YYYY-MM-DD"}
+
+  schema 2 (P-0071, leased + revocable):
+      {"consumer_id": str, "issued": "YYYY-MM-DD", "schema": 2,
+       "expiry": "YYYY-MM-DD", "revocation_feed_url": str,
+       "max_offline_days": int}
+
+`expiry` (ISO date): present and strictly before the reference date ->
+verification fails; absent (schema 1 only) -> the code never expires.
+`revocation_feed_url` is the signed revocation feed `auth-guard` polls;
+`max_offline_days` bounds how long a consumer may run without a successful
+feed fetch before it is frozen. Both are required for schema 2 and consumed
+by the runtime `auth-guard` hook (P-0071 Phase 3), not by this codec.
 """
 
 from __future__ import annotations
@@ -25,7 +38,13 @@ from typing import Any
 from governance_core import auth
 
 AUTH_CODE_PREFIX = "GC1"
-PAYLOAD_SCHEMA = 1
+# Schemas this codec can verify. New codes are issued at CURRENT_SCHEMA;
+# schema 1 stays accepted so a self-hosted upgrade is never interrupted
+# mid-transition (constitution Art.8 -- the dogfood instance must not break).
+SUPPORTED_SCHEMAS = (1, 2)
+CURRENT_SCHEMA = 2
+# Keys a schema-2 payload must carry beyond the schema-1 core.
+_SCHEMA2_REQUIRED = ("expiry", "revocation_feed_url", "max_offline_days")
 _PUBKEY_PATH = Path(__file__).resolve().parent / "pubkey.json"
 
 
@@ -45,14 +64,35 @@ def b64url_decode(text: str) -> bytes:
 
 
 def canonical_payload(consumer_id: str, issued: str,
-                      expiry: str | None = None) -> bytes:
-    """Build the canonical-JSON payload bytes for an authorization code."""
+                      expiry: str | None = None, *,
+                      schema: int = 1,
+                      revocation_feed_url: str | None = None,
+                      max_offline_days: int | None = None) -> bytes:
+    """Build the canonical-JSON payload bytes for an authorization code.
+
+    `schema` selects the payload shape. Schema 1 carries an optional
+    `expiry`. Schema 2 requires `expiry`, `revocation_feed_url`, and
+    `max_offline_days` -- a missing one raises ValueError before signing.
+    """
+    if schema not in SUPPORTED_SCHEMAS:
+        raise ValueError(f"unsupported payload schema: {schema!r}")
     obj: dict[str, Any] = {
         "consumer_id": consumer_id,
         "issued": issued,
-        "schema": PAYLOAD_SCHEMA,
+        "schema": schema,
     }
-    if expiry is not None:
+    if schema == 2:
+        if expiry is None or revocation_feed_url is None \
+                or max_offline_days is None:
+            raise ValueError(
+                "schema-2 payload requires expiry, revocation_feed_url, "
+                "and max_offline_days")
+        if not isinstance(max_offline_days, int) or max_offline_days <= 0:
+            raise ValueError("max_offline_days must be a positive integer")
+        obj["expiry"] = expiry
+        obj["revocation_feed_url"] = revocation_feed_url
+        obj["max_offline_days"] = max_offline_days
+    elif expiry is not None:
         obj["expiry"] = expiry
     return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
 
@@ -79,8 +119,9 @@ def verify_auth_code(code: str, public_key: bytes,
     """Verify `code` against `public_key`; return its payload dict.
 
     Raises AuthCodeError if the code is malformed, the signature does not
-    verify, the payload schema is unknown, or the code has expired. `today`
-    overrides the expiry reference date (ISO string) for testing.
+    verify, the payload schema is unknown, a schema-2 payload is missing a
+    required field, or the code has expired. `today` overrides the expiry
+    reference date (ISO string) for testing.
     """
     parts = code.strip().split(".")
     if len(parts) != 3 or parts[0] != AUTH_CODE_PREFIX:
@@ -98,12 +139,26 @@ def verify_auth_code(code: str, public_key: bytes,
         payload = json.loads(payload_bytes.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise AuthCodeError(f"authorization payload is not valid JSON: {exc}")
-    if payload.get("schema") != PAYLOAD_SCHEMA:
+    schema = payload.get("schema")
+    if schema not in SUPPORTED_SCHEMAS:
         raise AuthCodeError(
-            f"unsupported authorization payload schema: {payload.get('schema')!r}"
+            f"unsupported authorization payload schema: {schema!r}"
         )
     if "consumer_id" not in payload or not payload["consumer_id"]:
         raise AuthCodeError("authorization payload missing consumer_id")
+    if schema == 2:
+        missing = [k for k in _SCHEMA2_REQUIRED if k not in payload]
+        if missing:
+            raise AuthCodeError(
+                f"schema-2 authorization payload missing field(s): {missing}"
+            )
+        if not payload["revocation_feed_url"]:
+            raise AuthCodeError("schema-2 payload has empty revocation_feed_url")
+        mod = payload["max_offline_days"]
+        if not isinstance(mod, int) or isinstance(mod, bool) or mod <= 0:
+            raise AuthCodeError(
+                "schema-2 payload max_offline_days must be a positive integer"
+            )
     if "expiry" in payload:
         reference = today or datetime.date.today().isoformat()
         if str(payload["expiry"]) < reference:

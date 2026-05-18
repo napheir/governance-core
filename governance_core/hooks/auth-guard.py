@@ -21,13 +21,17 @@ blocks. A consumer recovers by re-running, from a terminal:
 The freeze affects the agent's tool calls only; the human's own shell is
 unaffected, so recovery is always possible.
 
-Verification is cached per (repo, code, public key) in the OS temp dir so
-the sub-second Ed25519 verify runs once per code, not on every tool call.
+Verification is cached per (repo, code, public key, date) in the OS temp
+dir so the Ed25519 verify runs once per code per day, not on every tool
+call. The date is part of the cache key on purpose (P-0071): a code that
+verified yesterday must be re-checked today, otherwise an expired code
+would keep being served a stale `valid` verdict.
 
 Exit codes:
   0 = authorized (allow)
   2 = unauthorized (block)
 """
+import datetime
 import hashlib
 import json
 import sys
@@ -92,12 +96,16 @@ def main() -> None:
     pub_sha = hashlib.sha256(public_key).hexdigest()
     root_tag = hashlib.sha256(str(root).encode("utf-8")).hexdigest()[:16]
     cache_path = Path(tempfile.gettempdir()) / f"gc_auth_{root_tag}.json"
+    today = datetime.date.today().isoformat()
 
-    # Cache hit: the verdict for this exact (code, public key) is known.
+    # Cache hit: the verdict for this exact (code, public key, date) is
+    # known. The date must match -- a verdict from a prior day is not
+    # trusted, so an expired code is re-checked and blocked (P-0071).
     try:
         cached = json.loads(cache_path.read_text(encoding="utf-8"))
         if (cached["code_sha256"] == code_sha
-                and cached["pubkey_sha256"] == pub_sha):
+                and cached["pubkey_sha256"] == pub_sha
+                and cached.get("verified_on") == today):
             if cached["valid"]:
                 sys.exit(0)
             _block("authorization code does not verify (cached)")
@@ -108,7 +116,7 @@ def main() -> None:
     try:
         cache_path.write_text(
             json.dumps({"code_sha256": code_sha, "pubkey_sha256": pub_sha,
-                        "valid": valid}),
+                        "verified_on": today, "valid": valid}),
             encoding="utf-8",
         )
     except Exception:

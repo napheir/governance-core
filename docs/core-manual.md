@@ -164,6 +164,13 @@ Issue one code per consumer:
 python maintainer/issue_auth_code.py --consumer-id <project-or-org>
 ```
 
+Codes are issued as **schema-2 leases** (P-0071): each carries an `expiry`
+(default: issued + 365 days) plus the revocation-feed coordinates
+(`revocation_feed_url`, `max_offline_days`). A lease is renewed by
+re-issuing before expiry. `--schema 1` issues a legacy perpetual code;
+`--expiry YYYY-MM-DD` overrides the lease window. The expiry is enforced by
+the codec and by the runtime `auth-guard` (whose verdict cache is
+date-keyed, so an expired code is never served a stale `valid` verdict).
 The printed `GC1.<...>` string is the authorization code; deliver it to the
 consumer out-of-band.
 

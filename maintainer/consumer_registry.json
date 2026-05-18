@@ -4,9 +4,9 @@
     {
       "consumer_id": "governance-core",
       "issued": "2026-05-18",
-      "expiry": null,
+      "expiry": "2027-05-18",
       "note": "",
-      "recorded_at": "2026-05-18T10:40:29Z"
+      "recorded_at": "2026-05-18T12:53:06Z"
     }
   ],
   "candidates": []
