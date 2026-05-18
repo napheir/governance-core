@@ -1,0 +1,25 @@
+{
+  "$schema_version": "0.1.0",
+  "project_name": "governance-core",
+  "install_root": "C:/Users/naphe/workshop-claude",
+  "shared_state_root": "C:/Users/naphe/workshop-claude/governance-core/shared_state",
+  "claude_dir": ".claude",
+  "core_agent_name": "core",
+  "core_branches": [
+    "master"
+  ],
+  "ritual_phrase": "如君所愿",
+  "agents": [
+    {
+      "name": "core",
+      "branch": "master",
+      "clone_dir": "governance-core"
+    }
+  ],
+  "upstream_branch": "origin/master",
+  "constitution_layout": {
+    "total_md_path": "constitution/total.md",
+    "agent_md_path": "constitution/agent.core.md",
+    "claude_md_mirror": "CLAUDE.md"
+  }
+}

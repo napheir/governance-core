@@ -33,3 +33,29 @@ htmlcov/
 # Local
 .local/
 *.log
+
+# ---------------------------------------------------------------------------
+# governance-core self-hosting (P-0066): the autonomy layer.
+#
+# These root-level directories are INSTALL ARTIFACTS — pure derivatives that
+# `governance-core install` regenerates from the package source. They are NOT
+# committed (single repo, single agent: nothing to propagate to other clones).
+# Run `governance-core install --project-root .` after a fresh clone.
+#
+# Leading-slash anchored: these patterns must match ONLY the repo root, never
+# the package source under governance_core/ (e.g. governance_core/tools/ stays
+# committed — it is the SOURCE; root /tools/ is the self-installed copy).
+# ---------------------------------------------------------------------------
+/.claude/hooks/
+/.claude/skills/
+/.claude/commands/
+/.claude/agents/
+/contracts/
+/agent_rules/
+/tools/
+/knowledge/
+/.governance/clauses/
+
+# Runtime state — in-flight proposals etc. (constitution Art.4.1: never in git;
+# terminal proposals are archived to /proposals/_archive/ which IS committed).
+/shared_state/
