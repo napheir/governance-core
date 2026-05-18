@@ -23,11 +23,14 @@ import sys
 from pathlib import Path
 
 from governance_core.auth import codec
+from governance_core.candidates import registry
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 logger = logging.getLogger("issue_auth_code")
 
 PRIVATE_KEY_PATH = Path.home() / ".governance-core" / "signing_key.json"
+# Consumer registry: committed, maintainer-side, alongside this tool.
+REGISTRY_PATH = Path(__file__).resolve().parent / "consumer_registry.json"
 
 
 def main() -> int:
@@ -51,8 +54,13 @@ def main() -> int:
     payload = codec.canonical_payload(args.consumer_id, issued, args.expiry)
     code = codec.make_auth_code(payload, seed)
 
+    # Record the issuance in the consumer registry (P-0065 Phase 5).
+    registry.record_consumer(REGISTRY_PATH, args.consumer_id, issued,
+                             expiry=args.expiry)
+
     logger.info("[OK] authorization code for consumer_id=%r issued=%s expiry=%s",
                 args.consumer_id, issued, args.expiry or "(perpetual)")
+    logger.info("[OK] consumer recorded in %s", REGISTRY_PATH.name)
     sys.stdout.write(code + "\n")
     return 0
 

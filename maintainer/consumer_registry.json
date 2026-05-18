@@ -1,0 +1,13 @@
+{
+  "schema": 1,
+  "consumers": [
+    {
+      "consumer_id": "governance-core",
+      "issued": "2026-05-18",
+      "expiry": null,
+      "note": "",
+      "recorded_at": "2026-05-18T10:40:29Z"
+    }
+  ],
+  "candidates": []
+}

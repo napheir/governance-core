@@ -77,3 +77,9 @@ htmlcov/
 # Proposal-transition snapshots written by proposal_lib (derived audit copies
 # of in-flight proposals; the durable governance record is /proposals/_archive/).
 /audit/
+
+# Hub-side incoming candidates work area (P-0065 Phase 5): where governance-core
+# materializes candidate envelopes for curation. The GitHub issue is the
+# durable record; this is transient staging. (maintainer/consumer_registry.json
+# IS committed -- it is the durable curation ledger, not staging.)
+/candidates/

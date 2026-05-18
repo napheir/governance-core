@@ -240,6 +240,54 @@ Maintainer tooling (`maintainer/gen_signing_key.py`,
 `maintainer/issue_auth_code.py`) is committed for auditability but excluded
 from the pip package. See `docs/core-manual.md` §9 for the issuing workflow.
 
+## Candidate pipeline -- the convergence hub (P-0065)
+
+governance-core is not only a package consumers install; it is the **single
+upstream** every consumer's common-layer improvements converge back to. The
+candidate pipeline is that convergence path.
+
+### The model
+
+A *candidate* is a proposed common-layer capability -- a skill, a hook, or a
+multi-file mechanism -- that a consuming project offers back. Candidates
+arise from three sources:
+
+1. **Net-new skills** -- a learned skill tagged `layer: candidate-common`
+   (the `/extract-skill` layer classification) is packaged by
+   `candidate.py collect`.
+2. **Drift** -- when `upgrade` finds an install-managed file locally edited
+   (its hash no longer matches the installed_files.json baseline), the edit
+   is captured as a drift candidate before the file is overwritten -- the
+   local improvement becomes a reviewable candidate instead of being lost.
+3. **Active submission** -- `/submit-candidate` lets a project owner package
+   any capability deliberately.
+
+All three produce the same **candidate envelope** (a directory: a
+candidate.json metadata file plus a payload folder) and flow through one
+path: secret scan -> uplink as a GitHub issue -> hub-side curation.
+
+### Transport and consent
+
+A candidate reaches governance-core as a **GitHub issue** (`gh`): the
+consumer needs only a GitHub account -- no fork, no write access. Before
+transport the payload is secret-scanned (HIGH + MEDIUM severity -- the
+destination is public); any hit aborts. Uplink is consent-gated -- `install`
+records mandatory candidate-uplink consent (P-0065).
+
+### Hub-side curation
+
+`candidate.py review` lists incoming candidates (local envelopes + labelled
+issues). `candidate.py promote` curates each: a promoted skill / hook is
+copied into the package source; a rejected or override decision is recorded.
+Every decision lands in `maintainer/consumer_registry.json` -- the committed
+ledger of issued authorization codes and curated candidates. Promotion is
+**curated, never automatic** -- judgment stays with the maintainer; only
+collection, transport, and presentation are mechanized.
+
+A promoted capability ships to every consumer through the normal release +
+`upgrade` path. The loop closes: consumer improvement -> candidate -> curated
+-> package source -> release -> every consumer.
+
 ## Releasing
 
 Both `governance-core` and `multi-agent-bootstrap` publish to PyPI via

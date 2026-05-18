@@ -14,9 +14,19 @@ Subcommands:
         Scan and uplink an existing candidate envelope -- e.g. one produced
         by `collect` or captured as installer drift.
 
+    candidate.py review [--project-root .] [--repo ...]
+        Hub side: list incoming candidates -- local envelopes under
+        candidates/ and open GitHub issues labelled `candidate`.
+
+    candidate.py promote <envelope-dir> [--decision ...] [--note ...]
+        Hub side: curate one candidate -- promote its payload into the
+        package source (skill / hook kinds), or record a reject / override
+        decision. Every decision is written to the consumer registry.
+
 Uplink is consent-gated: .governance/config.json candidate_uplink.consent
 must be true (mandatory in the current version, P-0065). A --dry-run preview
-sends nothing and is not consent-gated.
+sends nothing and is not consent-gated. `review` / `promote` are hub-side
+operations -- run by governance-core curating what consumers reported.
 
 Exit codes: 0 ok, 1 blocked / failed, 2 usage error.
 """
@@ -25,11 +35,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
 from governance_core.candidates import collect as _collect
 from governance_core.candidates import envelope as _envelope
+from governance_core.candidates import registry as _registry
 from governance_core.candidates import uplink as _uplink
 
 
@@ -132,6 +145,91 @@ def cmd_submit(args: argparse.Namespace) -> int:
     return 0
 
 
+def _incoming_dir(project_root: Path) -> Path:
+    """Return the hub-side incoming candidates directory."""
+    return project_root / "candidates"
+
+
+def _registry_path(project_root: Path) -> Path:
+    """Return the consumer registry path (maintainer-side, committed)."""
+    return project_root / "maintainer" / "consumer_registry.json"
+
+
+def cmd_review(args: argparse.Namespace) -> int:
+    """List incoming candidates: local envelopes + labeled GitHub issues."""
+    root = Path(args.project_root).resolve()
+    incoming = _incoming_dir(root)
+    reg = _registry.load_registry(_registry_path(root))
+    decided = {c["id"]: c["decision"] for c in reg["candidates"]}
+
+    local = sorted(incoming.rglob("candidate.json")) if incoming.exists() else []
+    sys.stdout.write(f"=== local incoming envelopes ({len(local)}) ===\n")
+    for meta_file in local:
+        env_dir = meta_file.parent
+        try:
+            meta = _envelope.validate_envelope(env_dir)
+        except _envelope.EnvelopeError as exc:
+            sys.stdout.write(f"  {env_dir}  INVALID: {exc}\n")
+            continue
+        status = decided[meta["id"]] if meta["id"] in decided else "pending"
+        sys.stdout.write(f"  {meta['id']}  kind={meta['kind']} "
+                         f"origin={meta['origin']}  [{status}]  {env_dir}\n")
+
+    sys.stdout.write("=== open GitHub candidate issues ===\n")
+    try:
+        result = subprocess.run(
+            ["gh", "issue", "list", "--repo", args.repo, "--label",
+             "candidate", "--state", "open", "--json", "number,title,url"],
+            capture_output=True, text=True, check=True)
+        issues = json.loads(result.stdout)
+        if not issues:
+            sys.stdout.write("  (none open)\n")
+        for issue in issues:
+            sys.stdout.write(f"  #{issue['number']}  {issue['title']}\n"
+                             f"    {issue['url']}\n")
+    except FileNotFoundError:
+        sys.stdout.write("  (gh CLI not available -- skipped)\n")
+    except subprocess.CalledProcessError as exc:
+        sys.stdout.write(f"  (gh issue list failed: {exc.stderr.strip()})\n")
+    return 0
+
+
+def cmd_promote(args: argparse.Namespace) -> int:
+    """Curate one candidate: promote into the package source, or reject."""
+    root = Path(args.project_root).resolve()
+    try:
+        meta = _envelope.validate_envelope(Path(args.envelope_dir))
+    except _envelope.EnvelopeError as exc:
+        sys.stderr.write(f"[candidate] invalid envelope: {exc}\n")
+        return 1
+    env_dir = Path(args.envelope_dir)
+
+    if args.decision == "promoted":
+        pkg = root / "governance_core"
+        dest_of = {"skill": pkg / "skills", "hook": pkg / "hooks"}
+        if meta["kind"] in dest_of:
+            dest = dest_of[meta["kind"]]
+            dest.mkdir(parents=True, exist_ok=True)
+            for rel in meta["source_paths"]:
+                src = env_dir / rel
+                shutil.copy2(src, dest / src.name)
+                sys.stdout.write(f"[candidate] promoted {src.name} -> "
+                                 f"{dest.relative_to(root).as_posix()}\n")
+        else:  # mechanism: multi-file, needs human placement judgment
+            sys.stdout.write("[candidate] kind=mechanism -- place these "
+                             "payload files into the package source by "
+                             "hand:\n")
+            for rel in meta["source_paths"]:
+                sys.stdout.write(f"  {env_dir / rel}\n")
+
+    _registry.record_candidate(_registry_path(root), meta["id"],
+                               meta["origin"], meta["kind"], meta["title"],
+                               args.decision, note=args.note)
+    sys.stdout.write(f"[candidate] recorded decision '{args.decision}' for "
+                     f"{meta['id']}\n")
+    return 0
+
+
 def main() -> int:
     """Dispatch a candidate-pipeline subcommand."""
     parser = argparse.ArgumentParser(prog="candidate")
@@ -161,6 +259,19 @@ def main() -> int:
     p_submit.add_argument("--repo", default=_uplink.UPSTREAM_REPO)
     p_submit.add_argument("--dry-run", action="store_true")
     p_submit.set_defaults(func=cmd_submit)
+
+    p_review = sub.add_parser("review")
+    p_review.add_argument("--project-root", default=".")
+    p_review.add_argument("--repo", default=_uplink.UPSTREAM_REPO)
+    p_review.set_defaults(func=cmd_review)
+
+    p_promote = sub.add_parser("promote")
+    p_promote.add_argument("envelope_dir")
+    p_promote.add_argument("--decision", default="promoted",
+                           choices=["promoted", "rejected", "override"])
+    p_promote.add_argument("--note", default="")
+    p_promote.add_argument("--project-root", default=".")
+    p_promote.set_defaults(func=cmd_promote)
 
     args = parser.parse_args()
     return args.func(args)

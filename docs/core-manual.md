@@ -200,3 +200,43 @@ python tools/whichlayer.py CLAUDE.md                      # -> business
 Exit codes: `0` install-managed, `1` business, `2` error (no manifest). The
 manifest is a pure derivative — regenerated every install/upgrade — so it is
 gitignored, like the autonomy layer it indexes.
+
+## 11. Candidate pipeline (P-0065)
+
+governance-core is the convergence hub for common-layer improvements: the
+candidate pipeline collects them from consumers, transports them, and
+curates them back into the package. See `docs/architecture.md` for the
+model; this section is the operations side.
+
+### Consumer side — contributing a candidate
+
+- **Net-new skills**: a learned skill tagged `layer: candidate-common` is
+  packaged by `python tools/candidate.py collect`.
+- **Active submission**: `/submit-candidate` packages a chosen capability —
+  backed by `python tools/candidate.py submit ...`.
+- **Drift**: `upgrade` automatically captures locally-edited install-managed
+  files as drift candidates (reported on stderr).
+
+All three stage envelopes under `.governance/candidate-outbox/`. Uplink one
+with `python tools/candidate.py uplink <envelope-dir>` (`--dry-run` previews
+without sending). The payload is secret-scanned before it leaves the
+project, and uplink is consent-gated.
+
+### Hub side — curating incoming candidates
+
+As governance-core's maintainer:
+
+```pwsh
+python tools/candidate.py review                  # list incoming candidates
+python tools/candidate.py promote <envelope-dir>  # promote into the source
+python tools/candidate.py promote <envelope-dir> --decision rejected --note "..."
+```
+
+`review` scans local `candidates/` envelopes and open GitHub issues labelled
+`candidate`. `promote` copies a promoted skill / hook into the package
+source (`governance_core/skills/` or `governance_core/hooks/`); a `mechanism`
+is listed for manual placement. Every decision is written to
+`maintainer/consumer_registry.json` — the committed curation ledger.
+Promotion is a judgment call: the tooling collects and presents; the
+maintainer decides. A promoted capability reaches every consumer through the
+next release.
