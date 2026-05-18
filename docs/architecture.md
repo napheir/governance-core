@@ -163,6 +163,31 @@ layer is a snapshot — a source change is only exercised after the reinstall.
 See `docs/core-manual.md` for the operations manual and
 `constitution/total.md` 第十一条 for the governing clause.
 
+## Config-aware skills (single-agent degradation)
+
+P-0066 made the constitution *clauses* topology-aware (multi-agent articles
+degrade for a single-agent project) but left the *skills* as their original
+multi-agent versions — so `/wrap-up`, the skill Art.14 mandates, was
+~half-inapplicable to self-hosted governance-core. P-0068 closed that gap
+under one principle: **install-and-get-everything** — the package always
+ships the complete capability set; a consumer's topology
+(`.governance/config.json` `agents` count) changes only which steps *run*,
+never which capabilities are *present*.
+
+Each shipped skill step is one of three buckets:
+
+| Bucket | Treatment |
+|--------|-----------|
+| **A — broken path** | Hardcoded cross-repo references (`../agent-core`, absolute paths) — de-hardcoded; a bug in any topology. |
+| **B — genuinely multi-agent** | Cross-clone / cross-agent steps — under single-agent topology they degrade to **not-run** (an explicit `[N/A — single-agent topology — skipped]`). The multi-agent capability stays fully shipped. |
+| **C — runs single-agent too** | Lesson classification, skill extraction, STATE.md — **fixed so they run**, not skipped: the existing decision logic is reused verbatim, only topology-dependent edges (paths, git treatment) adapt. |
+
+The skill-learning machinery (`skills.discovery`) was found unpackaged and
+spun out to P-0069; until it lands, `/extract-skill` + `/wrap-up` Steps
+4a–4c are capability-gated (skip cleanly). The installer also seeds an
+initial `STATE.md` so every consumer has the session-bridge capability on
+install.
+
 ## Releasing
 
 Both `governance-core` and `multi-agent-bootstrap` publish to PyPI via

@@ -83,11 +83,38 @@ draft & publish a GitHub Release — `.github/workflows/release.yml` builds and
 publishes to PyPI via Trusted Publisher (P-0064). Releasing is an outward-facing
 action: do it only with explicit human approval.
 
-## 7. Known follow-up
+## 7. Topology-aware skills (P-0068)
 
-`governance-core install` does not yet emit `.claude/settings.local.json`
-(hook registration) — that file is currently authored by hand (P-0066 Phase 4,
-review #6). A package improvement to have the installer ship a settings
-template / wire hooks automatically is tracked as a follow-up; until then a
-fresh clone needs `governance-core install` **and** a hand-placed
-`settings.local.json`.
+The package ships the **complete** skill set, multi-agent capabilities
+included. A consumer's topology — read from `.governance/config.json`'s
+`agents` count — changes only which steps *run*, never which capabilities are
+*present* (install-and-get-everything). For single-agent governance-core:
+
+- **Multi-agent steps degrade to not-run.** `/publish-knowledge`,
+  `/sync-repos`, `/sync-infra`, and `/wrap-up` Steps 2b/5/5b carry a topology
+  gate — under single-agent topology they print
+  `[N/A — single-agent topology — skipped]` and do nothing. The multi-agent
+  capability stays fully shipped for multi-agent consumers.
+- **Single-agent-applicable steps run.** Lesson classification, STATE.md
+  upkeep, proposals, git — all run normally. Lesson archival reuses the
+  `lesson-classification` skill verbatim; a self-hosted package authors a
+  Skill guide in the package source `governance_core/skills/`, while learned
+  skills stay in `.claude/skills/learned/` (kept committed by a `.gitignore`
+  carve-out).
+- **Skill extraction is capability-gated.** `/extract-skill` and `/wrap-up`
+  Steps 4a–4c need the `skills.discovery` machinery, not yet packaged — they
+  skip with `[capability pending P-0069]` until P-0069 lands.
+
+Running `/wrap-up` in self-hosted governance-core therefore completes with
+every step either applied or cleanly skipped — no broken step.
+
+## 8. Known follow-ups
+
+- **P-0067** — `governance-core install` does not yet emit
+  `.claude/settings.local.json` (hook registration); it is hand-authored for
+  now (P-0066 Phase 4, review #6).
+- **P-0069** — the `skills.discovery` skill-learning machinery is not yet
+  packaged; `/extract-skill` + `/wrap-up` Steps 4a–4c are capability-gated
+  until it is.
+
+Both are tracked as draft proposals in `shared_state/proposals/core/`.
