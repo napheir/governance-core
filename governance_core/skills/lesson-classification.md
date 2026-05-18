@@ -5,7 +5,7 @@ description: Decision flow for routing a session-learned lesson to the right sto
 type: guide
 tags: [governance, memory, skills, knowledge, process, meta]
 created: 2026-04-17
-updated: 2026-04-17
+updated: 2026-05-18
 ---
 
 # Lesson Classification
@@ -63,6 +63,35 @@ Ask in order — stop at the first yes.
    Examples: why we picked XGBoost over LightGBM, empirical thresholds from a backtest, domain facts about Futu's K-line alignment.
 
 6. **Otherwise**: discard. Bug fixes are captured by the diff and commit message. Premature capture clutters future search.
+
+## Generic vs project axis (P-0065)
+
+Once a lesson routes to a **skill** (guide or learned, step 3 above), apply a
+second, orthogonal question — *what layer does the skill belong to?* This
+sets the skill's `layer:` frontmatter and feeds the governance-core candidate
+pipeline (P-0065).
+
+| layer | meaning |
+|-------|---------|
+| `candidate-common` | Generic — a different governance-core consumer project would benefit from this skill essentially unchanged. Eligible for uplink to governance-core as a common-layer candidate. |
+| `business` | Project-specific — depends on this project's business domain, agent topology, or bespoke infrastructure. Stays local. |
+
+**Test**: *Would another governance-core consumer — a different project,
+different domain — use this skill unchanged (modulo `.governance/config.json`
+values)?*
+
+- Yes, and it carries no hard dependency on this project's business → `candidate-common`.
+- No, it only makes sense inside this project's domain → `business`.
+
+**When unsure, choose `candidate-common`.** A misclassified `business` skill
+costs one extra review when it reaches governance-core; a misclassified
+`candidate-common` skill that should have been generic simply never surfaces
+for reuse. Over-reporting is cheap, under-reporting is silent.
+
+This axis is consumed by `/extract-skill` (`--layer`) and by the P-0065
+candidate envelope (`kind: skill`). It does not change *where the skill is
+written* (step 3 / the topology note above already settled that) — only how
+it is tagged for the candidate pipeline.
 
 ## Key test
 

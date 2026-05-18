@@ -58,6 +58,7 @@ def build_skill_document(
     outputs: Optional[list[str]] = None,
     tags: Optional[list[str]] = None,
     notes: Optional[list[str]] = None,
+    layer: str = "candidate-common",
 ) -> str:
     """Build a skill document in project-standard Markdown format.
 
@@ -69,6 +70,9 @@ def build_skill_document(
         outputs: Optional list of output artifacts/paths.
         tags: Optional tags for registry discovery.
         notes: Optional notes or caveats.
+        layer: Common-layer classification (P-0065) -- "candidate-common"
+            (generic, eligible for uplink to governance-core) or "business"
+            (project-specific). Defaults to "candidate-common" when unsure.
 
     Returns:
         Complete Markdown skill document content.
@@ -83,6 +87,7 @@ def build_skill_document(
 name: {name}
 description: "{description}"
 type: learned
+layer: {layer}
 tags: [{tag_str}]
 created: {today}
 updated: {today}
@@ -131,6 +136,7 @@ def extract_skill(
     tags: Optional[list[str]] = None,
     notes: Optional[list[str]] = None,
     overwrite: bool = False,
+    layer: str = "candidate-common",
 ) -> Path:
     """Extract a reusable skill document and write to learned/ directory.
 
@@ -143,6 +149,8 @@ def extract_skill(
         tags: Optional tags.
         notes: Optional notes.
         overwrite: If True, overwrite existing skill with same name.
+        layer: Common-layer classification (P-0065) -- "candidate-common"
+            or "business". Written to the skill frontmatter.
 
     Returns:
         Path to the generated skill file.
@@ -168,6 +176,7 @@ def extract_skill(
         outputs=outputs,
         tags=tags,
         notes=notes,
+        layer=layer,
     )
 
     target.write_text(content, encoding="utf-8")
@@ -393,6 +402,12 @@ def main() -> None:
         help="Overwrite existing skill",
     )
     parser.add_argument(
+        "--layer",
+        choices=["candidate-common", "business"],
+        default="candidate-common",
+        help="P-0065 common-layer classification (default: candidate-common)",
+    )
+    parser.add_argument(
         "--auto-refine",
         type=str,
         default=None,
@@ -436,6 +451,7 @@ def main() -> None:
         tags=tags,
         notes=notes,
         overwrite=args.overwrite,
+        layer=args.layer,
     )
     print(f"[OK] Skill extracted: {path}")
 

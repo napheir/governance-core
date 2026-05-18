@@ -17,7 +17,16 @@ After completing a complex, multi-step workflow, use this command to capture it 
 
 1. **Analyze the completed work**: Review the current session's task list, recent commands, and outputs to identify the workflow pattern.
 
-2. **Extract the skill**: Use the extractor module. It ships in the
+2. **Classify the layer** (P-0065): decide whether the skill is a
+   **common-layer candidate** (generic — reusable by any governance-core
+   consumer) or **business** (specific to this project). Use the
+   generic-vs-project axis in the `lesson-classification` skill. When in
+   doubt, choose `candidate-common` — a misclassification only costs one
+   extra review at governance-core, whereas a missed candidate never
+   surfaces. The choice becomes the `--layer` argument below and is written
+   to the skill's `layer:` frontmatter; the candidate pipeline reads it.
+
+3. **Extract the skill**: Use the extractor module. It ships in the
    governance-core package (`governance_core.discovery`); the generated skill
    is written to this project's own `.claude/skills/learned/`:
    ```bash
@@ -28,17 +37,18 @@ After completing a complex, multi-step workflow, use this command to capture it 
      --preconditions "Check 1|Check 2" \
      --outputs "Output path 1|Output path 2" \
      --tags "tag1,tag2" \
-     --notes "Caveat 1|Caveat 2"
+     --notes "Caveat 1|Caveat 2" \
+     --layer "candidate-common"
    ```
 
-3. **Verify the generated skill**: Read the generated file at `.claude/skills/learned/<name>.md` (in your own repo) and confirm correctness.
+4. **Verify the generated skill**: Read the generated file at `.claude/skills/learned/<name>.md` (in your own repo) and confirm correctness — including the `layer:` frontmatter field set in step 2.
 
-4. **Verify registry discovery**: Run the registry to confirm the new skill appears:
+5. **Verify registry discovery**: Run the registry to confirm the new skill appears:
    ```bash
    python -m governance_core.discovery.registry --format table
    ```
 
-5. **Classify the skill's tier**: Decide which organizational tier the new skill belongs to and update `knowledge/skills/_tiers.json`:
+6. **Classify the skill's tier**: Decide which organizational tier the new skill belongs to and update `knowledge/skills/_tiers.json`:
    - **`universal`** — reusable in any Claude Code project (no Trade Agent coupling)
    - **`project`** — depends on Trade Agent infra (multi-clone / Futu / shared_state / contracts), cross-agent
    - **`branch`** — bound to a specific agent's business domain (rules / trade / data)
@@ -46,18 +56,18 @@ After completing a complex, multi-step workflow, use this command to capture it 
 
    Edit `knowledge/skills/_tiers.json` and append the skill name to the chosen tier's `skills` array (keep array sorted alphabetically).
 
-6. **Rebuild the skill index**: Run the builder so `knowledge/skills/INDEX.md` reflects the new skill:
+7. **Rebuild the skill index**: Run the builder so `knowledge/skills/INDEX.md` reflects the new skill:
    ```bash
    python tools/build_skill_index.py
    ```
 
-7. **Verify audit passes**: Confirm bijection holds (every skill classified, no phantoms):
+8. **Verify audit passes**: Confirm bijection holds (every skill classified, no phantoms):
    ```bash
    python tools/audit_knowledge.py
    # Check 11 must report: [OK] N md-skills classified across 3 tier(s); INDEX.md up to date
    ```
 
-8. **Report to user**: Show the skill name, location, chosen tier, and a summary of what was captured.
+9. **Report to user**: Show the skill name, location, chosen tier, layer, and a summary of what was captured.
 
 ## Notes
 
