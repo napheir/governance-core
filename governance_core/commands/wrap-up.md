@@ -88,11 +88,14 @@ python tools/audit_proposals.py
 
 检查本阶段是否有新增用户可操作能力（命令用法、配置项、服务启动等）：
 
-- **如有**：编辑本 agent 的 `knowledge/operations/{agent}-manual.md`
-  - **core**：直接 Edit `knowledge/operations/core-manual.md`
-  - **rules**：通过 `Skill(skill="learn")` 编辑 `knowledge/operations/rules-manual.md`
-  - **trade**：通过 `Skill(skill="learn")` 编辑 `knowledge/operations/trade-manual.md`
-  - **data**：通过 `Skill(skill="learn")` 编辑 `knowledge/operations/data-manual.md`
+- **如有**：编辑本项目的操作手册。手册路径由项目布局定义（P-0068）——多
+  agent 项目用 `knowledge/operations/{agent}-manual.md`；自托管包项目（如
+  governance-core，`knowledge/` 是 gitignored 安装产物）用 committed 的
+  `docs/<agent>-manual.md`。
+  - **core**：直接 Edit 本项目的 core 操作手册
+  - **rules**：通过 `Skill(skill="learn")` 编辑 rules 操作手册
+  - **trade**：通过 `Skill(skill="learn")` 编辑 trade 操作手册
+  - **data**：通过 `Skill(skill="learn")` 编辑 data 操作手册
   - 内容：命令用法、参数说明、典型示例、配置位置、变更日期
 - **如无**：在检查清单注明跳过原因（如"纯重构，无新操作能力"）
 
