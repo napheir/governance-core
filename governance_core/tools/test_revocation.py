@@ -12,6 +12,7 @@ Uses a throwaway keypair generated per run -- never the real signing key.
 Run from any clone:
     python tools/test_revocation.py
 """
+import datetime
 import json
 import shutil
 import sys
@@ -148,6 +149,33 @@ def main() -> int:
             is False))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+    # --- evaluate(): the auth-guard revocation decision ---------------
+    now = datetime.datetime.now(datetime.timezone.utc)
+    recent = now - datetime.timedelta(days=2)
+    old = now - datetime.timedelta(days=40)
+    clean = revocation.new_feed()
+    revoked_feed = revocation.add_revocation(clean, "acme", "left org")
+
+    def _ev_is(feed, fetched, first, allowed, category) -> bool:
+        a, c, _ = revocation.evaluate(feed, "acme", 30, fetched, first, now)
+        return a is allowed and c == category
+
+    results.append(_case(
+        "evaluate: revoked consumer -> blocked/revoked",
+        lambda: _ev_is(revoked_feed, recent, recent, False, "revoked")))
+    results.append(_case(
+        "evaluate: clean feed freshly fetched -> allowed/current",
+        lambda: _ev_is(clean, recent, recent, True, "current")))
+    results.append(_case(
+        "evaluate: clean feed stale beyond max_offline -> blocked/offline",
+        lambda: _ev_is(clean, old, old, False, "offline")))
+    results.append(_case(
+        "evaluate: no feed within grace -> allowed/grace",
+        lambda: _ev_is(None, None, recent, True, "grace")))
+    results.append(_case(
+        "evaluate: no feed past grace -> blocked/offline",
+        lambda: _ev_is(None, None, old, False, "offline")))
 
     passed, total = sum(results), len(results)
     out(f"\n{passed}/{total} revocation cases passed")

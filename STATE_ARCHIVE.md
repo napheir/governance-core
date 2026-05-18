@@ -6,6 +6,22 @@
 
 ---
 
+### 2026-05-18 — P-0070 Phase 2 upgrade prune (stale autonomy-layer files)
+
+- 改动：Fix C —— `installer.py` 加 `_prune_stale`，`upgrade` 在 `_capture_drift`
+  后、写新 manifest 前比对旧 manifest 与新 install 集，旧有新无的
+  install-managed 路径删除（manifest-diff = 安全边界）+ `[prune]` 报告 + 空
+  目录清理；`cli.py` 加 `--no-prune`；版本 0.2.0→0.2.1。一次性清掉 P-0069
+  早于 manifest 残留的 `shared-code-per-agent-state.md`。
+- 涉及：`governance_core/installer.py`、`cli.py`、`pyproject.toml`、
+  `__init__.py`、`docs/{architecture,core-manual}.md`。
+- 关键决策：manifest-diff 安全边界 —— business/authored/`learned/` 从不进
+  manifest，故从不被 prune；prune 在 drift 捕获之后（被改过的陈旧文件先成候选）。
+- 测试：`_prune_stale` 单测 5 项、探针文件真实 dogfood（装入→源删→upgrade
+  prune）、upgrade/doctor exit 0、build 0.2.1。commit f09648c。P-0070 两 phase
+  全部完成。
+
+
 ### 2026-05-18 — P-0070 Phase 1 audit_proposals path + tracker reason fixes
 
 - 改动：Fix A —— `audit_proposals.py` 改用 `load_proposals_config` 解析

@@ -718,6 +718,45 @@ def install(
     return 0
 
 
+def _report_auth_lifecycle(payload: dict[str, Any],
+                           project_root: Path) -> None:
+    """Log lease expiry + revocation-feed status (P-0071; informational).
+
+    doctor does not fail on revocation -- the runtime auth-guard enforces
+    it. This surfaces the lease countdown and the auth-guard feed cache so
+    the maintainer/consumer can see how close to a freeze the project is.
+    """
+    if "expiry" in payload:
+        try:
+            days = (datetime.date.fromisoformat(str(payload["expiry"]))
+                    - datetime.date.today()).days
+            logger.info("[doctor] lease: expires %s (%d days left)",
+                        payload["expiry"], days)
+        except ValueError:
+            logger.info("[doctor] lease: expiry %s", payload["expiry"])
+    else:
+        logger.info("[doctor] lease: perpetual (schema-1 code)")
+
+    if payload.get("schema") != 2:
+        return
+    from governance_core.auth import revocation
+    cache_path = revocation.feed_cache_path(project_root)
+    try:
+        cache = json.loads(cache_path.read_text(encoding="utf-8"))
+    except Exception:  # noqa: BLE001 - no cache -> auth-guard has not run
+        logger.info("[doctor] revocation feed: not yet polled by auth-guard")
+        return
+    feed = cache.get("feed")
+    if feed is None:
+        logger.info("[doctor] revocation feed: no successful fetch yet "
+                    "(first seen %s)", cache.get("first_seen"))
+        return
+    revoked = revocation.is_revoked(feed, payload["consumer_id"])
+    logger.info("[doctor] revocation feed: last fetch %s -- consumer %s",
+                cache.get("fetched_at"),
+                "REVOKED" if revoked else "not revoked")
+
+
 def doctor(project_root: Path) -> int:
     project_root = project_root.resolve()
     cfg_path = project_root / CONFIG_REL
@@ -768,8 +807,9 @@ def doctor(project_root: Path) -> int:
                       "(run install with --auth-code)")
         return 7
     try:
-        codec.verify_auth_code(cfg["authorization"]["auth_code"],
-                               codec.load_bundled_public_key())
+        auth_payload = codec.verify_auth_code(
+            cfg["authorization"]["auth_code"],
+            codec.load_bundled_public_key())
     except codec.AuthCodeError as exc:
         logger.error("[doctor] authorization invalid: %s", exc)
         return 7
@@ -778,6 +818,7 @@ def doctor(project_root: Path) -> int:
         logger.error("[doctor] candidate-uplink consent not recorded for "
                       "current terms (required in this version)")
         return 8
+    _report_auth_lifecycle(auth_payload, project_root)
     logger.info("[doctor] OK: project=%s consumer_id=%r ritual_phrase=%r "
                 "agents=%d hooks=%d clauses=%d hooks_registered=%d",
                 cfg["project_name"], cfg["authorization"]["consumer_id"],

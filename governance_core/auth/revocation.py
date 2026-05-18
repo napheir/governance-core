@@ -27,7 +27,9 @@ Feed shape:
 from __future__ import annotations
 
 import datetime
+import hashlib
 import json
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -153,3 +155,57 @@ def load_feed(feed_path: Path, sig_path: Path,
         raise RevocationFeedError(f"revocation signature missing: {sig_path}")
     return verify_feed(feed_path.read_bytes(),
                        sig_path.read_text(encoding="utf-8"), public_key)
+
+
+def sig_url_for(feed_url: str) -> str:
+    """Return the detached-signature URL for a revocation feed URL."""
+    return feed_url + ".sig"
+
+
+def feed_cache_path(project_root: Path) -> Path:
+    """Return the temp-dir path of the revocation-feed cache for a repo.
+
+    The cache holds the last successfully fetched+verified feed, the times
+    of the last fetch and last fetch attempt, and the first-seen time -- so
+    `auth-guard` polls at most once per TTL and `doctor` can report status.
+    Keyed by the repo path so distinct repos never share a cache.
+    """
+    tag = hashlib.sha256(str(project_root).encode("utf-8")).hexdigest()[:16]
+    return Path(tempfile.gettempdir()) / f"gc_revfeed_{tag}.json"
+
+
+def evaluate(feed: dict[str, Any] | None, consumer_id: str,
+             max_offline_days: int, fetched_at: datetime.datetime | None,
+             first_seen: datetime.datetime,
+             now: datetime.datetime) -> tuple[bool, str, str]:
+    """Decide whether `consumer_id` may proceed, given the revocation feed.
+
+    `feed` is the last successfully verified feed, or None if one has never
+    been fetched. `fetched_at` is when that feed was fetched; `first_seen`
+    is when `auth-guard` first ran for this consumer; `now` is the current
+    time. Returns (allowed, category, reason) where category is one of:
+
+      - "current"  feed present and recently fetched     -> allowed
+      - "grace"    no feed yet, within the grace window   -> allowed
+      - "revoked"  consumer_id is on the feed             -> blocked
+      - "offline"  feed too stale, or grace exceeded      -> blocked
+        (cannot confirm the consumer was not revoked since the last fetch)
+    """
+    if feed is not None:
+        if is_revoked(feed, consumer_id):
+            return (False, "revoked",
+                    f"consumer {consumer_id!r} is on the revocation feed")
+        if fetched_at is not None:
+            offline = (now - fetched_at).days
+            if offline > max_offline_days:
+                return (False, "offline",
+                        f"revocation feed not refreshed for {offline} days "
+                        f"(max_offline_days={max_offline_days})")
+        return (True, "current", "revocation feed current")
+    grace = (now - first_seen).days
+    if grace > max_offline_days:
+        return (False, "offline",
+                f"revocation feed never reached in {grace} days "
+                f"(max_offline_days={max_offline_days})")
+    return (True, "grace", f"revocation feed not yet reached "
+            f"(grace {grace}/{max_offline_days} days)")

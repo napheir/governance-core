@@ -103,6 +103,26 @@ def make_auth_code(payload: bytes, seed: bytes) -> str:
     return f"{AUTH_CODE_PREFIX}.{b64url_encode(payload)}.{b64url_encode(sig)}"
 
 
+def decode_payload(code: str) -> dict[str, Any]:
+    """Decode a GC1 code's payload dict WITHOUT verifying the signature.
+
+    For reading fields (consumer_id, revocation_feed_url, ...) off a code
+    whose signature has separately been checked -- or whose verdict was
+    cached as valid. The result MUST NOT be trusted on its own; an unsigned
+    or tampered code can carry any payload. Raises AuthCodeError only when
+    the code is structurally unparseable.
+    """
+    parts = code.strip().split(".")
+    if len(parts) != 3 or parts[0] != AUTH_CODE_PREFIX:
+        raise AuthCodeError(
+            "malformed authorization code (expected GC1.<payload>.<sig>)")
+    try:
+        return json.loads(b64url_decode(parts[1]).decode("utf-8"))
+    except (ValueError, TypeError, UnicodeDecodeError,
+            json.JSONDecodeError) as exc:
+        raise AuthCodeError(f"cannot decode authorization payload: {exc}")
+
+
 def load_bundled_public_key() -> bytes:
     """Return the 32-byte Ed25519 public key shipped inside the package."""
     if not _PUBKEY_PATH.exists():

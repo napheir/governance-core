@@ -17,6 +17,27 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-18 — P-0071 Phase 3 auth-guard online revocation enforcement
+
+- 改动：`auth-guard.py` 重写 —— Gate 1 码验证之外加 **Gate 2 撤销门**:按
+  TTL（~6h）拉取验签撤销源、`consumer_id` 命中即冻结、源不可达回退缓存、距
+  上次成功拉取超 `max_offline_days` 即冻结（首装宽限期同此），schema-1 码
+  跳过 Gate 2。`revocation.py` 加 `evaluate()`（纯决策函数:current/grace/
+  revoked/offline）、`feed_cache_path()`、`sig_url_for()`。`codec.py` 加
+  `decode_payload()`（不验签取 payload 字段）。`installer.py` doctor 加
+  `_report_auth_lifecycle`（lease 倒计时 + 撤销源拉取状态）。`cli.py` 补
+  `logging.basicConfig` —— 修 doctor 报告被静默丢弃的前置 bug。
+- 涉及：`governance_core/hooks/auth-guard.py`、`auth/revocation.py`、
+  `auth/codec.py`、`installer.py`、`cli.py`、`tools/test_auth_guard.py`、
+  `tools/test_revocation.py`。
+- 关键决策：撤销决策抽成纯函数 `evaluate()` → 决策逻辑可移植单测、hook 只做
+  fetch+cache 管道;撤销门只对 schema-2 码生效(schema-1 永久码无源);fetch
+  失败 fail-to-cache、绝不 fail-open，超 `max_offline_days` 才冻结。
+- 测试：`test_revocation` 19/19、`test_auth_guard` 9/9（含 5 撤销门集成例:
+  可达放行/撤销冻结/不可达宽限/无源超宽限/陈旧源超 max）、`test_auth_codec`
+  11/11;`doctor` 可见报告 lease 365 天 + 撤销源状态;upgrade/doctor exit 0;
+  wheel 0.3.0 隔离 OK。
+
 ### 2026-05-18 — P-0071 Phase 2 signed revocation feed
 
 - 改动：新增 `governance_core/auth/revocation.py` —— 撤销源格式
@@ -57,18 +78,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 测试：`test_auth_codec` 11/11（双 schema 往返、过期/缺字段/篡改/未知 schema
   拒）；`test_auth_guard` 4/4（陈旧隔日 `valid` 缓存不再被信任的回归守卫）；
   upgrade/doctor exit 0；wheel 0.3.0 仅含 `governance_core*`。commit 172ee5c。
-
-### 2026-05-18 — P-0070 Phase 2 upgrade prune (stale autonomy-layer files)
-
-- 改动：Fix C —— `installer.py` 加 `_prune_stale`，`upgrade` 在 `_capture_drift`
-  后、写新 manifest 前比对旧 manifest 与新 install 集，旧有新无的
-  install-managed 路径删除（manifest-diff = 安全边界）+ `[prune]` 报告 + 空
-  目录清理；`cli.py` 加 `--no-prune`；版本 0.2.0→0.2.1。一次性清掉 P-0069
-  早于 manifest 残留的 `shared-code-per-agent-state.md`。
-- 涉及：`governance_core/installer.py`、`cli.py`、`pyproject.toml`、
-  `__init__.py`、`docs/{architecture,core-manual}.md`。
-- 关键决策：manifest-diff 安全边界 —— business/authored/`learned/` 从不进
-  manifest，故从不被 prune；prune 在 drift 捕获之后（被改过的陈旧文件先成候选）。
-- 测试：`_prune_stale` 单测 5 项、探针文件真实 dogfood（装入→源删→upgrade
-  prune）、upgrade/doctor exit 0、build 0.2.1。commit f09648c。P-0070 两 phase
-  全部完成。

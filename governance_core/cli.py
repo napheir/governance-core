@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 
@@ -79,6 +80,11 @@ def cmd_version(args: argparse.Namespace) -> int:
 
 
 def main() -> int:
+    # Without this the installer/doctor logger.info output is silently
+    # dropped (the root logger's last-resort handler is WARNING-level), so
+    # `doctor` reports nothing. INFO-level, message-only -- the CLI's
+    # output is meant to read as plain lines.
+    logging.basicConfig(level=logging.INFO, format="%(message)s")
     parser = argparse.ArgumentParser(prog="governance-core")
     sub = parser.add_subparsers(dest="subcommand", required=True)
 

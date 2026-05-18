@@ -132,17 +132,31 @@ Both gates run before any autonomy-layer file is materialized — a failed gate
 leaves the project with no governance capabilities.
 
 Authorization is also enforced **at runtime**: the `auth-guard.py` PreToolUse
-hook (matcher `*`) re-verifies the stored code before every tool call and
-blocks it if authorization is invalid — so a project installed with a valid
-code that later loses authorization (code tampered, key rotated, code
-deleted) is frozen, not silently allowed to keep running. The freeze affects
-the agent only; recover by re-running `governance-core install` from a
-terminal.
+hook (matcher `*`) runs before every tool call, with two gates:
+
+1. **Code verification** — the stored code must verify against the bundled
+   public key and not be expired. The verdict is cached per (repo, code,
+   key, date), so an expired lease is re-checked daily, never served stale.
+2. **Revocation** (schema-2 codes) — the code's `consumer_id` must not be on
+   the maintainer's signed revocation feed. `auth-guard` polls the feed URL
+   carried in the code at most once per TTL (~6h), caching the last verified
+   feed. An unreachable feed falls back to the cached copy; once no
+   successful fetch has happened for the code's `max_offline_days`, the
+   consumer is frozen. A schema-1 (legacy perpetual) code carries no feed
+   and skips this gate.
+
+A project that loses authorization — code tampered, lease expired, key
+rotated, or `consumer_id` revoked — is frozen, not silently allowed to keep
+running. The freeze affects the agent only; recover by re-running
+`governance-core install` from a terminal, except a revocation, which only
+the maintainer can lift.
 
 The package ships an Ed25519 public key (`governance_core/auth/pubkey.json`);
-the matching private key stays with the maintainer, outside the repo. Codes
-are verified offline (no network) — see `constitution/total.md` and the
-P-0065 proposal for the model.
+the matching private key stays with the maintainer, outside the repo.
+Authorization codes are verified **offline**; the revocation feed is the one
+governance asset fetched over the network — it is signed, so it cannot be
+forged or replayed empty. See `constitution/total.md` and the P-0065 /
+P-0071 proposals for the model.
 
 ### Issuing codes (maintainer side)
 
@@ -186,8 +200,8 @@ python maintainer/revoke_consumer.py --consumer-id <id> --reason "left org"
 This appends the consumer to `revocation.json`, re-signs it as
 `revocation.json.sig`, and marks the consumer revoked in
 `consumer_registry.json`. **Commit and push both feed files** -- the feed
-is published at `revocation.json` on `master` and fetched raw by every
-consumer's `auth-guard` (the runtime poll lands in P-0071 Phase 3).
+is published at `revocation.json` on `master` and polled raw by every
+consumer's `auth-guard` (P-0071 Phase 3 — at most once per ~6h TTL).
 `--list` verifies and prints the current feed; `--init` writes a fresh
 empty signed feed (`--force` overwrites an existing one).
 
