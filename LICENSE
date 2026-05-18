@@ -1,4 +1,4 @@
-governance-core -- Source-Available License, version 1 (DRAFT)
+governance-core -- Source-Available License, version 1
 
 Copyright (c) 2026 napheir. All rights reserved.
 
@@ -29,8 +29,6 @@ Copyright (c) 2026 napheir. All rights reserved.
    DEALINGS IN THE SOFTWARE.
 
 ----------------------------------------------------------------------
-DRAFT NOTICE -- this license text is not legal advice. The maintainer
-should review and finalize it (P-0065 Phase 1). governance-core versions
-0.1.2 through 0.1.6 were released under the MIT License; that grant is not
-changed retroactively. This Source-Available License applies from version
-0.2.0 onward.
+governance-core versions 0.1.2 through 0.1.6 were released under the MIT
+License; that grant is not changed retroactively. This Source-Available
+License applies from version 0.2.0 onward.
