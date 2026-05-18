@@ -46,6 +46,15 @@ Ask in order — stop at the first yes.
    - **Cross-agent** design principle, convention, or reusable pattern → **Skill guide** (`.claude/skills/<name>.md`, type `guide`), discoverable via Registry scan.
    - **Workflow extracted from this session**, likely to replay → **Learned skill** (`.claude/skills/learned/<name>.md`, type `learned`, via `/extract-skill`). Lives in the invoking agent's repo; tracker scoring boosts recency.
 
+   > **Archival destination by topology (P-0068)** — the *classification* above
+   > is topology-independent; the physical write location is not. In a
+   > self-hosted package project (e.g. governance-core, where `.claude/skills/`
+   > is a derived install copy), author a **Skill guide** in the **package
+   > source** (`governance_core/skills/<name>.md`) — it installs to
+   > `.claude/skills/` via `governance-core upgrade`. **Learned skills** stay
+   > in `.claude/skills/learned/`, kept durable there by a `.gitignore`
+   > carve-out. The classification decision itself never changes.
+
 4. **Is this a project-wide rule that must never be violated?**
    → CLAUDE.md article. Requires proposal + review (see constitution 第十三条). Do not route here casually — constitutional edits have weight.
 

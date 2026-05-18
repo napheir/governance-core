@@ -13,6 +13,13 @@ After completing a complex, multi-step workflow, use this command to capture it 
 - When you notice a workflow pattern worth preserving for future sessions
 - When the user explicitly asks to save a workflow
 
+> **Capability gate (P-0068)** — this command runs on the `skills.discovery`
+> extractor. If `skills.discovery` is not importable (not yet packaged into
+> governance-core — pending P-0069), this command cannot run yet: report
+> `[/extract-skill — capability pending P-0069]` and stop. The
+> `PYTHONPATH=.../agent-core` invocations below are interim placeholders;
+> P-0069 packages the machinery and finalizes the invocation form.
+
 ## Workflow
 
 1. **Analyze the completed work**: Review the current session's task list, recent commands, and outputs to identify the workflow pattern.

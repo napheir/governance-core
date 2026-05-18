@@ -47,7 +47,10 @@ htmlcov/
 # committed — it is the SOURCE; root /tools/ is the self-installed copy).
 # ---------------------------------------------------------------------------
 /.claude/hooks/
-/.claude/skills/
+# skills/: install-managed guide skills are ignored, but authored learned
+# skills (P-0068 3a) are carved back in so lesson archival is durable.
+/.claude/skills/*
+!/.claude/skills/learned/
 /.claude/commands/
 /.claude/agents/
 /contracts/

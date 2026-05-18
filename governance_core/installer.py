@@ -207,6 +207,32 @@ def _configure_gitattributes(project_root: Path) -> None:
         pass
 
 
+def _seed_state_md(project_root: Path, config: dict[str, Any]) -> None:
+    """Seed an initial STATE.md if the project has none (P-0068 Phase 3c).
+
+    STATE.md is the session-state bridge maintained by /wrap-up Step 1 and
+    rotated by tools/rotate_state.py. An existing STATE.md is never
+    overwritten -- it holds the project's real entries.
+    """
+    state_path = project_root / "STATE.md"
+    if state_path.exists():
+        return
+    project = config["project_name"]
+    state_path.write_text(
+        f"# STATE -- {project}\n\n"
+        "Session-bridge log. `/wrap-up` Step 1 prepends a dated entry under\n"
+        '"Updates in This Session"; `tools/rotate_state.py` archives entries\n'
+        "older than 7 days to `STATE_ARCHIVE.md`.\n\n"
+        "## 1. Updates in This Session\n\n"
+        "<!-- Newest entry on top. Format:\n"
+        "### YYYY-MM-DD -- <short title>\n"
+        "- summary / files / key decisions / test results\n"
+        "-->\n",
+        encoding="utf-8",
+    )
+    logger.info("[state] seeded initial STATE.md")
+
+
 def install(
     project_root: Path,
     config_overrides: dict[str, Any] | None = None,
@@ -247,6 +273,7 @@ def install(
     counts[".governance/clauses"] = n_clauses
 
     _configure_gitattributes(project_root)
+    _seed_state_md(project_root, cfg)
 
     logger.info("[install] complete. Files installed:")
     for k, v in counts.items():
