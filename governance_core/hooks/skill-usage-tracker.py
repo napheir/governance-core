@@ -16,7 +16,7 @@ typo `/wrapup` that never fires Skill tool is no longer recorded
 
 Records land in the invoking agent's per-agent state
 (.claude/skills/learned/.usage.json) via SkillTracker.record_use(),
-which routes through skills.discovery.resolve_project_root() so state
+which routes through governance_core.discovery.resolve_project_root() so state
 follows the invoker, not the hook's physical location.
 
 Non-blocking; always exits 0. Silent on failure — tracking is
@@ -36,7 +36,7 @@ def _record(name: str) -> None:
         return
     sys.path.insert(0, _CORE_ROOT)
     try:
-        from skills.discovery.tracker import SkillTracker
+        from governance_core.discovery.tracker import SkillTracker
         SkillTracker().record_use(name)
     except Exception:
         # Tracking must never break the user's workflow.

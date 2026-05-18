@@ -755,7 +755,7 @@ def _render_skill_entry_bodies(knowledge_root: Path) -> list[str]:
     """Pre-render skill .md files as hidden entry-body divs for modal display.
 
     Reads knowledge/skills/_tiers.json to enumerate every classified skill,
-    cross-references skills.discovery.registry for the actual .md path,
+    cross-references governance_core.discovery.registry for the actual .md path,
     and emits one div per skill keyed by data-entry-body="skill:<name>".
 
     Tolerates missing tiers.json (no skills section installed yet),
@@ -775,7 +775,7 @@ def _render_skill_entry_bodies(knowledge_root: Path) -> list[str]:
     if str(project_root) not in sys.path:
         sys.path.insert(0, str(project_root))
     try:
-        from skills.discovery.registry import SkillRegistry
+        from governance_core.discovery.registry import SkillRegistry
     except ImportError:
         return []
 

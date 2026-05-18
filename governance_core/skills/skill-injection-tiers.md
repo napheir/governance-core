@@ -22,7 +22,7 @@ and we burn tokens shipping the same names twice every session.
 
 ## The four sources
 
-`skills/discovery/registry.py` scans four sources and stamps each entry with
+`governance_core/discovery/registry.py` scans four sources and stamps each entry with
 `source_type`:
 
 | source_type | Physical path | Loaded by |
@@ -45,7 +45,7 @@ and we burn tokens shipping the same names twice every session.
 **Excluded from A/B**: `command` (harness already injects names+desc) and
 `module` (not user-invocable; rarely needed in agent context).
 
-The `--inject` mode of `skills.discovery.registry` emits tiers A+B together
+The `--inject` mode of `governance_core.discovery.registry` emits tiers A+B together
 as a single block; `session-context.py` (SessionStart hook, centralized via
 `sync_infra` to all clones) appends it to the session banner.
 
@@ -61,7 +61,7 @@ re-injecting the same list would waste ~2 KB/session for zero new info. The
 only thing harness omits is the *score* (frequency × recency from tracker) —
 not worth re-listing the whole roster for.
 
-If an agent wants to see scores: `python -m skills.discovery.registry --format table`.
+If an agent wants to see scores: `python -m governance_core.discovery.registry --format table`.
 
 ### Why guides are in tier B
 
@@ -85,7 +85,7 @@ sessions — making the whole `/extract-skill` pipeline pointless.
 Python modules under `skills/*/` are imported by other code (training
 pipelines, indicator skill calls). They're not user-invocable and don't
 appear in agent reasoning loops. Their L0 metadata exists for `python -m
-skills.discovery.registry` discoverability only.
+governance_core.discovery.registry` discoverability only.
 
 ---
 
@@ -118,7 +118,7 @@ skills.discovery.registry` discoverability only.
 
 ## See also
 
-- `skills/discovery/registry.py` — `manifest_for_injection()` is the filtering point
+- `governance_core/discovery/registry.py` — `manifest_for_injection()` is the filtering point
 - `.claude/hooks/session-context.py` — `_emit_skill_injection()` calls registry --inject
 - `proposals/slim_constitution_via_registry_and_router.md` — the larger architectural context
 - `lesson-classification.md` — decides whether a session learning becomes a guide, learned, memory, or discard in the first place

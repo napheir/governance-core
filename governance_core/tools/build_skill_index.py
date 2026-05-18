@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Build knowledge/skills/INDEX.md from skills.discovery.registry × _tiers.json.
+"""Build knowledge/skills/INDEX.md from governance_core.discovery.registry × _tiers.json.
 
 Joins the runtime skill registry with the organizational-tier classification
 in knowledge/skills/_tiers.json and emits a deterministic markdown index.
@@ -27,7 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from skills.discovery.registry import SkillRegistry  # noqa: E402
+from governance_core.discovery.registry import SkillRegistry  # noqa: E402
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(message)s")
@@ -100,20 +100,20 @@ def render(tiers_data: dict, manifest: list[dict]) -> str:
     )
     lines.append(">")
     lines.append(
-        f"> Source: `skills.discovery.registry` × `_tiers.json` "
+        f"> Source: `governance_core.discovery.registry` × `_tiers.json` "
         f"(version {tiers_data.get('version', '?')}). "
         f"Total: {len(manifest)} workflow skills classified."
     )
     lines.append(">")
     lines.append(
-        "> Live usage stats: `python -m skills.discovery.tracker --stats` "
+        "> Live usage stats: `python -m governance_core.discovery.tracker --stats` "
         "(per-clone state, not in this file)."
     )
     lines.append(">")
     lines.append(
         "> Python skill modules (source_type=module) are library code, not "
         "workflows; not classified here. See "
-        "`python -m skills.discovery.registry --format table` for the full "
+        "`python -m governance_core.discovery.registry --format table` for the full "
         "registry including modules."
     )
     lines.append("")

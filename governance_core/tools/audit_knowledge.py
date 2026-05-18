@@ -326,7 +326,7 @@ def _audit_skill_tiers(root: Path, tiers_path: Path) -> tuple[int, int]:
     warned = 0
 
     try:
-        from skills.discovery.registry import SkillRegistry
+        from governance_core.discovery.registry import SkillRegistry
     except Exception as exc:
         logger.warning("  WARN: skill registry import failed: %s", exc)
         return 0, 1

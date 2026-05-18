@@ -392,7 +392,7 @@ def _emit_skill_injection(root) -> str:
     return (
         f"[Skills (L0)] {learned} learned + {guides} guides discovered. "
         "Body lazy via Skill tool.\n"
-        "  Full manifest: python -m skills.discovery.registry --format table\n"
+        "  Full manifest: python -m governance_core.discovery.registry --format table\n"
         "  Routing index: knowledge/INDEX.routing.json "
         "(auto-injected by prompt-context-router on keyword match)"
     )

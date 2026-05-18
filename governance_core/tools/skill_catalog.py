@@ -25,7 +25,7 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 if str(PROJECT_ROOT) not in sys.path:
     sys.path.insert(0, str(PROJECT_ROOT))
 
-from skills.discovery.registry import SkillRegistry  # noqa: E402
+from governance_core.discovery.registry import SkillRegistry  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -153,9 +153,9 @@ def main() -> int:
     if not args.names_only:
         print(f"\n{total} skill(s) matched.")
         print(
-            "For usage stats: python -m skills.discovery.tracker --stats\n"
+            "For usage stats: python -m governance_core.discovery.tracker --stats\n"
             "For full registry incl modules: "
-            "python -m skills.discovery.registry --format table"
+            "python -m governance_core.discovery.registry --format table"
         )
     return 0
 

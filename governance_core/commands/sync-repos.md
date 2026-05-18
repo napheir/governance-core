@@ -89,7 +89,7 @@ git stash pop  # 仅在 Step 1 有 stash 时执行
 
 对每个 clone 检查关键基础设施文件是否到位：
 - `tools/check_scope.py` 中包含 `MERGE_HEAD`（merge bypass fix）
-- `skills/discovery/tracker.py` 中包含 `populate_from_git`（tracker fix）
+- `governance_core/discovery/tracker.py` 中包含 `populate_from_git`（tracker fix）
 - `.claude/settings.local.json` 中包含 `session-context` 和 `constitution-reminder`（hooks）
 
 ## 输出格式

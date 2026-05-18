@@ -13,21 +13,15 @@ After completing a complex, multi-step workflow, use this command to capture it 
 - When you notice a workflow pattern worth preserving for future sessions
 - When the user explicitly asks to save a workflow
 
-> **Capability gate (P-0068)** — this command runs on the `skills.discovery`
-> extractor. If `skills.discovery` is not importable (not yet packaged into
-> governance-core — pending P-0069), this command cannot run yet: report
-> `[/extract-skill — capability pending P-0069]` and stop. The
-> `PYTHONPATH=.../agent-core` invocations below are interim placeholders;
-> P-0069 packages the machinery and finalizes the invocation form.
-
 ## Workflow
 
 1. **Analyze the completed work**: Review the current session's task list, recent commands, and outputs to identify the workflow pattern.
 
-2. **Extract the skill**: Use the extractor module to generate a skill document. Code lives in `agent-core`, but the generated skill belongs to the invoking agent's own `.claude/skills/learned/` — so set `PYTHONPATH` instead of `cd`-ing into core:
+2. **Extract the skill**: Use the extractor module. It ships in the
+   governance-core package (`governance_core.discovery`); the generated skill
+   is written to this project's own `.claude/skills/learned/`:
    ```bash
-   PYTHONPATH="$(git rev-parse --show-toplevel)/../agent-core" \
-   python -m skills.discovery.extractor \
+   python -m governance_core.discovery.extractor \
      --name "<kebab-case-name>" \
      --description "<one-line description>" \
      --steps "Step 1|Step 2|Step 3" \
@@ -41,8 +35,7 @@ After completing a complex, multi-step workflow, use this command to capture it 
 
 4. **Verify registry discovery**: Run the registry to confirm the new skill appears:
    ```bash
-   PYTHONPATH="$(git rev-parse --show-toplevel)/../agent-core" \
-   python -m skills.discovery.registry --format table
+   python -m governance_core.discovery.registry --format table
    ```
 
 5. **Classify the skill's tier**: Decide which organizational tier the new skill belongs to and update `knowledge/skills/_tiers.json`:
@@ -55,13 +48,11 @@ After completing a complex, multi-step workflow, use this command to capture it 
 
 6. **Rebuild the skill index**: Run the builder so `knowledge/skills/INDEX.md` reflects the new skill:
    ```bash
-   PYTHONPATH="$(git rev-parse --show-toplevel)/../agent-core" \
    python tools/build_skill_index.py
    ```
 
 7. **Verify audit passes**: Confirm bijection holds (every skill classified, no phantoms):
    ```bash
-   PYTHONPATH="$(git rev-parse --show-toplevel)/../agent-core" \
    python tools/audit_knowledge.py
    # Check 11 must report: [OK] N md-skills classified across 3 tier(s); INDEX.md up to date
    ```
@@ -72,7 +63,7 @@ After completing a complex, multi-step workflow, use this command to capture it 
 
 - Skills are stored in `.claude/skills/learned/` (auto-discovered by SkillRegistry)
 - Use `--overwrite` flag if refining an existing skill
-- For incremental refinement, use `refine_skill()` from `skills.discovery.extractor`
+- For incremental refinement, use `refine_skill()` from `governance_core.discovery.extractor`
 - Follow kebab-case naming convention
 - Reference: `knowledge/research/hermes_agent.md` (Section 2, Mechanism A)
 - Tier decision is informed by `knowledge/skills/INDEX.md` examples — browse with `python tools/skill_catalog.py` to see what each tier currently contains

@@ -49,8 +49,12 @@ htmlcov/
 /.claude/hooks/
 # skills/: install-managed guide skills are ignored, but authored learned
 # skills (P-0068 3a) are carved back in so lesson archival is durable.
+# .usage.json is the skill-learning tracker's runtime state (P-0069) — it
+# lives inside learned/ but is per-session state, not an authored skill, so
+# it stays ignored.
 /.claude/skills/*
 !/.claude/skills/learned/
+/.claude/skills/learned/.usage.json
 /.claude/commands/
 /.claude/agents/
 /contracts/
