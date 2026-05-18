@@ -9,6 +9,11 @@ repo); any hit aborts the uplink.
 The envelope travels inline in the issue body. Governance candidates are
 kilobyte-scale, so a body-size guard refuses the rare oversized envelope
 rather than silently truncating it.
+
+Attribution (P-0071 Phase 4): an uplink also verifies the candidate's
+`origin` against the project's authorization code. The code is signed, so
+its `consumer_id` is authentic; binding `origin` to it means a candidate
+cannot be uplinked under a forged origin.
 """
 
 from __future__ import annotations
@@ -17,6 +22,7 @@ import json
 import subprocess
 from pathlib import Path
 
+from governance_core.auth import codec
 from governance_core.candidates import envelope
 from governance_core import sensitive_scan
 
@@ -27,6 +33,17 @@ CANDIDATE_LABEL = "candidate"
 
 class UplinkError(Exception):
     """Raised when a candidate cannot be uplinked (secret, oversize, gh)."""
+
+
+def _authorized_consumer(auth_code: str) -> str:
+    """Verify `auth_code`; return its consumer_id. Raises UplinkError if bad."""
+    try:
+        payload = codec.verify_auth_code(
+            auth_code, codec.load_bundled_public_key())
+    except codec.AuthCodeError as exc:
+        raise UplinkError(
+            f"authorization code does not verify -- cannot uplink: {exc}")
+    return payload["consumer_id"]
 
 
 def scan_envelope(envelope_dir: Path) -> list[sensitive_scan.Finding]:
@@ -88,14 +105,26 @@ def gh_command(title: str, body: str, labels: list[str],
     return argv
 
 
-def uplink_envelope(envelope_dir: Path, repo: str = UPSTREAM_REPO,
-                    dry_run: bool = False) -> str:
+def uplink_envelope(envelope_dir: Path, auth_code: str,
+                    repo: str = UPSTREAM_REPO, dry_run: bool = False) -> str:
     """Scan, then uplink a candidate envelope as a GitHub issue.
 
-    Aborts (UplinkError) if the payload carries a secret or is oversized.
+    `auth_code` is the project's authorization code: the envelope's `origin`
+    must equal the verified code's consumer_id, or the uplink aborts -- a
+    candidate cannot be uplinked under a forged origin. Also aborts
+    (UplinkError) if the payload carries a secret or is oversized.
+
     With `dry_run`, returns the would-run gh argv as text without executing.
     Otherwise runs `gh issue create` and returns the created issue URL.
     """
+    meta = envelope.validate_envelope(envelope_dir)
+    consumer_id = _authorized_consumer(auth_code)
+    if meta["origin"] != consumer_id:
+        raise UplinkError(
+            f"candidate origin {meta['origin']!r} does not match the "
+            f"authorized consumer_id {consumer_id!r} -- origin is bound to "
+            f"the signed auth code and cannot be forged")
+
     findings = scan_envelope(envelope_dir)
     if findings:
         lines = "\n".join(f"  - {f.pattern} (severity {f.severity}, "

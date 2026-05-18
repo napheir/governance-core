@@ -63,6 +63,13 @@ def _origin(cfg: dict) -> str | None:
     return None
 
 
+def _auth_code(cfg: dict) -> str | None:
+    """Return the authorization code from config, or None if absent."""
+    if "authorization" in cfg and "auth_code" in cfg["authorization"]:
+        return cfg["authorization"]["auth_code"]
+    return None
+
+
 def _consent_ok(cfg: dict) -> bool:
     """Return True if config records candidate-uplink consent."""
     return ("candidate_uplink" in cfg
@@ -97,13 +104,19 @@ def cmd_uplink(args: argparse.Namespace) -> int:
     cfg = _config(root)
     if cfg is None:
         return 2
+    auth_code = _auth_code(cfg)
+    if auth_code is None:
+        sys.stderr.write("[candidate] no authorization code in config "
+                         "(run install)\n")
+        return 2
     if not args.dry_run and not _consent_ok(cfg):
         sys.stderr.write("[candidate] candidate-uplink consent not recorded "
                          "-- uplink refused\n")
         return 1
     try:
         result = _uplink.uplink_envelope(
-            Path(args.envelope_dir), repo=args.repo, dry_run=args.dry_run)
+            Path(args.envelope_dir), auth_code, repo=args.repo,
+            dry_run=args.dry_run)
     except (_uplink.UplinkError, _envelope.EnvelopeError) as exc:
         sys.stderr.write(f"[candidate] uplink failed: {exc}\n")
         return 1
@@ -121,6 +134,11 @@ def cmd_submit(args: argparse.Namespace) -> int:
     if origin is None:
         sys.stderr.write("[candidate] no consumer_id in config (run install)\n")
         return 2
+    auth_code = _auth_code(cfg)
+    if auth_code is None:
+        sys.stderr.write("[candidate] no authorization code in config "
+                         "(run install)\n")
+        return 2
     if not args.dry_run and not _consent_ok(cfg):
         sys.stderr.write("[candidate] candidate-uplink consent not recorded "
                          "-- submit refused\n")
@@ -136,7 +154,7 @@ def cmd_submit(args: argparse.Namespace) -> int:
             title=args.title, rationale=args.rationale,
             payload_files=files, layer=args.layer)
         result = _uplink.uplink_envelope(
-            envelope_dir, repo=args.repo, dry_run=args.dry_run)
+            envelope_dir, auth_code, repo=args.repo, dry_run=args.dry_run)
     except (_uplink.UplinkError, _envelope.EnvelopeError) as exc:
         sys.stderr.write(f"[candidate] submit failed: {exc}\n")
         return 1
@@ -172,8 +190,11 @@ def cmd_review(args: argparse.Namespace) -> int:
             sys.stdout.write(f"  {env_dir}  INVALID: {exc}\n")
             continue
         status = decided[meta["id"]] if meta["id"] in decided else "pending"
+        flag = ("  [REVOKED ORIGIN]" if _registry.is_consumer_revoked(
+            _registry_path(root), meta["origin"]) else "")
         sys.stdout.write(f"  {meta['id']}  kind={meta['kind']} "
-                         f"origin={meta['origin']}  [{status}]  {env_dir}\n")
+                         f"origin={meta['origin']}  [{status}]{flag}  "
+                         f"{env_dir}\n")
 
     sys.stdout.write("=== open GitHub candidate issues ===\n")
     try:
@@ -203,6 +224,20 @@ def cmd_promote(args: argparse.Namespace) -> int:
         sys.stderr.write(f"[candidate] invalid envelope: {exc}\n")
         return 1
     env_dir = Path(args.envelope_dir)
+
+    # P-0071 Phase 4: a candidate from a revoked origin is hard-rejected --
+    # GC no longer carries that owner's common-layer role, so its
+    # contributions are not folded in regardless of the requested decision.
+    if _registry.is_consumer_revoked(_registry_path(root), meta["origin"]):
+        sys.stderr.write(f"[candidate] origin {meta['origin']!r} is a "
+                         f"REVOKED consumer -- promotion refused\n")
+        _registry.record_candidate(
+            _registry_path(root), meta["id"], meta["origin"], meta["kind"],
+            meta["title"], "rejected",
+            note=f"auto-rejected: origin {meta['origin']} is revoked")
+        sys.stdout.write(f"[candidate] recorded rejection for {meta['id']} "
+                         f"(revoked origin)\n")
+        return 1
 
     if args.decision == "promoted":
         pkg = root / "governance_core"

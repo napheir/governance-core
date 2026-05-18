@@ -17,6 +17,27 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-18 — P-0071 Phase 4 candidate attribution + revoked-origin reject
+
+- 改动：`uplink.py` —— uplink 时校验候选 `origin` == 授权码内 `consumer_id`
+  （签名码 → consumer_id 真实），不匹配/码不验签即拒（`origin` 不可谎报）。
+  `registry.py` —— 台账 schema 1→2（消费者条目加 `status`/`first_issued`/
+  `last_issued`，`load_registry` 透明迁移旧条目），加 `is_consumer_revoked()`。
+  `candidate.py` —— `uplink`/`submit` 传授权码做 origin 绑定、`review` 标
+  `[REVOKED ORIGIN]`、`promote` 对撤销 origin 硬拒（不入包源 + 记 rejected +
+  exit 1）。`docs/core-manual` §9 加"Candidate attribution"子节收口。
+- 涉及：`governance_core/candidates/uplink.py`、`candidates/registry.py`、
+  `tools/candidate.py`、新增 `tools/test_candidate_attribution.py`、
+  `docs/core-manual.md`。
+- 关键决策：origin 绑定 = 消费者侧 uplink 强制 + GC 侧 review/promote 按台账
+  硬拒，双重;台账 schema 向后兼容（旧条目 load 时迁移、容忍 `status` 缺失视作
+  active）;re-issue 把 `status` 重置为 active（无 auto-unrevoke）。
+- 测试：`test_candidate_attribution` 9/9（台账 schema-2 形态、re-issue 保留
+  first_issued、`is_consumer_revoked` 三态、schema-1→2 迁移、uplink origin
+  匹配/不匹配/坏码）;`promote` 撤销硬拒 dogfood（exit 1、payload 未入包源）;
+  全套回归 codec 11 + auth-guard 9 + revocation 19;build 0.3.0、
+  upgrade/doctor exit 0。P-0071 四 phase 全部实现完成。
+
 ### 2026-05-18 — P-0071 Phase 3 auth-guard online revocation enforcement
 
 - 改动：`auth-guard.py` 重写 —— Gate 1 码验证之外加 **Gate 2 撤销门**:按
@@ -58,23 +79,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   dogfood（init→撤销测试消费者→list 验签→重置空）;wheel 0.3.0 含
   `revocation.py`、不含 `revocation.json` / `maintainer/`;upgrade/doctor
   exit 0。
-
-### 2026-05-18 — P-0071 Phase 1 auth-code schema v2 + leasing + auth-guard cache fix
-
-- 改动：codec payload schema 接受 `{1,2}` —— schema 2 携带 `expiry` /
-  `revocation_feed_url` / `max_offline_days`，schema 1 保留（自托管 upgrade
-  不中断，Art.8）。`auth-guard` 验证缓存键加 `verified_on` 日期维度 —— 过期码
-  不再被陈旧 `valid:true` 命中（原 P-0065 缓存遗漏日期，本阶段先决修复）。
-  `issue_auth_code` 默认签发 schema-2 365 天租约（`--schema` / `--expiry` /
-  `--revocation-feed-url` / `--max-offline-days` 覆盖）。gc 自身重签 schema-2
-  码、`config.json` 更新；版本 0.2.1→0.3.0。
-- 涉及：`governance_core/auth/codec.py`、`hooks/auth-guard.py`、
-  `maintainer/issue_auth_code.py`、`consumer_registry.json`、
-  `.governance/config.json`、新增 `tools/test_auth_codec.py` +
-  `test_auth_guard.py`、`pyproject.toml`、`__init__.py`、`docs/core-manual.md`。
-- 关键决策：单一签名密钥对保留（区分 owner 靠 `consumer_id`，不分密钥）；
-  schema 1 永久码仍被接受 = 过渡期不破；撤销源 URL 已嵌入新码，但拉取与
-  执行属 Phase 3。
-- 测试：`test_auth_codec` 11/11（双 schema 往返、过期/缺字段/篡改/未知 schema
-  拒）；`test_auth_guard` 4/4（陈旧隔日 `valid` 缓存不再被信任的回归守卫）；
-  upgrade/doctor exit 0；wheel 0.3.0 仅含 `governance_core*`。commit 172ee5c。

@@ -212,6 +212,30 @@ require the consumer to upgrade or cooperate. A determined consumer who
 edits or deletes their own `auth-guard.py` cannot be frozen this way (the
 verifier runs on their hardware) -- see the P-0071 proposal Non-Goals.
 
+### Candidate attribution and the consumer registry
+
+Every candidate envelope carries an `origin` — the `consumer_id` of the
+project that produced it. At uplink time `origin` is verified against the
+project's authorization code: the code is signed, so its `consumer_id` is
+authentic, and `python tools/candidate.py uplink` / `submit` aborts if
+`origin` does not match. A candidate cannot be uplinked under a forged
+origin.
+
+`maintainer/consumer_registry.json` (committed, maintainer-side) is the
+ledger of every issued consumer — `consumer_id`, `status`
+(`active` / `revoked`), `first_issued` / `last_issued`, current `expiry`,
+plus the curation decision on each candidate. `issue_auth_code.py` records
+a consumer on issuance; `revoke_consumer.py` flips its `status` to
+`revoked`.
+
+Hub-side curation enforces revocation on the contribution side too:
+`candidate.py review` and `candidate.py promote` both consult the
+registry, and a candidate whose `origin` is a revoked consumer is
+hard-rejected — `review` flags it `[REVOKED ORIGIN]`, `promote` refuses to
+fold it into the package source and records the rejection. Once an owner
+leaves the organization, GC stops both running their governance (the
+revocation feed) and accepting their common-layer contributions.
+
 ### Self-hosted governance-core
 
 governance-core is its own first authorized consumer. Its
