@@ -17,6 +17,22 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-18 — P-0065 Phase 3 candidate envelope + layer tagging
+
+- 改动：新增 `governance_core/candidates/`（envelope 模块：三 kind
+  skill/hook/mechanism + drift 类；`build_envelope` / `validate_envelope` /
+  `validate_metadata` / `make_candidate_id`）；新增 CLI
+  `tools/validate_candidate.py`；`discovery/extractor.py` 加 `--layer` flag →
+  写 learned skill `layer:` frontmatter；`extract-skill.md` 插入 layer 分类
+  步骤；`lesson-classification.md` 加 generic-vs-project 轴。
+- 涉及：`governance_core/candidates/{__init__,envelope}.py`、
+  `governance_core/tools/validate_candidate.py`、`discovery/extractor.py`、
+  `commands/extract-skill.md`、`skills/lesson-classification.md`。
+- 关键决策：`layer ∈ {candidate-common, business}`，默认 candidate-common
+  （过报便宜、漏报无声）；envelope 目录式（candidate.json + payload 子目录）。
+- 测试：13 项单测、真实 extractor `--layer` 跑通、upgrade/doctor exit 0、
+  build 隔离。commit 1d2a575。
+
 ### 2026-05-18 — P-0065 Phase 2 installed-files manifest + baseline hash
 
 - 改动：`install`/`upgrade` 写 `.governance/installed_files.json`（128 文件，
@@ -49,16 +65,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 测试：auth 自测 10/10；install/upgrade/doctor 门控；负向门（无/坏码→7、
   拒同意→8）；`auth-guard` hook（valid/篡改/缺失/缓存）；build 隔离
   （`maintainer/` + 私钥不入包）；gc 自托管 dogfood。commit 581f7e5。
-
-### 2026-05-18 — P-0068 config-aware skills (Phases 1–3)
-
-- 改动：单 agent skill 降级 —— Phase 1 去硬编码 4 处；Phase 2 给 7 个多 agent
-  步骤加拓扑门控；Phase 3 桶 C（lesson 归档 .gitignore 例外、skill-extraction
-  能力门控、STATE.md capability 进 installer）。
-- 涉及：`governance_core/commands/{wrap-up,extract-skill,update-skill,
-  sync-repos,sync-infra,publish-knowledge}.md`、`skills/{lesson-classification,
-  _template}.md`、`installer.py`、`.gitignore`、`STATE.md`。
-- 关键决策：三桶模型 A/B/C；安装完即所得；复用不 fork；3b（打包
-  skills.discovery）拆出为 P-0069。
-- 测试：每 phase `governance-core upgrade` exit 0 + 结构校验通过；P-0068
-  commits 66d3929 / b58aee1 / 25c9bf9。
