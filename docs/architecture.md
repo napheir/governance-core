@@ -185,8 +185,9 @@ Each shipped skill step is one of three buckets:
 The skill-learning machinery (`skills.discovery`) was found unpackaged and
 spun out to P-0069; until it lands, `/extract-skill` + `/wrap-up` Steps
 4a–4c are capability-gated (skip cleanly). The installer also seeds an
-initial `STATE.md` so every consumer has the session-bridge capability on
-install.
+initial `STATE.md` and emits `.claude/settings.local.json` — registering
+every shipped hook from `hooks/hooks_manifest.json` (P-0067) — so a
+consumer's hooks are wired on install, with no hand-authoring.
 
 ## Releasing
 

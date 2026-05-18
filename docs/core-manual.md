@@ -108,13 +108,16 @@ included. A consumer's topology — read from `.governance/config.json`'s
 Running `/wrap-up` in self-hosted governance-core therefore completes with
 every step either applied or cleanly skipped — no broken step.
 
-## 8. Known follow-ups
+## 8. Hook wiring + remaining follow-up
 
-- **P-0067** — `governance-core install` does not yet emit
-  `.claude/settings.local.json` (hook registration); it is hand-authored for
-  now (P-0066 Phase 4, review #6).
-- **P-0069** — the `skills.discovery` skill-learning machinery is not yet
-  packaged; `/extract-skill` + `/wrap-up` Steps 4a–4c are capability-gated
-  until it is.
+`governance-core install` / `upgrade` emit `.claude/settings.local.json`,
+registering every shipped hook from `hooks/hooks_manifest.json` (P-0067) —
+hook wiring is install-and-get-everything, no hand-authoring. Groups tagged
+`"_managed": "governance-core"` are regenerated on every upgrade; a project's
+own hook groups are preserved (a pre-P-0067 hand-authored governance group is
+auto-detected and migrated). The installer is a subprocess, so it can write
+this critical-path file that an interactive agent cannot.
 
-Both are tracked as draft proposals in `shared_state/proposals/core/`.
+Remaining follow-up: **P-0069** — the `skills.discovery` skill-learning
+machinery is not yet packaged; `/extract-skill` + `/wrap-up` Steps 4a–4c are
+capability-gated until it lands (draft proposal in `shared_state/proposals/core/`).

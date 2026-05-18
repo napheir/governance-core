@@ -1,64 +1,124 @@
 {
-    "_comment": "governance-core self-hosting (P-0066 Phase 4). Registers the 13 generic governance hooks installed by `governance-core install` into .claude/hooks/. Paths use ${CLAUDE_PROJECT_DIR} (Claude Code expands it — portable across machines, no absolute paths). This block MERGES with the user-global ~/.claude/settings.json hooks (session-boundary-guard etc. keep firing). The installer does not yet emit this file (review #6 follow-up); it is authored + committed for now.",
-    "hooks": {
-      "PreToolUse": [
-        {
-          "matcher": "Bash",
-          "hooks": [
-            {"type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/command-guard.py\"", "timeout": 15},
-            {"type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/scope-guard.py\"", "timeout": 15}
-          ]
-        },
-        {
-          "matcher": "Edit|Write",
-          "hooks": [
-            {"type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/edit-write-guard.py\"", "timeout": 15},
-            {"type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/constitutional-review.py\"", "timeout": 15}
-          ]
-        },
-        {
-          "matcher": "Bash|Edit|Write",
-          "hooks": [
-            {"type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/data-source-guard.py\"", "timeout": 15}
-          ]
-        }
-      ],
-      "PostToolUse": [
-        {
-          "matcher": "Bash",
-          "hooks": [
-            {"type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/merge-audit.py\"", "timeout": 15},
-            {"type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/repo-health.py\"", "timeout": 15}
-          ]
-		},
-		{
-          "matcher": "Edit|Write",
-          "hooks": [
-            {"type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/direction-guard.py\"", "timeout": 15}
-          ]
-        },
-        {
-          "matcher": "Skill",
-          "hooks": [
-            {"type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/skill-usage-tracker.py\"", "timeout": 15}
-          ]
-        }
-      ],
-      "UserPromptSubmit": [
-        {
-          "hooks": [
-            {"type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/cache-watchdog.py\"", "timeout": 15},
-            {"type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/constitution-reminder.py\"", "timeout": 15},
-            {"type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/prompt-context-router.py\"", "timeout": 15}
-          ]
-        }
-      ],
-      "SessionStart": [
-        {
-          "hooks": [
-            {"type": "command", "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session-context.py\"", "timeout": 15}
-          ]
-        }
-      ]
-    }
+  "_comment": "governance-core self-hosting (P-0066 Phase 4). Registers the 13 generic governance hooks installed by `governance-core install` into .claude/hooks/. Paths use ${CLAUDE_PROJECT_DIR} (Claude Code expands it — portable across machines, no absolute paths). This block MERGES with the user-global ~/.claude/settings.json hooks (session-boundary-guard etc. keep firing). The installer does not yet emit this file (review #6 follow-up); it is authored + committed for now.",
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "_managed": "governance-core",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/merge-audit.py\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/repo-health.py\"",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "_managed": "governance-core",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/direction-guard.py\"",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Skill",
+        "_managed": "governance-core",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/skill-usage-tracker.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "_managed": "governance-core",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/command-guard.py\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/scope-guard.py\"",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Bash|Edit|Write",
+        "_managed": "governance-core",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/data-source-guard.py\"",
+            "timeout": 15
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write",
+        "_managed": "governance-core",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/constitutional-review.py\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/edit-write-guard.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionStart": [
+      {
+        "_managed": "governance-core",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session-context.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "_managed": "governance-core",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/cache-watchdog.py\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/constitution-reminder.py\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/prompt-context-router.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
   }
+}

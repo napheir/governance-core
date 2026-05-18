@@ -277,18 +277,40 @@ def _build_hooks_block(manifest_hooks: dict[str, Any]) -> dict[str, Any]:
     return block
 
 
+def _hook_file_of(hook_entry: dict[str, Any]) -> str:
+    """Extract the hook filename from a settings hook entry's command."""
+    cmd = hook_entry["command"] if "command" in hook_entry else ""
+    tail = cmd.rsplit("/hooks/", 1)
+    return tail[1].strip().strip('"') if len(tail) == 2 else ""
+
+
 def _merge_hooks_block(existing_hooks: dict[str, Any],
-                       governance_block: dict[str, Any]) -> dict[str, Any]:
+                       governance_block: dict[str, Any],
+                       managed_files: Any) -> dict[str, Any]:
     """Merge the governance hooks block into an existing `hooks` dict.
 
-    Groups tagged `_managed == MANAGED_MARKER` are dropped (the governance
-    region is fully regenerated); a project's own untagged groups are
-    preserved (P-0067 merge-not-clobber). Returns the merged `hooks` dict.
+    A group is governance-owned — and therefore regenerated — if it is
+    `_managed`-tagged, OR every hook in it points at a manifest hook file.
+    The second rule recognizes a pre-P-0067 hand-authored governance group
+    so `upgrade` migrates it (drop + regenerate) instead of duplicating it.
+    A project's own groups (pointing at non-manifest hooks) are preserved
+    (P-0067 merge-not-clobber). Returns the merged `hooks` dict.
     """
+    managed_files = set(managed_files)
+
+    def _is_governance(g: Any) -> bool:
+        if not isinstance(g, dict):
+            return False
+        if g.get("_managed") == MANAGED_MARKER:
+            return True
+        hooks = g["hooks"] if "hooks" in g else []
+        if not hooks:
+            return False
+        return all(_hook_file_of(h) in managed_files for h in hooks)
+
     merged: dict[str, Any] = {}
     for event, groups in existing_hooks.items():
-        kept = [g for g in groups
-                if not (isinstance(g, dict) and g.get("_managed") == MANAGED_MARKER)]
+        kept = [g for g in groups if not _is_governance(g)]
         if kept:
             merged[event] = kept
     for event, groups in governance_block.items():
@@ -306,11 +328,12 @@ def _write_settings_local_json(project_root: Path) -> None:
     runs as a subprocess and is the correct actor to wire hooks (P-0067).
     """
     settings_path = project_root / CLAUDE_DIR / "settings.local.json"
-    governance_block = _build_hooks_block(_load_hooks_manifest())
+    manifest = _load_hooks_manifest()
+    governance_block = _build_hooks_block(manifest)
     if settings_path.exists():
         data = json.loads(settings_path.read_text(encoding="utf-8"))
         existing_hooks = data["hooks"] if "hooks" in data else {}
-        data["hooks"] = _merge_hooks_block(existing_hooks, governance_block)
+        data["hooks"] = _merge_hooks_block(existing_hooks, governance_block, manifest)
     else:
         data = {
             "_comment": (
@@ -407,10 +430,29 @@ def doctor(project_root: Path) -> int:
     if not clauses_dir.exists() or not list(clauses_dir.glob("art_*.md")):
         logger.error("[doctor] no clauses in .governance/clauses/")
         return 5
-    logger.info("[doctor] OK: project=%s ritual_phrase=%r agents=%d hooks=%d clauses=%d",
+    # P-0067: verify every shipped hook is registered in settings.local.json
+    settings_path = project_root / CLAUDE_DIR / "settings.local.json"
+    if not settings_path.exists():
+        logger.error("[doctor] no %s/settings.local.json (run install)", CLAUDE_DIR)
+        return 6
+    settings = json.loads(settings_path.read_text(encoding="utf-8"))
+    settings_hooks = settings["hooks"] if "hooks" in settings else {}
+    registered = set()
+    for groups in settings_hooks.values():
+        for g in groups:
+            for h in g["hooks"]:
+                registered.add(_hook_file_of(h))
+    unregistered = sorted(set(_load_hooks_manifest()) - registered)
+    if unregistered:
+        logger.error("[doctor] hooks installed but not registered in "
+                      "settings.local.json: %s", unregistered)
+        return 6
+    logger.info("[doctor] OK: project=%s ritual_phrase=%r agents=%d hooks=%d "
+                "clauses=%d hooks_registered=%d",
                 cfg["project_name"], cfg["ritual_phrase"], len(cfg["agents"]),
                 len(list(hooks_dir.glob("*.py"))),
-                len(list(clauses_dir.glob("art_*.md"))))
+                len(list(clauses_dir.glob("art_*.md"))),
+                len(registered))
     return 0
 
 
