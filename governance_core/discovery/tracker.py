@@ -22,6 +22,7 @@ import json
 import logging
 import math
 import subprocess
+import sys
 from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
@@ -322,6 +323,22 @@ class SkillTracker:
             return False  # already extracted today
         return self.session_complexity() >= _EXTRACTION_THRESHOLD
 
+    def should_extract_reason(self) -> str:
+        """Return why should_extract() gives its verdict (P-0070 Fix B).
+
+        One of: 'recommended' (complexity at/above threshold, nothing
+        extracted today), 'already-extracted-today', or 'below-threshold'.
+        Lets a caller report the real reason rather than assuming low
+        complexity -- complexity can be well above threshold yet
+        should_extract() still False because an extraction already ran today.
+        """
+        sessions = self._data.get("sessions", {})
+        if sessions.get("last_extraction") == _today():
+            return "already-extracted-today"
+        if self.session_complexity() >= _EXTRACTION_THRESHOLD:
+            return "recommended"
+        return "below-threshold"
+
     def skills_used_this_session(self) -> list[str]:
         """Return names of skills loaded (L1) in this session.
 
@@ -383,6 +400,7 @@ class SkillTracker:
             "session_complexity": self.session_complexity(),
             "extraction_threshold": _EXTRACTION_THRESHOLD,
             "should_extract": self.should_extract(),
+            "should_extract_reason": self.should_extract_reason(),
             "total_tracked_skills": len(skills),
             "total_extractions": sessions.get("extractions_total", 0),
             "last_extraction": sessions.get("last_extraction"),
@@ -424,12 +442,21 @@ def main() -> None:
 
     if args.should_extract:
         tracker.populate_from_git()
-        if tracker.should_extract():
-            print("[YES] Session complexity warrants skill extraction")
-            print(f"      Complexity: {tracker.session_complexity()} (threshold: {_EXTRACTION_THRESHOLD})")
+        # P-0070 Fix B: report the real reason -- complexity can be well
+        # above threshold yet extraction still declined because one already
+        # ran today. The old CLI always claimed "not enough complexity".
+        reason = tracker.should_extract_reason()
+        complexity = tracker.session_complexity()
+        if reason == "recommended":
+            sys.stdout.write(
+                "[YES] Session complexity warrants skill extraction\n")
+        elif reason == "already-extracted-today":
+            sys.stdout.write("[NO] A skill was already extracted today\n")
         else:
-            print("[NO] Not enough complexity for extraction yet")
-            print(f"     Complexity: {tracker.session_complexity()} (threshold: {_EXTRACTION_THRESHOLD})")
+            sys.stdout.write("[NO] Not enough complexity for extraction yet\n")
+        sys.stdout.write(
+            f"     Complexity: {complexity} "
+            f"(threshold: {_EXTRACTION_THRESHOLD})\n")
         return
 
     # Default: show stats (auto-populate from git first)

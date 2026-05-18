@@ -297,9 +297,12 @@ def _check_ledger_completeness(in_flight: list, archive: list, repo_root: Path) 
     pointing to `proposal_lib.py migrate-ledger`.
     """
     import json as _json
+    from governance_core.config import load_proposals_config
     errors = []
-    ledger_rel = "../shared_state/proposals/_id_ledger.json"
-    ledger_path = (repo_root / ledger_rel).resolve()
+    # P-0070 Fix A: resolve the ledger from .governance/config.json's
+    # shared_state_root (the source proposal_lib.py uses) -- not a hardcoded
+    # parent-relative path, which is wrong for a self-hosted layout.
+    ledger_path = Path(load_proposals_config(repo_root)["id_ledger_path"])
     if not ledger_path.exists():
         errors.append(
             f"Check 10 LEDGER: {ledger_path} does not exist — "
@@ -442,14 +445,19 @@ def _check_archive_author_match(archive: list, repo_root: Path) -> list:
 def _collect_files(repo_root: Path) -> dict:
     """Return {region: [path, ...]} for the 3 scan regions.
 
-    - in-flight: <repo_root>/../shared_state/proposals/<agent>/p-*.md
+    - in-flight: <shared_state_root>/proposals/<agent>/p-*.md
+                 (shared_state_root from .governance/config.json -- P-0070)
     - archive:   <repo_root>/proposals/_archive/<YYYY>/p-*.md
     - legacy:    <repo_root>/proposals/*.md (top level, excluding _archive,
                  templates, and `_*.md` discussion artifacts)
     """
+    from governance_core.config import load_proposals_config
     out = {"in-flight": [], "archive": [], "legacy": []}
 
-    shared_state_root = (repo_root / "../shared_state/proposals").resolve()
+    # P-0070 Fix A: in-flight proposals live under the configured
+    # shared_state_root, not a hardcoded parent-relative path.
+    shared_state_root = Path(
+        load_proposals_config(repo_root)["shared_state_proposals_dir"])
     if shared_state_root.is_dir():
         for sub in sorted(shared_state_root.iterdir()):
             if not sub.is_dir():
