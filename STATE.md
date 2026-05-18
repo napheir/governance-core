@@ -17,6 +17,21 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-18 — P-0070 Phase 1 audit_proposals path + tracker reason fixes
+
+- 改动：Fix A —— `audit_proposals.py` 改用 `load_proposals_config` 解析
+  in-flight 目录 + `_id_ledger.json`（与 `proposal_lib.py` 同源，不再硬编码
+  父级相对路径）。Fix B —— `tracker.py` 加 `should_extract_reason()`，
+  `--should-extract` CLI 区分 already-extracted-today / below-threshold /
+  recommended、报实际原因；stats 加 `should_extract_reason` 字段。
+- 涉及：`governance_core/tools/audit_proposals.py`、
+  `governance_core/discovery/tracker.py`。
+- 关键决策：两个均纯报告修复，不动 `should_extract()` 启发式；tracker CLI
+  改 `sys.stdout.write`（避 `constitutional-review` 对 print 的拦截）。
+- 测试：自托管 gc `audit_proposals` 报 in-flight=1/archive=4/0 failures
+  （误报 ledger FAIL 消失）；`--should-extract` 正确报 "already extracted
+  today"；`should_extract_reason` 单测。commit 0b5b870。
+
 ### 2026-05-18 — P-0065 Phase 5 hub-side curation + convergence loop
 
 - 改动：GC 侧 curation 收口闭环 —— 新增 consumer registry 模块
@@ -53,19 +68,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 测试：扫描器+hook 16 项、Part A 8 项（collect/submit/uplink/secret-abort/
   consent-gate）、Part B 漂移真实 dogfood、upgrade/doctor exit 0、build 隔离。
   commit 47fdf8f。
-
-### 2026-05-18 — P-0065 Phase 3 candidate envelope + layer tagging
-
-- 改动：新增 `governance_core/candidates/`（envelope 模块：三 kind
-  skill/hook/mechanism + drift 类；`build_envelope` / `validate_envelope` /
-  `validate_metadata` / `make_candidate_id`）；新增 CLI
-  `tools/validate_candidate.py`；`discovery/extractor.py` 加 `--layer` flag →
-  写 learned skill `layer:` frontmatter；`extract-skill.md` 插入 layer 分类
-  步骤；`lesson-classification.md` 加 generic-vs-project 轴。
-- 涉及：`governance_core/candidates/{__init__,envelope}.py`、
-  `governance_core/tools/validate_candidate.py`、`discovery/extractor.py`、
-  `commands/extract-skill.md`、`skills/lesson-classification.md`。
-- 关键决策：`layer ∈ {candidate-common, business}`，默认 candidate-common
-  （过报便宜、漏报无声）；envelope 目录式（candidate.json + payload 子目录）。
-- 测试：13 项单测、真实 extractor `--layer` 跑通、upgrade/doctor exit 0、
-  build 隔离。commit 1d2a575。

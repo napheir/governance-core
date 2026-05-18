@@ -6,6 +6,23 @@
 
 ---
 
+### 2026-05-18 — P-0065 Phase 3 candidate envelope + layer tagging
+
+- 改动：新增 `governance_core/candidates/`（envelope 模块：三 kind
+  skill/hook/mechanism + drift 类；`build_envelope` / `validate_envelope` /
+  `validate_metadata` / `make_candidate_id`）；新增 CLI
+  `tools/validate_candidate.py`；`discovery/extractor.py` 加 `--layer` flag →
+  写 learned skill `layer:` frontmatter；`extract-skill.md` 插入 layer 分类
+  步骤；`lesson-classification.md` 加 generic-vs-project 轴。
+- 涉及：`governance_core/candidates/{__init__,envelope}.py`、
+  `governance_core/tools/validate_candidate.py`、`discovery/extractor.py`、
+  `commands/extract-skill.md`、`skills/lesson-classification.md`。
+- 关键决策：`layer ∈ {candidate-common, business}`，默认 candidate-common
+  （过报便宜、漏报无声）；envelope 目录式（candidate.json + payload 子目录）。
+- 测试：13 项单测、真实 extractor `--layer` 跑通、upgrade/doctor exit 0、
+  build 隔离。commit 1d2a575。
+
+
 ### 2026-05-18 — P-0065 Phase 2 installed-files manifest + baseline hash
 
 - 改动：`install`/`upgrade` 写 `.governance/installed_files.json`（128 文件，
