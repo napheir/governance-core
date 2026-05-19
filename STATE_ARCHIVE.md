@@ -6,6 +6,28 @@
 
 ---
 
+### 2026-05-19 — P-0073 Phase 2 upgrade --dry-run 预览 + 逐文件 diff
+
+- 改动：`installer.py` `install()` 加 `dry_run` 参数,贯穿 `_copy_tree` /
+  `_capture_drift` / `_prune_stale` / `_render_clauses` —— **同一计算路径、
+  只在每个写盘点 `if not dry_run` 分叉**(宪法第八条,非平行函数)。新增
+  `_pkg_source_path`(自治层路径→包源)、`_drift_diffs`(逐 drift 文件
+  `difflib` unified diff)、`_local_additions`(枚举 owner 新增,过滤
+  `.pyc`/`__pycache__`/dotfile)、`_dry_run_report`。`cli.py` `upgrade` 加
+  `--dry-run` 标志。
+- 涉及：改 `governance_core/installer.py`、`cli.py`、`docs/core-manual.md`
+  (§12 扩);新增 `tools/test_upgrade_dry_run.py`。
+- 关键决策:`dry_run` 贯穿同一计算路径,dry-run 报告的覆盖/drift/prune 集与
+  真实 upgrade 必然一致;逐文件 diff 比"当前个性化内容"与"待覆盖的包源版";
+  澄清 —— `upgrade` 是**整层原子覆盖**,无逐文件 keep/overwrite(混版本会
+  碎化公共层),dry-run 后决策空间是整体二元(升/不升)。
+- 测试:`test_upgrade_dry_run` 8/8(`_pkg_source_path` 映射 4 例、
+  `_drift_diffs` 改动有 diff/无改动 no-diff);dogfood `upgrade --dry-run`
+  (142 files、`git status` 前后不变);drift 探针(改自治层文件→dry-run
+  检出 + 输出 unified diff 精确显示改动行);回归 update-reminder 9 +
+  candidate-sweep 10 + revocation 19;upgrade/doctor exit 0;build 0.5.0。
+
+
 ### 2026-05-19 — P-0073 Phase 1 update-available 通知 hook
 
 - 改动：新增 SessionStart hook `update-reminder.py` —— 比对自治层

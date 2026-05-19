@@ -23,6 +23,11 @@ from typing import Any
 REGISTRY_SCHEMA = 2
 DECISIONS = ("promoted", "rejected", "override")
 
+# Default lease-renewal window (P-0074 Phase 2): a consumer whose lease
+# expires within this many days is flagged for renewal. Single source --
+# both renewal_status.py and the renewal-reminder hook reference this.
+RENEWAL_THRESHOLD_DAYS = 30
+
 
 def _now() -> str:
     """Return the current UTC time as an ISO-8601 'Z' string."""
@@ -161,6 +166,54 @@ def is_consumer_revoked(path: Path, consumer_id: str) -> bool:
         if entry["consumer_id"] == consumer_id:
             return "status" in entry and entry["status"] == "revoked"
     return False
+
+
+def lease_status(registry: dict[str, Any],
+                 today: datetime.date) -> list[dict[str, Any]]:
+    """Return every active consumer with the days left on its lease.
+
+    Pure function over an already-loaded registry (see load_registry).
+    Each result is {consumer_id, expiry, days_left}, where days_left is
+    (expiry - today) in days -- negative once the lease has lapsed, and
+    None when the entry carries no parseable `expiry` (e.g. a schema-1
+    perpetual code). A consumer with `status: revoked` is excluded; a
+    missing status counts as active (consistent with is_consumer_revoked).
+    Sorted by days_left ascending so the most urgent renewals come first;
+    an unknown (None) days_left sorts last.
+    """
+    rows: list[dict[str, Any]] = []
+    for entry in registry["consumers"]:
+        status = entry["status"] if "status" in entry else "active"
+        if status == "revoked":
+            continue
+        expiry = entry["expiry"] if "expiry" in entry else None
+        days_left: int | None = None
+        if expiry:
+            try:
+                days_left = (datetime.date.fromisoformat(expiry)
+                             - today).days
+            except ValueError:
+                days_left = None
+        rows.append({"consumer_id": entry["consumer_id"],
+                     "expiry": expiry, "days_left": days_left})
+    rows.sort(key=lambda r: (r["days_left"] is None,
+                             r["days_left"]
+                             if r["days_left"] is not None else 0))
+    return rows
+
+
+def expiring_consumers(registry: dict[str, Any], today: datetime.date,
+                       threshold_days: int) -> list[dict[str, Any]]:
+    """Return active consumers whose lease expires within threshold_days.
+
+    A filter over lease_status (P-0074 Phase 2): keeps entries whose
+    days_left is known and <= threshold_days. An already-lapsed lease
+    (negative days_left) is included -- an expired consumer is the most
+    urgent renewal of all.
+    """
+    return [r for r in lease_status(registry, today)
+            if r["days_left"] is not None
+            and r["days_left"] <= threshold_days]
 
 
 def record_candidate(path: Path, candidate_id: str, origin: str, kind: str,

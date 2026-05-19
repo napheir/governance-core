@@ -222,6 +222,32 @@ registry entry `active` again -- other revoked entries are untouched.
 Revocation is still intended as durable; `--unrevoke` is a maintainer
 correction, not a routine on/off toggle.
 
+### Lease-renewal visibility (P-0074)
+
+Schema-2 codes are 365-day leases; renewal means re-issuing before
+`expiry`. To see which consumers are due:
+
+```pwsh
+python maintainer/renewal_status.py
+python maintainer/renewal_status.py --threshold-days 45
+```
+
+It scans `consumer_registry.json`, lists every active consumer ordered by
+days left on its lease, and flags `[RENEW]` for any within the renewal
+window (default 30 days) and `[LAPSED]` for any already expired. The same
+view surfaces unprompted: the `renewal-reminder` SessionStart hook prints a
+`[Lease renewal]` banner whenever a lease is within the window. That hook
+is **hub-side** -- it reads `maintainer/consumer_registry.json`, a file
+only this repo carries, so a consumer project that merely installed the
+package stays silent (the opposite of `candidate-reminder` /
+`update-reminder`, which are consumer-side).
+
+This is visibility only. Renewal stays a deliberate act -- re-run
+`issue_auth_code.py --consumer-id <id>` for the flagged consumer. There is
+no auto-renewal: a signed auto-renewal feed was deliberately left out of
+P-0074 (it trades against P-0071's lease-expiry-as-backstop) for a
+separate proposal.
+
 ### Candidate attribution and the consumer registry
 
 Every candidate envelope carries an `origin` — the `consumer_id` of the

@@ -17,6 +17,30 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-19 — P-0074 Phase 2 续期可见性（提醒）
+
+- 改动：`candidates/registry.py` 加 `lease_status`(扫 active 消费者算
+  `days_left`、按紧迫度升序、无 expiry 排末)、`expiring_consumers`(阈值内
+  过滤、含已 lapsed)、`RENEWAL_THRESHOLD_DAYS=30` 单一常量。新增 hub 侧
+  SessionStart hook `renewal-reminder.py`(读 `maintainer/consumer_registry
+  .json`、无该目录 → 静默、异常静默 exit 0),注册进 `hooks_manifest.json`。
+  新增 maintainer 工具 `renewal_status.py`(列 active 消费者、`[RENEW]`/
+  `[LAPSED]` 标注、`--threshold-days`)。无版本 bump(P-0074 已在 Phase 1
+  一次性 0.5.0→0.6.0)。
+- 涉及：`governance_core/candidates/registry.py`、`hooks/renewal-reminder.py`
+  (新)、`hooks/hooks_manifest.json`、`tools/test_renewal.py`(新)、
+  `maintainer/renewal_status.py`(新)、`docs/core-manual.md`(§9 加续期子节)。
+- 关键决策：续期计算抽成纯函数 → tool 与 hook 同路径(宪法第八条);hub 侧
+  hook 的门 = `maintainer/` 目录存在与否(hub 天然信号、被 wheel 白名单天然
+  排除),与 candidate/update-reminder 的消费者侧门相反;只浮现不自动重签
+  (自动续期与 P-0071 租约兜底有 tradeoff,留独立提案)。
+- 测试:`test_renewal` 13/13(纯函数 8 + hook 五态);回归 revocation 24 +
+  candidate_attribution 9 + candidate_reminder 7 + update_reminder 9;
+  `renewal_status` dogfood(3 消费者全健康 364-365d);upgrade/doctor exit 0
+  (hooks 19/registered 18);build 0.6.0 隔离 OK(`renewal-reminder.py` 进
+  wheel、`renewal_status.py`/`maintainer/` 不泄漏)。P-0074 两 phase 全部
+  实现完成。
+
 ### 2026-05-19 — P-0074 Phase 1 逐消费者 un-revoke
 
 - 改动：`auth/revocation.py` 加 `remove_revocation`(`add_revocation` 镜像、
@@ -53,27 +77,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   upgrade/doctor exit 0;回归 update-reminder 9 + upgrade-dry-run 8 +
   candidate-sweep 10;build 0.5.0。skill 不做单测(对 agent 的指令、非可
   单测代码,与其它 skill 一致)。P-0073 三 phase 全部实现完成。
-
-### 2026-05-19 — P-0073 Phase 2 upgrade --dry-run 预览 + 逐文件 diff
-
-- 改动：`installer.py` `install()` 加 `dry_run` 参数,贯穿 `_copy_tree` /
-  `_capture_drift` / `_prune_stale` / `_render_clauses` —— **同一计算路径、
-  只在每个写盘点 `if not dry_run` 分叉**(宪法第八条,非平行函数)。新增
-  `_pkg_source_path`(自治层路径→包源)、`_drift_diffs`(逐 drift 文件
-  `difflib` unified diff)、`_local_additions`(枚举 owner 新增,过滤
-  `.pyc`/`__pycache__`/dotfile)、`_dry_run_report`。`cli.py` `upgrade` 加
-  `--dry-run` 标志。
-- 涉及：改 `governance_core/installer.py`、`cli.py`、`docs/core-manual.md`
-  (§12 扩);新增 `tools/test_upgrade_dry_run.py`。
-- 关键决策:`dry_run` 贯穿同一计算路径,dry-run 报告的覆盖/drift/prune 集与
-  真实 upgrade 必然一致;逐文件 diff 比"当前个性化内容"与"待覆盖的包源版";
-  澄清 —— `upgrade` 是**整层原子覆盖**,无逐文件 keep/overwrite(混版本会
-  碎化公共层),dry-run 后决策空间是整体二元(升/不升)。
-- 测试:`test_upgrade_dry_run` 8/8(`_pkg_source_path` 映射 4 例、
-  `_drift_diffs` 改动有 diff/无改动 no-diff);dogfood `upgrade --dry-run`
-  (142 files、`git status` 前后不变);drift 探针(改自治层文件→dry-run
-  检出 + 输出 unified diff 精确显示改动行);回归 update-reminder 9 +
-  candidate-sweep 10 + revocation 19;upgrade/doctor exit 0;build 0.5.0。
 
 ### 2026-05-18 — P-0071 Phase 4 candidate attribution + revoked-origin reject
 
