@@ -19,6 +19,15 @@
       "status": "active",
       "first_issued": "2026-05-18",
       "last_issued": "2026-05-18"
+    },
+    {
+      "consumer_id": "trade-agent",
+      "status": "active",
+      "first_issued": "2026-05-19",
+      "last_issued": "2026-05-19",
+      "expiry": "2027-05-19",
+      "note": "",
+      "recorded_at": "2026-05-19T05:37:40Z"
     }
   ],
   "candidates": []
