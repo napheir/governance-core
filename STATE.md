@@ -17,6 +17,25 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-19 — P-0074 Phase 1 逐消费者 un-revoke
+
+- 改动：`auth/revocation.py` 加 `remove_revocation`(`add_revocation` 镜像、
+  幂等);`candidates/registry.py` 加 `mark_active`(`status` 回 active、清
+  `revoked_on`/`revocation_reason`);`maintainer/revoke_consumer.py` 加
+  `--unrevoke <id>`(验旧源签名 → `remove_revocation` → 重签写回 → 台账
+  `mark_active`;不在 feed 里 → no-op 报告)。版本 0.5.0→0.6.0。
+- 涉及：`governance_core/auth/revocation.py`、`candidates/registry.py`、
+  `maintainer/revoke_consumer.py`、`tools/test_revocation.py`、
+  `pyproject.toml`、`__init__.py`、`docs/core-manual.md`(§9 加 un-revoke)。
+- 关键决策：un-revoke 逐消费者移除、不误伤 feed 内其他撤销项;改源前先验旧
+  签名(防洗白篡改);撤销仍以持久为意图,un-revoke 是误撤销纠错。
+- 环境修复:排查测试失败(新函数报 no-attribute)发现本仓库 editable 安装被
+  全局 `pip install governance-core==0.5.0` 覆盖(auto-tax 安装误入全局
+  Python)—— `pip install -e .` 重装恢复 editable,dogfood 复原。
+- 测试:`test_revocation` 24/24(+5:`remove_revocation` 在册/不在册、
+  `mark_active` 三态);`revoke_consumer` dogfood(撤销 → list → `--unrevoke`
+  → list 0 revoked,重签验签通过);build 0.6.0。
+
 ### 2026-05-19 — P-0073 Phase 3 /upgrade skill（agent 驱动升级编排）
 
 - 改动：新增 `governance_core/commands/upgrade.md` —— `/upgrade` command
@@ -55,27 +74,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   (142 files、`git status` 前后不变);drift 探针(改自治层文件→dry-run
   检出 + 输出 unified diff 精确显示改动行);回归 update-reminder 9 +
   candidate-sweep 10 + revocation 19;upgrade/doctor exit 0;build 0.5.0。
-
-### 2026-05-19 — P-0073 Phase 1 update-available 通知 hook
-
-- 改动：新增 SessionStart hook `update-reminder.py` —— 比对自治层
-  `installed_files.json` 的 `governance_core_version` 与 PyPI 最新版,有
-  新版即在启动 banner 报 + 两步更新命令;TTL 缓存 ~12h、PyPI 不可达 / 无
-  manifest / 任何异常静默 exit 0、hub(`consumer_id==governance-core`)静默。
-  新增 `governance_core/version_util.py`(`parse_version` / `is_newer` /
-  `minor_gap`,hook 与 Phase 2 共用、可单测)。`hooks_manifest.json` 注册新
-  hook → SessionStart。版本 0.4.0→0.5.0。
-- 涉及：新增 `governance_core/hooks/update-reminder.py`、`version_util.py`、
-  `tools/test_update_reminder.py`;改 `hooks/hooks_manifest.json`、
-  `.claude/settings.local.json`(upgrade 重生)、`docs/core-manual.md`、
-  `pyproject.toml`、`__init__.py`。
-- 关键决策:版本比较抽进可 import 的 `version_util.py` —— hyphen 命名的
-  hook 不可 import/单测,放进包模块既可单测又给 Phase 2 复用;hook 绝不
-  阻断 session 启动(任何异常静默 exit 0);hub editable 恒为最新故静默。
-- 测试:`test_update_reminder` 9/9(`version_util` 单测 + hook 四态,预置
-  TTL 缓存不碰网络);回归 candidate-reminder 7 + candidate-sweep 10 +
-  revocation 19;upgrade/doctor exit 0(`hooks=18 registered=17`);build
-  0.5.0。
 
 ### 2026-05-18 — P-0071 Phase 4 candidate attribution + revoked-origin reject
 

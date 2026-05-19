@@ -127,6 +127,27 @@ def mark_revoked(path: Path, consumer_id: str, revoked_on: str,
     return found
 
 
+def mark_active(path: Path, consumer_id: str) -> bool:
+    """Clear a consumer's revoked status; return True iff the entry existed.
+
+    The registry side of un-revoke (P-0074 Phase 1): sets `status='active'`
+    and drops `revoked_on` / `revocation_reason`. A consumer absent from
+    the registry yields False and changes nothing.
+    """
+    registry = load_registry(path)
+    found = False
+    for entry in registry["consumers"]:
+        if entry["consumer_id"] == consumer_id:
+            entry["status"] = "active"
+            for stale in ("revoked_on", "revocation_reason"):
+                if stale in entry:
+                    del entry[stale]
+            found = True
+    if found:
+        save_registry(path, registry)
+    return found
+
+
 def is_consumer_revoked(path: Path, consumer_id: str) -> bool:
     """Return True iff the registry marks `consumer_id` as revoked.
 

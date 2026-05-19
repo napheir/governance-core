@@ -216,6 +216,12 @@ require the consumer to upgrade or cooperate. A determined consumer who
 edits or deletes their own `auth-guard.py` cannot be frozen this way (the
 verifier runs on their hardware) -- see the P-0071 proposal Non-Goals.
 
+To correct a mistaken revocation (P-0074), `revoke_consumer.py --unrevoke
+<id>` removes that one consumer from the feed, re-signs it, and marks the
+registry entry `active` again -- other revoked entries are untouched.
+Revocation is still intended as durable; `--unrevoke` is a maintainer
+correction, not a routine on/off toggle.
+
 ### Candidate attribution and the consumer registry
 
 Every candidate envelope carries an `origin` — the `consumer_id` of the

@@ -82,6 +82,16 @@ def main() -> int:
         lambda: sum(e["consumer_id"] == "acme"
                     for e in twice["revoked"]) == 1))
 
+    # --- remove_revocation (un-revoke, P-0074) ------------------------
+    results.append(_case(
+        "remove_revocation drops the consumer",
+        lambda: not revocation.is_revoked(
+            revocation.remove_revocation(feed, "acme"), "acme")))
+    results.append(_case(
+        "remove_revocation of an absent consumer is a no-op",
+        lambda: revocation.remove_revocation(
+            revocation.new_feed(), "ghost")["revoked"] == []))
+
     # --- sign / verify round-trip -------------------------------------
     feed_bytes = revocation.serialize_feed(feed)
     sig = revocation.sign_feed(feed_bytes, seed)
@@ -147,6 +157,19 @@ def main() -> int:
             "mark_revoked returns False for an unregistered consumer",
             lambda: registry.mark_revoked(reg, "ghost", "2026-05-18")
             is False))
+        # mark_active -- the registry side of un-revoke (P-0074)
+        results.append(_case(
+            "mark_active clears revoked status back to active",
+            lambda: registry.mark_active(reg, "acme") is True
+            and registry.load_registry(reg)["consumers"][0]["status"]
+            == "active"))
+        results.append(_case(
+            "mark_active drops revoked_on / revocation_reason",
+            lambda: "revoked_on" not in
+            registry.load_registry(reg)["consumers"][0]))
+        results.append(_case(
+            "mark_active returns False for an unregistered consumer",
+            lambda: registry.mark_active(reg, "ghost") is False))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

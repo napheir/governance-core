@@ -108,6 +108,22 @@ def add_revocation(feed: dict[str, Any], consumer_id: str, reason: str,
     return {"schema": FEED_SCHEMA, "updated": _now(), "revoked": kept}
 
 
+def remove_revocation(feed: dict[str, Any],
+                      consumer_id: str) -> dict[str, Any]:
+    """Return a new feed with `consumer_id` removed from the revoked list.
+
+    The mirror of `add_revocation` -- the per-consumer un-revoke (P-0074).
+    Idempotent: removing a consumer that is not listed simply yields a feed
+    without it (only `updated` is bumped). `updated` is bumped to now.
+    """
+    if not consumer_id:
+        raise RevocationFeedError("consumer_id must be non-empty")
+    kept = [e for e in _revoked_list(feed)
+            if e.get("consumer_id") != consumer_id]
+    kept.sort(key=lambda e: e["consumer_id"])
+    return {"schema": FEED_SCHEMA, "updated": _now(), "revoked": kept}
+
+
 def sign_feed(feed_bytes: bytes, seed: bytes) -> str:
     """Return the b64url Ed25519 signature over `feed_bytes`."""
     return codec.b64url_encode(auth.sign(feed_bytes, seed))
