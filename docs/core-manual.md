@@ -381,3 +381,14 @@ personalized common-layer file's divergence from upstream is visible
 before it is overwritten. It also lists local additions (owner-authored
 files that are not install-managed) so they can be reviewed against the
 incremental changes. The real `upgrade` is unchanged.
+
+The `/upgrade` skill (P-0073 Phase 3) is the recommended way to apply an
+update: it orchestrates `upgrade --dry-run` → an agent semantic-conflict
+review → an owner confirmation gate → the real `upgrade`. The semantic
+review is the agent's own LLM judgment — the installer never calls a
+model: for each drifted file and each owner-authored local addition the
+agent assesses whether it conflicts with the incoming common-layer
+changes and emits an advisory — best-effort, never blocking. The
+`update-reminder` hook points the owner at `/upgrade`. A bare
+`governance-core upgrade` still works for a manual upgrade; it just skips
+the agent-review layer.

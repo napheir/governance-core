@@ -17,6 +17,24 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-19 — P-0073 Phase 3 /upgrade skill（agent 驱动升级编排）
+
+- 改动：新增 `governance_core/commands/upgrade.md` —— `/upgrade` command
+  skill,把升级编排成 5 步:① `upgrade --dry-run` 预览 → ② agent **语义
+  冲突审查**(对 drift 文件 + 本地新增逐项判断,advisory)→ ③ 汇报 owner
+  → ④ **owner 确认门**(阻塞)→ ⑤ 真实 `upgrade`。`update-reminder.py`
+  提示语改指向 `/upgrade`。
+- 涉及：新增 `governance_core/commands/upgrade.md`;改
+  `governance_core/hooks/update-reminder.py`、`docs/core-manual.md`（§12 扩）。
+- 关键决策：语义审查 = **skill 指令,不是给 installer 外挂模型** —— 发起
+  upgrade 的 agent 本身即 LLM,由它读 dry-run 输出做语义判断;advisory 非
+  gate(只警示,owner 确认门才阻塞);纯手工 `governance-core upgrade`
+  优雅降级跳过本编排,结构层仍可手动用。
+- 测试：`/upgrade` 被 registry/技能发现(available-skills 列表出现);
+  upgrade/doctor exit 0;回归 update-reminder 9 + upgrade-dry-run 8 +
+  candidate-sweep 10;build 0.5.0。skill 不做单测(对 agent 的指令、非可
+  单测代码,与其它 skill 一致)。P-0073 三 phase 全部实现完成。
+
 ### 2026-05-19 — P-0073 Phase 2 upgrade --dry-run 预览 + 逐文件 diff
 
 - 改动：`installer.py` `install()` 加 `dry_run` 参数,贯穿 `_copy_tree` /
@@ -58,28 +76,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   TTL 缓存不碰网络);回归 candidate-reminder 7 + candidate-sweep 10 +
   revocation 19;upgrade/doctor exit 0(`hooks=18 registered=17`);build
   0.5.0。
-
-### 2026-05-19 — P-0072 Phase 2 SessionStart candidate-reminder hook
-
-- 改动：新增 SessionStart hook `candidate-reminder.py` —— 扫
-  `candidate-common` 且不在去重台账的 learned skill,启动 banner 报"N 个候选
-  待上传";hub(consumer_id=governance-core)静默;任何错误静默 exit 0、绝不
-  破坏 session 启动。`candidates/ledger.py` `payload_digest` 改按 **basename**
-  计哈希(让松散 skill 文件直接对账),加 `skill_digest` /
-  `pending_candidate_skills`。`hooks/hooks_manifest.json` 注册新 hook →
-  SessionStart。
-- 涉及：新增 `governance_core/hooks/candidate-reminder.py`、
-  `tools/test_candidate_reminder.py`;改 `candidates/ledger.py`、
-  `hooks/hooks_manifest.json`、`.claude/settings.local.json`(upgrade 重生)、
-  `docs/core-manual.md`。
-- 关键决策：digest 改 basename —— Phase 1 的 `payload_digest` 含 envelope
-  相对路径(`payload/x.md`),hook 拿到的是松散 skill 文件、构不出该路径;
-  basename 化后 `skill_digest(松散文件)` == `payload_digest(其 envelope)`,
-  hook 无需重建 envelope 即可对账(Phase 1 未发布,无遗留台账可破)。
-- 测试：`test_candidate_reminder` 7/7(digest 一致性、`pending_candidate_skills`
-  查询、hook 四态);回归 revocation 19 + candidate-attribution 9 +
-  candidate-sweep 10;upgrade/doctor exit 0(`hooks=17 registered=16`,新
-  hook 已注册);build 0.4.0。P-0072 两 phase 全部实现完成。
 
 ### 2026-05-18 — P-0071 Phase 4 candidate attribution + revoked-origin reject
 

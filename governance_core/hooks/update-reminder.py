@@ -107,8 +107,8 @@ def main() -> None:
     sys.stdout.write(
         f"[governance-core] update available: {latest} "
         f"(this project is on {installed}).\n"
-        "  Update: pip install -U governance-core && "
-        "governance-core upgrade --project-root .\n")
+        "  Update: pip install -U governance-core, then run /upgrade "
+        "(preview -> review -> apply).\n")
     sys.exit(0)
 
 

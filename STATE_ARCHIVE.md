@@ -6,6 +6,29 @@
 
 ---
 
+### 2026-05-19 — P-0072 Phase 2 SessionStart candidate-reminder hook
+
+- 改动：新增 SessionStart hook `candidate-reminder.py` —— 扫
+  `candidate-common` 且不在去重台账的 learned skill,启动 banner 报"N 个候选
+  待上传";hub(consumer_id=governance-core)静默;任何错误静默 exit 0、绝不
+  破坏 session 启动。`candidates/ledger.py` `payload_digest` 改按 **basename**
+  计哈希(让松散 skill 文件直接对账),加 `skill_digest` /
+  `pending_candidate_skills`。`hooks/hooks_manifest.json` 注册新 hook →
+  SessionStart。
+- 涉及：新增 `governance_core/hooks/candidate-reminder.py`、
+  `tools/test_candidate_reminder.py`;改 `candidates/ledger.py`、
+  `hooks/hooks_manifest.json`、`.claude/settings.local.json`(upgrade 重生)、
+  `docs/core-manual.md`。
+- 关键决策：digest 改 basename —— Phase 1 的 `payload_digest` 含 envelope
+  相对路径(`payload/x.md`),hook 拿到的是松散 skill 文件、构不出该路径;
+  basename 化后 `skill_digest(松散文件)` == `payload_digest(其 envelope)`,
+  hook 无需重建 envelope 即可对账(Phase 1 未发布,无遗留台账可破)。
+- 测试：`test_candidate_reminder` 7/7(digest 一致性、`pending_candidate_skills`
+  查询、hook 四态);回归 revocation 19 + candidate-attribution 9 +
+  candidate-sweep 10;upgrade/doctor exit 0(`hooks=17 registered=16`,新
+  hook 已注册);build 0.4.0。P-0072 两 phase 全部实现完成。
+
+
 ### 2026-05-19 — P-0072 Phase 1 candidate-uplink trigger in wrap-up
 
 - 改动：候选管道补"触发线"(P-0065 造好出口、无人扣扳机的缺口)。新增
