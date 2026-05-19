@@ -17,6 +17,27 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-19 — P-0073 Phase 2 upgrade --dry-run 预览 + 逐文件 diff
+
+- 改动：`installer.py` `install()` 加 `dry_run` 参数,贯穿 `_copy_tree` /
+  `_capture_drift` / `_prune_stale` / `_render_clauses` —— **同一计算路径、
+  只在每个写盘点 `if not dry_run` 分叉**(宪法第八条,非平行函数)。新增
+  `_pkg_source_path`(自治层路径→包源)、`_drift_diffs`(逐 drift 文件
+  `difflib` unified diff)、`_local_additions`(枚举 owner 新增,过滤
+  `.pyc`/`__pycache__`/dotfile)、`_dry_run_report`。`cli.py` `upgrade` 加
+  `--dry-run` 标志。
+- 涉及：改 `governance_core/installer.py`、`cli.py`、`docs/core-manual.md`
+  (§12 扩);新增 `tools/test_upgrade_dry_run.py`。
+- 关键决策:`dry_run` 贯穿同一计算路径,dry-run 报告的覆盖/drift/prune 集与
+  真实 upgrade 必然一致;逐文件 diff 比"当前个性化内容"与"待覆盖的包源版";
+  澄清 —— `upgrade` 是**整层原子覆盖**,无逐文件 keep/overwrite(混版本会
+  碎化公共层),dry-run 后决策空间是整体二元(升/不升)。
+- 测试:`test_upgrade_dry_run` 8/8(`_pkg_source_path` 映射 4 例、
+  `_drift_diffs` 改动有 diff/无改动 no-diff);dogfood `upgrade --dry-run`
+  (142 files、`git status` 前后不变);drift 探针(改自治层文件→dry-run
+  检出 + 输出 unified diff 精确显示改动行);回归 update-reminder 9 +
+  candidate-sweep 10 + revocation 19;upgrade/doctor exit 0;build 0.5.0。
+
 ### 2026-05-19 — P-0073 Phase 1 update-available 通知 hook
 
 - 改动：新增 SessionStart hook `update-reminder.py` —— 比对自治层
@@ -59,27 +80,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   查询、hook 四态);回归 revocation 19 + candidate-attribution 9 +
   candidate-sweep 10;upgrade/doctor exit 0(`hooks=17 registered=16`,新
   hook 已注册);build 0.4.0。P-0072 两 phase 全部实现完成。
-
-### 2026-05-19 — P-0072 Phase 1 candidate-uplink trigger in wrap-up
-
-- 改动：候选管道补"触发线"(P-0065 造好出口、无人扣扳机的缺口)。新增
-  `governance_core/candidates/ledger.py` —— uplink 去重台账,按 payload
-  **内容哈希**去重(候选 id 带日期不可靠)。`tools/candidate.py` 加 `sweep`
-  子命令(collect → 对未 uplink 候选 uplink → 记台账),hub 门
-  (`consumer_id==governance-core` → N/A),consent/网络/`gh` 缺失退化为报告
-  不返回非零;`uplink`/`submit` 成功后也记台账。`commands/wrap-up.md` 加
-  Step 4d 候选上传 + Step 6 检查清单项。版本 0.3.0→0.4.0。
-- 涉及：新增 `governance_core/candidates/ledger.py`、
-  `tools/test_candidate_sweep.py`;改 `tools/candidate.py`、
-  `commands/wrap-up.md`、`docs/core-manual.md`、`pyproject.toml`、
-  `__init__.py`。
-- 关键决策：去重按 payload sha256 而非候选 id(同内容只发一次、改了再发);
-  `sweep` 永不阻断 wrap-up(仅 config 缺失返 2,其余报告 + exit 0);hub
-  门按 consumer_id 判定,与 P-0068 拓扑门同源。
-- 测试：`test_candidate_sweep` 10/10(内容哈希去重、台账幂等、sweep 选中
-  candidate-common·business 被忽略·台账已记则跳过·空项目无候选·hub N/A);
-  回归 revocation 19 + candidate-attribution 9;`sweep` dogfood gc 自身命中
-  hub 门;upgrade/doctor exit 0;build 0.4.0。
 
 ### 2026-05-18 — P-0071 Phase 4 candidate attribution + revoked-origin reject
 

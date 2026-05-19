@@ -60,6 +60,7 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
         auth_code=args.auth_code,
         accept_candidate_uplink=args.accept_candidate_uplink,
         prune=not args.no_prune,
+        dry_run=args.dry_run,
     )
 
 
@@ -106,6 +107,9 @@ def main() -> int:
                            help="consent to candidate uplink if not already recorded")
     p_upgrade.add_argument("--no-prune", action="store_true",
                            help="keep autonomy-layer files dropped from the package source")
+    p_upgrade.add_argument("--dry-run", action="store_true",
+                           help="preview the upgrade -- diff drifted files, "
+                                "list overwrite/prune, write nothing")
     p_upgrade.set_defaults(func=cmd_upgrade)
 
     p_doctor = sub.add_parser("doctor")

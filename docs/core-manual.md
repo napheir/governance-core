@@ -363,3 +363,21 @@ PyPI query is TTL-cached (~12h); an unreachable PyPI or any error is
 silent, and the hub project (governance-core itself, an editable install)
 is silent. It only notifies — upgrading stays the owner's deliberate
 choice.
+
+Before applying an upgrade, preview it (P-0073 Phase 2):
+
+```pwsh
+governance-core upgrade --dry-run --project-root .
+```
+
+`--dry-run` runs the full upgrade computation — the overwrite set, drift
+detection, prune set, version delta — through the *same* code path as a
+real upgrade, but writes nothing. It reports how many install-managed
+files would be overwritten, the version delta (with a minor-skew note
+pointing at `contracts/` when the jump crosses minor lines), and for
+every locally-edited install-managed file a **unified diff** of the
+consumer's current content vs the incoming package version — so a
+personalized common-layer file's divergence from upstream is visible
+before it is overwritten. It also lists local additions (owner-authored
+files that are not install-managed) so they can be reviewed against the
+incremental changes. The real `upgrade` is unchanged.

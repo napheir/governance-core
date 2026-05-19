@@ -38,6 +38,7 @@ config.json schema:
 from __future__ import annotations
 
 import datetime
+import difflib
 import hashlib
 import json
 import logging
@@ -227,11 +228,12 @@ def _collect_consent(config: dict[str, Any], accept_flag: bool) -> bool:
     return False
 
 
-def _copy_tree(src: Path, dst: Path) -> list[Path]:
-    """Copy a directory tree; return the destination paths written.
+def _copy_tree(src: Path, dst: Path, dry_run: bool = False) -> list[Path]:
+    """Copy a directory tree; return the destination paths (would be) written.
 
     Overwrites existing files. Per-category README.md files at the package
-    subdir root are skipped (docs, not governance assets).
+    subdir root are skipped (docs, not governance assets). With `dry_run`,
+    the destination list is computed identically but nothing is written.
     """
     if not src.exists():
         logger.warning("[copy] source missing: %s", src)
@@ -245,13 +247,15 @@ def _copy_tree(src: Path, dst: Path) -> list[Path]:
             continue
         rel = s.relative_to(src)
         d = dst / rel
-        d.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(s, d)
+        if not dry_run:
+            d.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(s, d)
         written.append(d)
     return written
 
 
-def _render_clauses(project_root: Path, config: dict[str, Any]) -> list[Path]:
+def _render_clauses(project_root: Path, config: dict[str, Any],
+                    dry_run: bool = False) -> list[Path]:
     """Copy clauses to .governance/clauses/ with placeholder substitution.
 
     Returns the clause files written. Substitution: `如君所愿` ->
@@ -261,7 +265,8 @@ def _render_clauses(project_root: Path, config: dict[str, Any]) -> list[Path]:
     """
     src = PKG_ROOT / "clauses"
     dst = project_root / CLAUSES_REL
-    dst.mkdir(parents=True, exist_ok=True)
+    if not dry_run:
+        dst.mkdir(parents=True, exist_ok=True)
     written: list[Path] = []
     ritual = config.get("ritual_phrase", "Acknowledged")
     for s in src.glob("art_*.md"):
@@ -270,9 +275,10 @@ def _render_clauses(project_root: Path, config: dict[str, Any]) -> list[Path]:
         # stub on first install, but never overwrite an existing copy.
         if s.name in MIXED_CLAUSES and dst_file.exists():
             continue
-        content = s.read_text(encoding="utf-8")
-        content = content.replace("如君所愿", ritual)
-        dst_file.write_text(content, encoding="utf-8")
+        if not dry_run:
+            content = s.read_text(encoding="utf-8")
+            content = content.replace("如君所愿", ritual)
+            dst_file.write_text(content, encoding="utf-8")
         written.append(dst_file)
     return written
 
@@ -315,7 +321,8 @@ def _write_installed_manifest(project_root: Path,
     logger.info("[manifest] wrote installed_files.json (%d files)", len(files))
 
 
-def _capture_drift(project_root: Path, consumer_id: str) -> list[str]:
+def _capture_drift(project_root: Path, consumer_id: str,
+                   dry_run: bool = False) -> list[str]:
     """Capture locally-edited install-managed files as drift candidates.
 
     Before upgrade overwrites the autonomy layer, each install-managed file
@@ -343,6 +350,8 @@ def _capture_drift(project_root: Path, consumer_id: str) -> list[str]:
         if current == entry["baseline_sha256"]:
             continue
         drifted.append(entry["path"])
+        if dry_run:
+            continue  # dry-run: detect drift, do not build envelopes
         category = entry["category"]
         kind = category if category in ("hook", "skill") else "mechanism"
         try:
@@ -364,7 +373,8 @@ def _capture_drift(project_root: Path, consumer_id: str) -> list[str]:
 
 
 def _prune_stale(project_root: Path,
-                 installed: list[tuple[Path, str]]) -> list[str]:
+                 installed: list[tuple[Path, str]],
+                 dry_run: bool = False) -> list[str]:
     """Delete autonomy-layer files dropped from the package source (P-0070).
 
     Compares the *previous* installed_files.json against the set just
@@ -396,6 +406,9 @@ def _prune_stale(project_root: Path,
         target = project_root / rel
         if not target.exists():
             continue  # already gone
+        if dry_run:
+            pruned.append(rel)
+            continue  # dry-run: compute the prune set, delete nothing
         try:
             target.unlink()
             pruned.append(rel)
@@ -584,6 +597,143 @@ def _write_settings_local_json(project_root: Path) -> None:
     logger.info("[settings] wrote settings.local.json (%d governance hooks)", n)
 
 
+def _pkg_source_path(rel_posix: str) -> Path | None:
+    """Map an autonomy-layer relative path back to its package-source file.
+
+    Used by the `upgrade --dry-run` drift diff (P-0073 Phase 2) to locate
+    the incoming version of a locally-edited install-managed file. Returns
+    None for a path that is not install-managed.
+    """
+    for src_sub, dst_sub in COPY_CATEGORIES:
+        prefix = dst_sub + "/"
+        if rel_posix.startswith(prefix):
+            return PKG_ROOT / src_sub / rel_posix[len(prefix):]
+    if rel_posix.startswith(CLAUSES_REL + "/"):
+        return PKG_ROOT / "clauses" / rel_posix[len(CLAUSES_REL) + 1:]
+    for src_sub, dst_sub in KNOWLEDGE_COPY_MAP:
+        prefix = dst_sub + "/"
+        if rel_posix.startswith(prefix):
+            return PKG_ROOT / src_sub / rel_posix[len(prefix):]
+    return None
+
+
+def _drift_diffs(project_root: Path,
+                 drifted: list[str]) -> list[tuple[str, str]]:
+    """Return (rel_path, unified_diff) for each drifted file (P-0073 Phase 2).
+
+    The diff is the consumer's current (personalized) content vs the
+    incoming package-source version -- exactly what `upgrade` would
+    overwrite, so the owner sees how their edit diverged from upstream.
+    """
+    diffs: list[tuple[str, str]] = []
+    for rel in drifted:
+        current = project_root / rel
+        src = _pkg_source_path(rel)
+        if src is None or not src.exists() or not current.exists():
+            diffs.append((rel, "  (diff unavailable -- source not located)"))
+            continue
+        try:
+            cur = current.read_text(encoding="utf-8").splitlines(keepends=True)
+            new = src.read_text(encoding="utf-8").splitlines(keepends=True)
+        except (OSError, UnicodeDecodeError):
+            diffs.append((rel, "  (diff unavailable -- unreadable file)"))
+            continue
+        diff = "".join(difflib.unified_diff(
+            cur, new, fromfile=f"current/{rel}", tofile=f"incoming/{rel}"))
+        diffs.append((rel, diff or "  (no textual difference)"))
+    return diffs
+
+
+def _local_additions(project_root: Path,
+                     installed: list[tuple[Path, str]]) -> list[str]:
+    """List autonomy-region files the owner added locally (P-0073 Phase 2).
+
+    A file under a copy-category directory that is neither in the set the
+    package would install nor in the previous manifest -- i.e. an
+    owner-authored addition. The `.claude/skills/learned/` carve-out is
+    excluded (learned skills are the candidate pipeline's domain). This
+    list is the input for the Phase 3 semantic-conflict review.
+    """
+    install_paths = {p.relative_to(project_root).as_posix()
+                     for p, _ in installed}
+    old_paths: set[str] = set()
+    manifest_path = project_root / INSTALLED_FILES_REL
+    if manifest_path.exists():
+        try:
+            old = json.loads(manifest_path.read_text(encoding="utf-8"))
+            old_paths = {e["path"] for e in old["files"]}
+        except (json.JSONDecodeError, KeyError):
+            pass
+    additions: list[str] = []
+    for _, dst_sub in COPY_CATEGORIES:
+        region = project_root / dst_sub
+        if not region.exists():
+            continue
+        for f in region.rglob("*"):
+            if not f.is_file():
+                continue
+            if (f.suffix == ".pyc" or "__pycache__" in f.parts
+                    or f.name.startswith(".")):
+                continue  # bytecode / runtime state -- not an authored asset
+            rel = f.relative_to(project_root).as_posix()
+            if "/skills/learned/" in rel:
+                continue
+            if rel not in install_paths and rel not in old_paths:
+                additions.append(rel)
+    return sorted(additions)
+
+
+def _dry_run_report(project_root: Path, installed: list[tuple[Path, str]],
+                    drifted: list[str], pruned: list[str]) -> int:
+    """Emit the `upgrade --dry-run` preview; write nothing. Returns 0.
+
+    Reports the version delta (with a minor-skew note), the overwrite /
+    drift / prune sets, a unified diff per drifted file, and the owner's
+    local additions -- so an upgrade is reviewed, not applied blind.
+    """
+    from governance_core import __version__, version_util
+    old_version = None
+    manifest_path = project_root / INSTALLED_FILES_REL
+    if manifest_path.exists():
+        try:
+            old_version = json.loads(manifest_path.read_text(
+                encoding="utf-8"))["governance_core_version"]
+        except (json.JSONDecodeError, KeyError):
+            pass
+
+    logger.info("[dry-run] governance-core upgrade preview "
+                "-- nothing will be written")
+    if old_version:
+        logger.info("[dry-run] version: %s -> %s", old_version, __version__)
+        gap = version_util.minor_gap(__version__, old_version)
+        if gap >= 1:
+            logger.info("[dry-run]   crosses %d minor version line(s) -- "
+                        "review contracts/ for breaking changes before "
+                        "upgrading", gap)
+    logger.info("[dry-run] would overwrite %d install-managed file(s)",
+                len(installed))
+    if pruned:
+        logger.info("[dry-run] would prune %d stale file(s): %s",
+                    len(pruned), ", ".join(pruned))
+    if drifted:
+        logger.info("[dry-run] %d install-managed file(s) locally edited "
+                    "(drift) -- would be captured as candidates, then "
+                    "overwritten:", len(drifted))
+        for rel, diff in _drift_diffs(project_root, drifted):
+            logger.info("[dry-run] --- drift diff: %s ---", rel)
+            for line in diff.rstrip("\n").splitlines():
+                logger.info("  %s", line)
+    additions = _local_additions(project_root, installed)
+    if additions:
+        logger.info("[dry-run] %d local addition(s) (not install-managed) "
+                    "-- review for conflict with the incremental changes:",
+                    len(additions))
+        for rel in additions:
+            logger.info("  + %s", rel)
+    logger.info("[dry-run] no files written.")
+    return 0
+
+
 def install(
     project_root: Path,
     config_overrides: dict[str, Any] | None = None,
@@ -592,6 +742,7 @@ def install(
     auth_code: str | None = None,
     accept_candidate_uplink: bool = False,
     prune: bool = True,
+    dry_run: bool = False,
 ) -> int:
     """Install / upgrade the governance layer into `project_root`.
 
@@ -652,13 +803,14 @@ def install(
             "consent_at": _now_iso(),
             "consent_terms_version": CONSENT_TERMS_VERSION,
         }
-    _write_config(project_root, cfg)
+    if not dry_run:
+        _write_config(project_root, cfg)
     logger.info("[install] project=%s ritual_phrase=%r", cfg.get("project_name"), cfg.get("ritual_phrase"))
 
     # P-0065 Phase 4: capture locally-edited install-managed files as drift
     # candidates BEFORE the copy below overwrites them.
-    drifted = _capture_drift(project_root, consumer_id)
-    if drifted:
+    drifted = _capture_drift(project_root, consumer_id, dry_run=dry_run)
+    if drifted and not dry_run:
         sys.stderr.write(
             f"[drift] {len(drifted)} install-managed file(s) were locally "
             "edited; captured as drift candidates in the outbox "
@@ -672,7 +824,7 @@ def install(
     for src_sub, dst_sub in COPY_CATEGORIES:
         src = PKG_ROOT / src_sub
         dst = project_root / dst_sub
-        written = _copy_tree(src, dst)
+        written = _copy_tree(src, dst, dry_run=dry_run)
         counts[f".claude/{src_sub}" if src_sub not in ("tools", "contracts", "agent_rules") else dst_sub] = len(written)
         installed.extend((p, CATEGORY_OF[src_sub]) for p in written)
     for src_sub, dst_sub in KNOWLEDGE_COPY_MAP:
@@ -685,29 +837,36 @@ def install(
             for s in src.iterdir():
                 if s.is_file() and s.name != "README.md":
                     d = dst / s.name
-                    d.parent.mkdir(parents=True, exist_ok=True)
-                    shutil.copy2(s, d)
+                    if not dry_run:
+                        d.parent.mkdir(parents=True, exist_ok=True)
+                        shutil.copy2(s, d)
                     installed.append((d, "knowledge"))
                     n += 1
         counts[dst_sub] = n
 
-    clause_files = _render_clauses(project_root, cfg)
+    clause_files = _render_clauses(project_root, cfg, dry_run=dry_run)
     counts[".governance/clauses"] = len(clause_files)
     installed.extend((p, "clause") for p in clause_files)
 
-    _configure_gitattributes(project_root)
-    _seed_state_md(project_root, cfg)
-    _write_settings_local_json(project_root)
+    if not dry_run:
+        _configure_gitattributes(project_root)
+        _seed_state_md(project_root, cfg)
+        _write_settings_local_json(project_root)
 
     # P-0070: prune autonomy-layer files dropped from the package source,
     # BEFORE the manifest is rewritten (the diff needs the old manifest).
+    pruned: list[str] = []
     if prune:
-        pruned = _prune_stale(project_root, installed)
-        if pruned:
+        pruned = _prune_stale(project_root, installed, dry_run=dry_run)
+        if pruned and not dry_run:
             sys.stderr.write(
                 f"[prune] {len(pruned)} stale install-managed file(s) "
                 "removed (dropped from the package source):\n"
                 + "".join(f"  - {p}\n" for p in pruned))
+
+    # P-0073 Phase 2: dry-run stops here -- report the preview, write nothing.
+    if dry_run:
+        return _dry_run_report(project_root, installed, drifted, pruned)
 
     _write_installed_manifest(project_root, installed)
 

@@ -6,6 +6,28 @@
 
 ---
 
+### 2026-05-19 — P-0072 Phase 1 candidate-uplink trigger in wrap-up
+
+- 改动：候选管道补"触发线"(P-0065 造好出口、无人扣扳机的缺口)。新增
+  `governance_core/candidates/ledger.py` —— uplink 去重台账,按 payload
+  **内容哈希**去重(候选 id 带日期不可靠)。`tools/candidate.py` 加 `sweep`
+  子命令(collect → 对未 uplink 候选 uplink → 记台账),hub 门
+  (`consumer_id==governance-core` → N/A),consent/网络/`gh` 缺失退化为报告
+  不返回非零;`uplink`/`submit` 成功后也记台账。`commands/wrap-up.md` 加
+  Step 4d 候选上传 + Step 6 检查清单项。版本 0.3.0→0.4.0。
+- 涉及：新增 `governance_core/candidates/ledger.py`、
+  `tools/test_candidate_sweep.py`;改 `tools/candidate.py`、
+  `commands/wrap-up.md`、`docs/core-manual.md`、`pyproject.toml`、
+  `__init__.py`。
+- 关键决策：去重按 payload sha256 而非候选 id(同内容只发一次、改了再发);
+  `sweep` 永不阻断 wrap-up(仅 config 缺失返 2,其余报告 + exit 0);hub
+  门按 consumer_id 判定,与 P-0068 拓扑门同源。
+- 测试：`test_candidate_sweep` 10/10(内容哈希去重、台账幂等、sweep 选中
+  candidate-common·business 被忽略·台账已记则跳过·空项目无候选·hub N/A);
+  回归 revocation 19 + candidate-attribution 9;`sweep` dogfood gc 自身命中
+  hub 门;upgrade/doctor exit 0;build 0.4.0。
+
+
 ### 2026-05-18 — P-0071 Phase 1 auth-code schema v2 + leasing + auth-guard cache fix
 
 - 改动：codec payload schema 接受 `{1,2}` —— schema 2 携带 `expiry` /
