@@ -17,6 +17,27 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-19 — P-0073 Phase 1 update-available 通知 hook
+
+- 改动：新增 SessionStart hook `update-reminder.py` —— 比对自治层
+  `installed_files.json` 的 `governance_core_version` 与 PyPI 最新版,有
+  新版即在启动 banner 报 + 两步更新命令;TTL 缓存 ~12h、PyPI 不可达 / 无
+  manifest / 任何异常静默 exit 0、hub(`consumer_id==governance-core`)静默。
+  新增 `governance_core/version_util.py`(`parse_version` / `is_newer` /
+  `minor_gap`,hook 与 Phase 2 共用、可单测)。`hooks_manifest.json` 注册新
+  hook → SessionStart。版本 0.4.0→0.5.0。
+- 涉及：新增 `governance_core/hooks/update-reminder.py`、`version_util.py`、
+  `tools/test_update_reminder.py`;改 `hooks/hooks_manifest.json`、
+  `.claude/settings.local.json`(upgrade 重生)、`docs/core-manual.md`、
+  `pyproject.toml`、`__init__.py`。
+- 关键决策:版本比较抽进可 import 的 `version_util.py` —— hyphen 命名的
+  hook 不可 import/单测,放进包模块既可单测又给 Phase 2 复用;hook 绝不
+  阻断 session 启动(任何异常静默 exit 0);hub editable 恒为最新故静默。
+- 测试:`test_update_reminder` 9/9(`version_util` 单测 + hook 四态,预置
+  TTL 缓存不碰网络);回归 candidate-reminder 7 + candidate-sweep 10 +
+  revocation 19;upgrade/doctor exit 0(`hooks=18 registered=17`);build
+  0.5.0。
+
 ### 2026-05-19 — P-0072 Phase 2 SessionStart candidate-reminder hook
 
 - 改动：新增 SessionStart hook `candidate-reminder.py` —— 扫

@@ -341,3 +341,25 @@ is listed for manual placement. Every decision is written to
 Promotion is a judgment call: the tooling collects and presents; the
 maintainer decides. A promoted capability reaches every consumer through the
 next release.
+
+## 12. Consumer updates (P-0073)
+
+A consumer updates governance-core in two steps:
+
+```pwsh
+pip install -U governance-core              # fetch the new wheel
+governance-core upgrade --project-root .    # re-materialize the autonomy layer
+```
+
+`upgrade` alone re-materializes from the *installed* package, so the
+`pip install -U` must come first to actually move versions.
+
+The `update-reminder.py` SessionStart hook (P-0073 Phase 1) closes the
+"owner never remembers" gap: at session start it compares the autonomy
+layer's recorded version (`installed_files.json` →
+`governance_core_version`) with the latest release on PyPI, and when a
+newer one exists prints the update command in the startup banner. The
+PyPI query is TTL-cached (~12h); an unreachable PyPI or any error is
+silent, and the hub project (governance-core itself, an editable install)
+is silent. It only notifies — upgrading stays the owner's deliberate
+choice.

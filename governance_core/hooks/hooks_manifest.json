@@ -17,6 +17,7 @@
     "constitution-reminder.py": {"event": "UserPromptSubmit", "matcher": null},
     "prompt-context-router.py": {"event": "UserPromptSubmit", "matcher": null},
     "session-context.py":       {"event": "SessionStart",    "matcher": null},
-    "candidate-reminder.py":    {"event": "SessionStart",    "matcher": null}
+    "candidate-reminder.py":    {"event": "SessionStart",    "matcher": null},
+    "update-reminder.py":       {"event": "SessionStart",    "matcher": null}
   }
 }
