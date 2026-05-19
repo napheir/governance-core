@@ -1,12 +1,24 @@
 {
-  "schema": 1,
+  "schema": 2,
   "consumers": [
+    {
+      "consumer_id": "auto-tax-filing",
+      "status": "active",
+      "first_issued": "2026-05-19",
+      "last_issued": "2026-05-19",
+      "expiry": "2027-05-19",
+      "note": "",
+      "recorded_at": "2026-05-19T05:01:39Z"
+    },
     {
       "consumer_id": "governance-core",
       "issued": "2026-05-18",
       "expiry": "2027-05-18",
       "note": "",
-      "recorded_at": "2026-05-18T12:53:06Z"
+      "recorded_at": "2026-05-18T12:53:06Z",
+      "status": "active",
+      "first_issued": "2026-05-18",
+      "last_issued": "2026-05-18"
     }
   ],
   "candidates": []
