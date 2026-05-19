@@ -317,6 +317,12 @@ is a clean skip. `sweep` degrades to a report (never a non-zero exit) when
 consent, network, or `gh` is unavailable, so it cannot stall a wrap-up.
 The hub project (governance-core itself) has nothing to uplink and skips.
 
+The `candidate-reminder.py` SessionStart hook (P-0072 Phase 2) backs the
+trigger: at every session start it counts `candidate-common` learned
+skills absent from the uplink ledger and surfaces them in the startup
+banner — so an un-uplinked candidate stays loudly visible even if
+`/wrap-up` is skipped entirely. The hook is silent for the hub project.
+
 ### Hub side — curating incoming candidates
 
 As governance-core's maintainer:

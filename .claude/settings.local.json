@@ -108,6 +108,11 @@
         "hooks": [
           {
             "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/candidate-reminder.py\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
             "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/session-context.py\"",
             "timeout": 15
           }

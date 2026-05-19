@@ -16,6 +16,7 @@
     "cache-watchdog.py":        {"event": "UserPromptSubmit", "matcher": null},
     "constitution-reminder.py": {"event": "UserPromptSubmit", "matcher": null},
     "prompt-context-router.py": {"event": "UserPromptSubmit", "matcher": null},
-    "session-context.py":       {"event": "SessionStart",    "matcher": null}
+    "session-context.py":       {"event": "SessionStart",    "matcher": null},
+    "candidate-reminder.py":    {"event": "SessionStart",    "matcher": null}
   }
 }

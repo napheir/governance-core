@@ -30,21 +30,61 @@ def ledger_path(project_root: Path) -> Path:
     return collect.outbox_dir(project_root) / LEDGER_NAME
 
 
-def payload_digest(envelope_dir: Path) -> str:
-    """Return a sha256 over an envelope's payload files (order-stable).
+def _hash_payload(items: list[tuple[str, bytes]]) -> str:
+    """Return a sha256 over (basename, bytes) pairs, order-stable."""
+    digest = hashlib.sha256()
+    for name, data in sorted(items):
+        digest.update(name.encode("utf-8"))
+        digest.update(b"\0")
+        digest.update(data)
+        digest.update(b"\0")
+    return digest.hexdigest()
 
-    The digest covers each declared source path and its bytes, so two
+
+def payload_digest(envelope_dir: Path) -> str:
+    """Return a sha256 over an envelope's payload files (basename + bytes).
+
+    Keyed on the payload file *basename*, not the envelope-relative path,
+    so a loose skill file and the same file inside an envelope's payload/
+    hash equal -- letting the SessionStart reminder (P-0072 Phase 2) match
+    learned skills against the ledger without rebuilding envelopes. Two
     envelopes with identical payload content hash equal even when their
     date-stamped ids differ.
     """
     meta = envelope.validate_envelope(envelope_dir)
-    digest = hashlib.sha256()
-    for rel in sorted(meta["source_paths"]):
-        digest.update(rel.encode("utf-8"))
-        digest.update(b"\0")
-        digest.update((envelope_dir / rel).read_bytes())
-        digest.update(b"\0")
-    return digest.hexdigest()
+    return _hash_payload([
+        (Path(rel).name, (envelope_dir / rel).read_bytes())
+        for rel in meta["source_paths"]])
+
+
+def skill_digest(skill_path: Path) -> str:
+    """Return the candidate digest of a loose skill file.
+
+    Equals `payload_digest` of the single-file envelope `collect` would
+    build for this skill, so a learned skill can be checked against the
+    uplink ledger directly.
+    """
+    return _hash_payload([(skill_path.name, skill_path.read_bytes())])
+
+
+def pending_candidate_skills(project_root: Path) -> list[Path]:
+    """Return `candidate-common` learned skills not yet in the uplink ledger.
+
+    The query behind the SessionStart reminder hook (P-0072 Phase 2): a
+    learned skill tagged `layer: candidate-common` whose content digest is
+    absent from the ledger has not been uplinked yet.
+    """
+    learned = project_root / ".claude" / "skills" / "learned"
+    if not learned.exists():
+        return []
+    led = load_ledger(ledger_path(project_root))
+    pending: list[Path] = []
+    for skill in sorted(learned.glob("*.md")):
+        if collect.read_layer(skill) != "candidate-common":
+            continue
+        if not is_uplinked(led, skill_digest(skill)):
+            pending.append(skill)
+    return pending
 
 
 def load_ledger(path: Path) -> dict[str, Any]:
