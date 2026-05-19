@@ -14,6 +14,12 @@ Subcommands:
         Scan and uplink an existing candidate envelope -- e.g. one produced
         by `collect` or captured as installer drift.
 
+    candidate.py sweep [--project-root .] [--dry-run] [--repo ...]
+        The /wrap-up candidate trigger (P-0072): collect candidate-common
+        skills, then uplink every one not already in the dedup ledger.
+        The hub project skips; degrades to a report on missing consent /
+        network so it never stalls a wrap-up.
+
     candidate.py review [--project-root .] [--repo ...]
         Hub side: list incoming candidates -- local envelopes under
         candidates/ and open GitHub issues labelled `candidate`.
@@ -42,6 +48,7 @@ from pathlib import Path
 
 from governance_core.candidates import collect as _collect
 from governance_core.candidates import envelope as _envelope
+from governance_core.candidates import ledger as _ledger
 from governance_core.candidates import registry as _registry
 from governance_core.candidates import uplink as _uplink
 
@@ -74,6 +81,18 @@ def _consent_ok(cfg: dict) -> bool:
     """Return True if config records candidate-uplink consent."""
     return ("candidate_uplink" in cfg
             and cfg["candidate_uplink"].get("consent") is True)
+
+
+def _record_uplink(project_root: Path, envelope_dir: Path,
+                   issue_url: str) -> None:
+    """Record a successful uplink in the dedup ledger (best-effort)."""
+    try:
+        meta = _envelope.validate_envelope(envelope_dir)
+        digest = _ledger.payload_digest(envelope_dir)
+        _ledger.record_uplink(_ledger.ledger_path(project_root), digest,
+                              meta["id"], issue_url)
+    except (_envelope.EnvelopeError, OSError):
+        pass  # the ledger is a dedup optimization; never fail uplink on it
 
 
 def cmd_collect(args: argparse.Namespace) -> int:
@@ -120,6 +139,8 @@ def cmd_uplink(args: argparse.Namespace) -> int:
     except (_uplink.UplinkError, _envelope.EnvelopeError) as exc:
         sys.stderr.write(f"[candidate] uplink failed: {exc}\n")
         return 1
+    if not args.dry_run:
+        _record_uplink(root, Path(args.envelope_dir), result.strip())
     sys.stdout.write(result + "\n")
     return 0
 
@@ -158,8 +179,89 @@ def cmd_submit(args: argparse.Namespace) -> int:
     except (_uplink.UplinkError, _envelope.EnvelopeError) as exc:
         sys.stderr.write(f"[candidate] submit failed: {exc}\n")
         return 1
+    if not args.dry_run:
+        _record_uplink(root, envelope_dir, result.strip())
     sys.stdout.write(f"[candidate] envelope: {envelope_dir}\n")
     sys.stdout.write(result + "\n")
+    return 0
+
+
+def cmd_sweep(args: argparse.Namespace) -> int:
+    """Collect candidate-common skills and uplink any not yet sent (P-0072).
+
+    The /wrap-up candidate trigger. Runs collect, then uplinks every outbox
+    envelope whose payload digest is absent from the dedup ledger. The hub
+    project (governance-core itself) has nothing to uplink and skips.
+    Degrades to a report -- never blocks -- when consent, network, or `gh`
+    is unavailable, so it cannot stall a phase wrap-up.
+    """
+    root = Path(args.project_root).resolve()
+    cfg = _config(root)
+    if cfg is None:
+        return 2
+    origin = _origin(cfg)
+    auth_code = _auth_code(cfg)
+    if origin is None or auth_code is None:
+        sys.stdout.write("[candidate] sweep: project not fully authorized "
+                         "-- skipped (no consumer_id / auth code in config)\n")
+        return 0
+    if origin == "governance-core":
+        sys.stdout.write("[candidate] sweep: [N/A -- hub project] "
+                         "governance-core curates via review/promote, it "
+                         "does not uplink to itself\n")
+        return 0
+
+    _collect.collect_netnew_skills(root, origin)
+    outbox = _collect.outbox_dir(root)
+    envelopes = (sorted({p.parent for p in outbox.rglob("candidate.json")})
+                 if outbox.exists() else [])
+    led_path = _ledger.ledger_path(root)
+    led = _ledger.load_ledger(led_path)
+
+    pending: list[tuple[Path, str]] = []
+    for env in envelopes:
+        try:
+            digest = _ledger.payload_digest(env)
+        except _envelope.EnvelopeError:
+            continue
+        if not _ledger.is_uplinked(led, digest):
+            pending.append((env, digest))
+
+    if not pending:
+        sys.stdout.write("[candidate] sweep: no pending candidates -- "
+                         "nothing to uplink\n")
+        return 0
+    if not args.dry_run and not _consent_ok(cfg):
+        sys.stdout.write(f"[candidate] sweep: {len(pending)} pending "
+                         f"candidate(s), but candidate-uplink consent is not "
+                         f"recorded -- not uplinked (re-run install to "
+                         f"consent)\n")
+        return 0
+
+    sent = 0
+    for env, digest in pending:
+        try:
+            meta = _envelope.validate_envelope(env)
+            result = _uplink.uplink_envelope(env, auth_code, repo=args.repo,
+                                             dry_run=args.dry_run)
+        except (_uplink.UplinkError, _envelope.EnvelopeError) as exc:
+            sys.stderr.write(f"[candidate] sweep: skipped {env.name} -- "
+                             f"{exc}\n")
+            continue
+        if args.dry_run:
+            sys.stdout.write(f"[candidate] sweep: would uplink {meta['id']}\n")
+        else:
+            _ledger.record_uplink(led_path, digest, meta["id"],
+                                  result.strip())
+            sys.stdout.write(f"[candidate] sweep: uplinked {meta['id']} -> "
+                             f"{result.strip()}\n")
+            sent += 1
+    if args.dry_run:
+        sys.stdout.write(f"[candidate] sweep dry-run: {len(pending)} pending "
+                         f"candidate(s) would be uplinked\n")
+    else:
+        sys.stdout.write(f"[candidate] sweep: uplinked {sent}/{len(pending)} "
+                         f"pending candidate(s)\n")
     return 0
 
 
@@ -294,6 +396,12 @@ def main() -> int:
     p_submit.add_argument("--repo", default=_uplink.UPSTREAM_REPO)
     p_submit.add_argument("--dry-run", action="store_true")
     p_submit.set_defaults(func=cmd_submit)
+
+    p_sweep = sub.add_parser("sweep")
+    p_sweep.add_argument("--project-root", default=".")
+    p_sweep.add_argument("--repo", default=_uplink.UPSTREAM_REPO)
+    p_sweep.add_argument("--dry-run", action="store_true")
+    p_sweep.set_defaults(func=cmd_sweep)
 
     p_review = sub.add_parser("review")
     p_review.add_argument("--project-root", default=".")

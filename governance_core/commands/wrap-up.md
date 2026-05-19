@@ -159,6 +159,32 @@ python -m governance_core.discovery.extractor --auto-refine "<skill-name>"
 python -m governance_core.discovery.registry --format table
 ```
 
+## 4d. 候选上传（候选管道触发器，P-0072）
+
+> **Hub gate** — 若 `.governance/config.json` 的 `authorization.consumer_id`
+> 为 `governance-core`（本项目即收敛 hub），打印 `[N/A — hub project]` 并
+> 跳过本步：hub 用 `candidate.py review/promote` 收口，不向自己 uplink。
+> 否则继续。
+
+把本阶段新产生的 `candidate-common` 候选上传到 governance-core —— 这是候选
+管道的触发器（出口 collect/uplink 由 P-0065 建好，触发线由 P-0072 接上）：
+
+```bash
+python tools/candidate.py sweep
+```
+
+`sweep` 会 collect 当前带 `layer: candidate-common` 的 learned skill、对每个
+**尚未 uplink**（不在去重台账 `.governance/candidate-outbox/_uplinked.json`
+里）的候选跑 uplink、记台账。语义：
+
+- **有候选** → 自动 uplink。受 install 时已收的 `candidate_uplink.consent`
+  授权，payload 过 secret-scan + origin 绑定；台账确保同一内容不重复发。
+- **无候选 / consent 缺失 / 网络或 `gh` 不可用** → 报告并跳过；`sweep`
+  不返回非零、不阻断阶段总结。
+
+在检查清单标记上传了 N 个 / 跳过（原因）。**本步不可省** —— 省略 = 候选
+永远到不了收敛 hub（这正是 P-0072 修复的缺口）。
+
 ## 5. 基础设施同步（仅 core agent）
 
 > **Topology gate (P-0068)** — multi-agent step. If `.governance/config.json`
@@ -234,6 +260,7 @@ stash + fetch + merge + 冲突解 + 推 feature 远程 ≈ 总 5-10s + ~3KB skil
 - [x] 教训已分类（去向: memory / skill-guide / skill-learned / CLAUDE.md / knowledge / discard）
 - [x] Skill 已提取 / 跳过（原因: xxx）
 - [x] Skill 已精炼 / 跳过（原因: xxx）
+- [x] 候选已上传 / 跳过（原因: xxx）
 - [x] Infra 已同步 / 跳过（原因: xxx）
 ```
 

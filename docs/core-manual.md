@@ -300,6 +300,23 @@ with `python tools/candidate.py uplink <envelope-dir>` (`--dry-run` previews
 without sending). The payload is secret-scanned before it leaves the
 project, and uplink is consent-gated.
 
+### The trigger — `sweep` in `/wrap-up` (P-0072)
+
+A staged candidate that is never uplinked never reaches the hub. P-0072
+wires the **trigger**: `/wrap-up` step 4d runs
+
+```pwsh
+python tools/candidate.py sweep
+```
+
+`sweep` collects `candidate-common` skills and uplinks every one whose
+payload digest is absent from the dedup ledger
+(`.governance/candidate-outbox/_uplinked.json`) — so the same skill is
+sent once, an edited skill is re-sent, and a phase with no new candidate
+is a clean skip. `sweep` degrades to a report (never a non-zero exit) when
+consent, network, or `gh` is unavailable, so it cannot stall a wrap-up.
+The hub project (governance-core itself) has nothing to uplink and skips.
+
 ### Hub side — curating incoming candidates
 
 As governance-core's maintainer:
