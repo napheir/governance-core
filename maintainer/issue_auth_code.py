@@ -2,8 +2,8 @@
 
 Maintainer-only. Reads the private signing key from
 ~/.governance-core/signing_key.json and prints a signed authorization code
-for one consumer. Hand the printed code to the project owner out-of-band;
-they pass it to `governance-core install --auth-code <CODE>`.
+for one consumer, followed by a ready-to-paste install block (on stderr)
+the maintainer hands the project owner out-of-band.
 
 Codes are issued at schema 2 (P-0071): a leased, revocable code carrying an
 `expiry` (default: issued + 365 days), the signed revocation-feed URL the
@@ -108,6 +108,24 @@ def main() -> int:
                     args.revocation_feed_url, args.max_offline_days)
     logger.info("[OK] consumer recorded in %s", REGISTRY_PATH.name)
     sys.stdout.write(code + "\n")
+
+    # Ready-to-paste install block for the maintainer to hand the consumer
+    # out-of-band. The code is set as a shell variable first: it has no
+    # internal spaces, so it survives copy-paste line wrapping intact, and
+    # the install command then stays short. stdout above is kept as the bare
+    # code so the tool stays scriptable; this block goes to stderr.
+    install_block = "\n".join([
+        "",
+        "--- install block: hand to the consumer owner out-of-band; they run",
+        "    it in their project directory (ideally in a fresh venv) ---",
+        "pip install governance-core",
+        f"CODE='{code}'",
+        'governance-core install --auth-code "$CODE" '
+        "--accept-candidate-uplink --project-root .",
+        "governance-core doctor",
+        "",
+    ])
+    sys.stderr.write(install_block)
     return 0
 
 

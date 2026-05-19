@@ -185,8 +185,12 @@ re-issuing before expiry. `--schema 1` issues a legacy perpetual code;
 `--expiry YYYY-MM-DD` overrides the lease window. The expiry is enforced by
 the codec and by the runtime `auth-guard` (whose verdict cache is
 date-keyed, so an expired code is never served a stale `valid` verdict).
-The printed `GC1.<...>` string is the authorization code; deliver it to the
-consumer out-of-band.
+The printed `GC1.<...>` string is the authorization code. `issue_auth_code`
+also prints, on stderr, a **ready-to-paste install block** — `pip install`,
+the auth code as a shell variable, and the `governance-core install` /
+`doctor` commands. Hand that whole block to the consumer out-of-band: the
+variable form (`CODE='...'`) keeps the long code intact through copy-paste
+line wrapping, which a bare inline `--auth-code <long-code>` does not.
 
 ### Revoking a consumer (maintainer side)
 
@@ -353,6 +357,19 @@ governance-core upgrade --project-root .    # re-materialize the autonomy layer
 
 `upgrade` alone re-materializes from the *installed* package, so the
 `pip install -U` must come first to actually move versions.
+
+**Install governance-core into an isolated venv per consumer project.**
+`governance-core` is a normal PyPI package, so a bare `pip install
+governance-core` resolves against whatever environment is active. On the
+governance-core maintainer's own machine the global Python carries the
+**editable** install of the gc repo (metadata version `0.1.0a0`): there a
+bare `pip install governance-core` reports "requirement already satisfied"
+and does not fetch the release, while `pip install -U` would *uninstall
+the editable install* and break the self-hosted dogfood. A per-project
+venv (`python -m venv .venv` then activate) avoids both: the consumer
+project gets a clean environment, and the maintainer's editable install is
+never touched. Run `governance-core install` / `upgrade` with that venv
+active.
 
 The `update-reminder.py` SessionStart hook (P-0073 Phase 1) closes the
 "owner never remembers" gap: at session start it compares the autonomy
