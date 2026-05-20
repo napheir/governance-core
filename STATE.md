@@ -17,6 +17,34 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-20 — P-0075 Phase 1 清除 design 残留 + 一次性 prune-exempt
+
+- 改动：`git rm` 包源 3 个业务残留文件 —— `knowledge_governance/design/{component-catalog,design-principles}.md`（dashboard 路径 + HK Color/CALL-PUT 港股专属）+ `agents/design-system-owner.md`（Pencil MCP + dashboard 业务 agent）。`installer.py` 移除
+  `KNOWLEDGE_COPY_MAP` design 条目、新增 `STALE_PRUNE_EXEMPT` 集 +
+  `_prune_stale` guard（命中即 log 并跳过、不删）—— 保护已装 0.5.0/0.6.0 的
+  消费者（trade-agent / auto-tax-filing）的 install-managed 副本变成业务自有。
+  `knowledge-carrier-classes.md` §3 删 `knowledge/design/` 行；
+  `test_upgrade_dry_run` 把旧 design 映射用例换成 "released path no longer
+  maps" + 新增 5 个 prune-exempt 回归用例。版本 0.6.0→0.7.0。
+- 涉及：`governance_core/installer.py`、`governance_core/__init__.py`、
+  `pyproject.toml`、`governance_core/knowledge_governance/knowledge-carrier-classes.md`、
+  `governance_core/tools/test_upgrade_dry_run.py`、删除 3 个文件、
+  `STATE.md`、`shared_state/proposals/core/p-0075-*.md`（提案档案）。
+- 关键决策：prune-exempt 设计为**一次性 + 自衰减** —— 升级跨 0.7.0 时
+  exempt 触发跳过；写新 manifest 时这三条自然不再出现（0.7.0 install set
+  无源）→ 后续升级 prune 根本看不到、exempt 不再生效。consumer-protection
+  机制比简单删源更稳。`STALE_PRUNE_EXEMPT` 源注释明记"未来 major 可删"。
+- 测试：`test_upgrade_dry_run` 14/14（+5 prune-exempt 含 component-catalog
+  survives / design-principles survives / design-system-owner survives /
+  非 exempt control path pruned / pruned 列表排除 exempt）；回归 revocation
+  24 + renewal 13 + candidate-attribution 9 + candidate-reminder 7 +
+  update-reminder 9 + auth-guard 9 + auth-codec 11。wheel 0.7.0 内
+  `design/` 与 `agents/design-system-owner.md` 已不出现（只剩
+  `skills/external-design-reverse-feed.md`，跟 residue 无关）。dogfood
+  `governance-core upgrade --project-root .` 触发 3 次 "released to
+  business ownership" log、3 个文件物理保留、新 manifest 不含、doctor exit 0
+  (hooks 19/registered 18、clauses 17)。
+
 ### 2026-05-19 — P-0074 Phase 2 续期可见性（提醒）
 
 - 改动：`candidates/registry.py` 加 `lease_status`(扫 active 消费者算

@@ -91,9 +91,22 @@ CATEGORY_OF = {
 KNOWLEDGE_COPY_MAP = [
     ("knowledge_governance", "knowledge/governance"),
     ("knowledge_governance/methodology", "knowledge/methodology"),
-    ("knowledge_governance/design", "knowledge/design"),
     ("knowledge_governance/operations", "knowledge/operations"),
 ]
+
+# P-0075: paths released from install-management to business ownership at the
+# 0.6.0 -> 0.7.0 boundary. _prune_stale skips them so a consumer that received
+# the residual dashboard/HK-trading design files in 0.5.0/0.6.0 keeps them as
+# business carve-out after upgrading. The set is one-shot and self-decaying:
+# after the upgrade that crosses the 0.7.0 line, the released paths drop out
+# of installed_files.json (the new install set has no source for them), so
+# subsequent prunes never look at them again. Safe to delete this set in a
+# future major version once all known consumers have crossed 0.7.0.
+STALE_PRUNE_EXEMPT = {
+    "knowledge/design/component-catalog.md",
+    "knowledge/design/design-principles.md",
+    ".claude/agents/design-system-owner.md",
+}
 
 # Mixed clauses (P-0063 方案 A): generic frame + project-specific business
 # tables. The installer renders a generic stub on first install but never
@@ -402,6 +415,13 @@ def _prune_stale(project_root: Path,
     for entry in old["files"]:
         rel = entry["path"]
         if rel in new_paths:
+            continue
+        if rel in STALE_PRUNE_EXEMPT:
+            # P-0075: released to business ownership at the 0.7.0 boundary.
+            # The file stays on disk; the new manifest naturally omits it
+            # (no source -> not in `installed`), so future prunes never look
+            # at this path again.
+            logger.info("[prune] released to business ownership: %s", rel)
             continue
         target = project_root / rel
         if not target.exists():
@@ -831,7 +851,7 @@ def install(
         src = PKG_ROOT / src_sub
         dst = project_root / dst_sub
         # Only copy top-level files of the package subdir; skip recursive nesting
-        # of methodology/design/operations (since they live under knowledge_governance/)
+        # of methodology / operations (since they live under knowledge_governance/)
         n = 0
         if src.exists():
             for s in src.iterdir():

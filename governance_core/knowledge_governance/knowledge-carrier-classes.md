@@ -163,7 +163,6 @@ reason，引用原 decision 即可）；把 reference / runbook 当 lesson。
 | `knowledge/data-quality/` | `reference` | 数据质量模式 |
 | `knowledge/trading/` | `reference` | 交易知识 |
 | `knowledge/skills/` | `reference` | skill 文档 |
-| `knowledge/design/` | `reference` | UI / 组件 / 视觉设计参考（Phase 3 推断报告暴露的 governance gap，Phase 4 补录） |
 | `knowledge/lessons/`（**P-0053 新增**） | `derived-lesson` | 唯一允许 derived-lesson |
 
 `knowledge/models/` 是唯一需要 per-file 判定的子目录，因为它历史上同时承担

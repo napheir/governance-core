@@ -1,18 +1,22 @@
-"""Test harness for `upgrade --dry-run` internals (P-0073 Phase 2).
+"""Test harness for `upgrade --dry-run` internals + stale-prune-exempt.
 
-Covers the two new pure-ish installer helpers:
+Covers:
   - _pkg_source_path: maps an autonomy-layer relative path back to its
-    package-source file (or None for a business path)
+    package-source file (or None for a business path) (P-0073 Phase 2)
   - _drift_diffs: produces a unified diff of a drifted file's current
-    content vs the incoming package-source version
+    content vs the incoming package-source version (P-0073 Phase 2)
+  - _prune_stale + STALE_PRUNE_EXEMPT: released paths are skipped, others
+    still pruned (P-0075 consumer-protection mechanism)
 
 The end-to-end `governance-core upgrade --dry-run` (no-write, version
-delta, drift report) is exercised by the self-hosted dogfood in the
-P-0073 Phase 2 validation; this harness unit-tests the building blocks.
+delta, drift report) is exercised by the self-hosted dogfood; this harness
+unit-tests the building blocks.
 
 Run from any clone:
     python tools/test_upgrade_dry_run.py
 """
+import hashlib
+import json
 import shutil
 import sys
 import tempfile
@@ -55,9 +59,13 @@ def _pkg_source_cases() -> list[bool]:
             ".governance/clauses/art_00_ritual.md")
         == pkg / "clauses" / "art_00_ritual.md"))
     results.append(_case(
-        "_pkg_source_path: knowledge/design -> knowledge_governance/design/",
+        "_pkg_source_path: knowledge/operations -> knowledge_governance/operations/",
+        lambda: installer._pkg_source_path("knowledge/operations/foo.md")
+        == pkg / "knowledge_governance/operations" / "foo.md"))
+    results.append(_case(
+        "_pkg_source_path: released path no longer maps (P-0075)",
         lambda: installer._pkg_source_path("knowledge/design/foo.md")
-        == pkg / "knowledge_governance/design" / "foo.md"))
+        is None))
     results.append(_case(
         "_pkg_source_path: business path -> None",
         lambda: installer._pkg_source_path("CLAUDE.md") is None))
@@ -97,9 +105,73 @@ def _drift_diff_cases() -> list[bool]:
     return results
 
 
+def _prune_exempt_cases() -> list[bool]:
+    """STALE_PRUNE_EXEMPT cases (P-0075): released paths survive prune.
+
+    Simulates a consumer that installed 0.5.0/0.6.0 (so its manifest lists
+    the three design/agent paths as install-managed). After upgrading to
+    0.7.0 the new install set has no source for them, so naive prune would
+    delete them; the exempt set must skip them. A non-exempt stale path
+    must still be pruned to prove the guard is selective.
+    """
+    results: list[bool] = []
+    tmp = Path(tempfile.mkdtemp(prefix="gc_prune_exempt_"))
+    try:
+        # Stage the three released paths + one non-exempt control path.
+        exempt_paths = sorted(installer.STALE_PRUNE_EXEMPT)
+        control = "tools/old_stale_tool.py"
+        all_old = exempt_paths + [control]
+
+        old_entries = []
+        for rel in all_old:
+            p = tmp / rel
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_text(f"# old content for {rel}\n", encoding="utf-8")
+            old_entries.append({
+                "path": rel,
+                "baseline_sha256": hashlib.sha256(
+                    p.read_bytes()).hexdigest(),
+                "source_version": "0.6.0",
+                "category": "agent" if rel.endswith(".md")
+                else ("tool" if rel.startswith("tools/") else "knowledge"),
+            })
+
+        manifest_path = tmp / installer.INSTALLED_FILES_REL
+        manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        manifest_path.write_text(json.dumps({
+            "schema": 1, "governance_core_version": "0.6.0",
+            "generated_at": "2026-05-20T00:00:00Z",
+            "files": old_entries,
+        }), encoding="utf-8")
+
+        # New install set (0.7.0) -- empty for this slice; the four paths are
+        # all stale (no source). Prune must skip the three exempt, kill control.
+        pruned = installer._prune_stale(tmp, installed=[], dry_run=False)
+
+        results.append(_case(
+            "_prune_stale: exempt path component-catalog.md survives",
+            lambda: (tmp / "knowledge/design/component-catalog.md").exists()))
+        results.append(_case(
+            "_prune_stale: exempt path design-principles.md survives",
+            lambda: (tmp / "knowledge/design/design-principles.md").exists()))
+        results.append(_case(
+            "_prune_stale: exempt agent design-system-owner.md survives",
+            lambda: (tmp / ".claude/agents/design-system-owner.md").exists()))
+        results.append(_case(
+            "_prune_stale: non-exempt control path pruned",
+            lambda: not (tmp / control).exists() and control in pruned))
+        results.append(_case(
+            "_prune_stale: pruned list excludes every exempt path",
+            lambda: all(e not in pruned for e in exempt_paths)))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return results
+
+
 def main() -> int:
     """Run the helper groups; exit non-zero on any failure."""
-    results = _pkg_source_cases() + _drift_diff_cases()
+    results = (_pkg_source_cases() + _drift_diff_cases()
+               + _prune_exempt_cases())
     passed, total = sum(results), len(results)
     out(f"\n{passed}/{total} upgrade-dry-run cases passed")
     return 0 if passed == total else 1
