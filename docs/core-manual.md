@@ -315,6 +315,36 @@ install-managed paths are eligible, so business / authored files and the
 capture, so a stale file that was locally edited is first captured as a
 candidate. `governance-core upgrade --no-prune` keeps stale files.
 
+### Released-to-business: STALE_PRUNE_EXEMPT (P-0075)
+
+When the package source drops a file that downstream consumers may already
+be relying on as business content, naive prune would silently delete it
+(drift-capture only fires when the file was *edited*, not when it was
+referenced as-is). `installer._prune_stale` therefore checks a hard-coded
+`STALE_PRUNE_EXEMPT` set: a path in the set is logged as `[prune] released
+to business ownership: <path>` and **not** deleted. The new manifest
+naturally omits the path (no source → not in `installed`), so the exemption
+fires **once** — on the upgrade that crosses the dropping version — and
+subsequent prunes never look at the path again.
+
+Mechanic for the maintainer adding a removal:
+
+1. Delete the file(s) from the package source as usual.
+2. Add their installed-layer paths to `STALE_PRUNE_EXEMPT` in
+   `governance_core/installer.py` *in the same change* — without this, every
+   consumer that ever installed the previous version loses the file on
+   upgrade.
+3. Add regression cases in `governance_core/tools/test_upgrade_dry_run.py`
+   (`_prune_exempt_cases`) covering: each new exempt path survives prune,
+   and a non-exempt control path is still pruned.
+4. After all known consumers have crossed the dropping version, a future
+   major-version cleanup may remove the entries (the manifest-diff
+   mechanism alone is then sufficient).
+
+`STALE_PRUNE_EXEMPT` is intentionally narrow: it covers paths whose
+*ownership transferred* at a version line. Paths that genuinely no longer
+make sense (e.g. an old hook replaced by a new one) should just be pruned.
+
 ## 11. Candidate pipeline (P-0065)
 
 governance-core is the convergence hub for common-layer improvements: the
