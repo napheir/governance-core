@@ -17,6 +17,37 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-26 — P-0076 Phase 1 sweep ledger 自愈
+
+- 改动：`governance_core/candidates/ledger.py` 加
+  `parse_payload_from_issue_body(body) -> (meta, {name: bytes})`（共享
+  parser，Phase 2 maintainer 工具也用）+ `discover_uplinked_from_hub(
+  origin, repo)`（`gh issue list --state all --search "[candidate]
+  (from <origin>)"`、逐 issue 解析 fenced block、rehash、返回
+  `[{digest, candidate_id, issue_url}]`、`gh`/网络/解析失败均 best-effort
+  退回空）。`uplink.py` 修 payload 段 **不 rstrip**（保留原文 bytes、让
+  hash round-trip 正确）。`candidate.py` `cmd_sweep` 在 collect 之后、
+  pending 选择之前接 recovery：ledger 空 + outbox 非空 + `gh` 可用即调，
+  把 recovery 结果写入 `_uplinked.json`。
+- 涉及：`governance_core/candidates/ledger.py`、
+  `governance_core/candidates/uplink.py`、
+  `governance_core/tools/candidate.py`、
+  `governance_core/tools/test_candidate_recovery.py`（新，14 用例）、
+  `STATE.md`、`shared_state/proposals/core/p-0076-*.md`。
+- 关键决策：保持 `payload_digest` 行为不变（按 `read_bytes()` 哈希）、
+  改 `build_issue` 让 issue body 不 rstrip → round-trip 一致；recovery
+  全程 fail-safe（FileNotFoundError / CalledProcessError /
+  JSONDecodeError 均 logger.info 后返空）；recovery 只在 ledger 真的
+  empty 时触发，正常 consumer 不付网络代价。
+- 修环境：发现 `pip show` 显示 0.7.0 但 Editable project location 丢失
+  ([[editable-install-clobber]] 信号)，`pip install -e .` 重装恢复。
+- 测试：`test_candidate_recovery` 14/14（parser 5 + discover 8 +
+  end-to-end round-trip 1）；回归 revocation 24 + renewal 13 +
+  candidate-attribution 9 + candidate-reminder 7 + update-reminder 9 +
+  auth-guard 9 + auth-codec 11 + upgrade-dry-run 14 = 96/96 全绿。
+  无版本 bump（按提案 Phase 1+2 单次 bump pattern，待 Phase 2 一起
+  0.7.0 → 0.8.0）。
+
 ### 2026-05-20 — P-0075 Phase 1 清除 design 残留 + 一次性 prune-exempt
 
 - 改动：`git rm` 包源 3 个业务残留文件 —— `knowledge_governance/design/{component-catalog,design-principles}.md`（dashboard 路径 + HK Color/CALL-PUT 港股专属）+ `agents/design-system-owner.md`（Pencil MCP + dashboard 业务 agent）。`installer.py` 移除

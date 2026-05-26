@@ -83,8 +83,13 @@ def build_issue(envelope_dir: Path) -> tuple[str, str, list[str]]:
               (envelope_dir / envelope.CANDIDATE_JSON).read_text(
                   encoding="utf-8").rstrip(), "```"]
     for rel in meta["source_paths"]:
+        # P-0076 Phase 1: do NOT rstrip the payload. `ledger.payload_digest`
+        # hashes the raw file bytes, so issue body must carry them verbatim
+        # for `discover_uplinked_from_hub` to rebuild a matching digest.
+        # Trailing newlines are preserved; the fenced block closes cleanly
+        # either way (the trailing ``` sits on its own line below).
         parts += ["", f"### {rel}", "```",
-                  (envelope_dir / rel).read_text(encoding="utf-8").rstrip(),
+                  (envelope_dir / rel).read_text(encoding="utf-8"),
                   "```"]
     body = "\n".join(parts) + "\n"
     if len(body) > ISSUE_BODY_LIMIT:

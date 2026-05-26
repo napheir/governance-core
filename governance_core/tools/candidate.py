@@ -218,6 +218,24 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     led_path = _ledger.ledger_path(root)
     led = _ledger.load_ledger(led_path)
 
+    # P-0076 Phase 1: ledger self-heal. If the consumer-side ledger is
+    # empty (lost / wiped / never written) but the outbox has envelopes,
+    # try to rebuild ledger entries from the hub's candidate issue history
+    # before declaring everything net-new. This avoids re-uplinking the
+    # same payloads as fresh candidates just because `_uplinked.json`
+    # vanished (the issue that triggered P-0076).
+    if envelopes and not led["uplinked"] and shutil.which("gh"):
+        recovered = _ledger.discover_uplinked_from_hub(
+            origin, repo=args.repo or _uplink.UPSTREAM_REPO)
+        for entry in recovered:
+            _ledger.record_uplink(led_path, entry["digest"],
+                                  entry["candidate_id"], entry["issue_url"])
+        if recovered:
+            sys.stdout.write(f"[candidate] sweep: ledger self-heal restored "
+                             f"{len(recovered)} prior uplink record(s) from "
+                             f"the hub\n")
+            led = _ledger.load_ledger(led_path)
+
     pending: list[tuple[Path, str]] = []
     for env in envelopes:
         try:

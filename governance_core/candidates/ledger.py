@@ -16,10 +16,15 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import logging
+import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
 from governance_core.candidates import collect, envelope
+
+logger = logging.getLogger("governance_core.candidates.ledger")
 
 LEDGER_NAME = "_uplinked.json"
 LEDGER_SCHEMA = 1
@@ -115,3 +120,116 @@ def record_uplink(path: Path, digest: str, candidate_id: str,
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(ledger, indent=2, ensure_ascii=False) + "\n",
                     encoding="utf-8")
+
+
+# --- P-0076 Phase 1: ledger self-heal from hub issue history ---------------
+
+# Match a payload fenced block: `### payload/<name>\n```[lang]\n<bytes>\n```
+# `[lang]` is empty for skill payloads (uplink writes ``` ); for the
+# candidate.json block uplink writes ```json. The capture is non-greedy and
+# stops at the first closing fence so multiple payload blocks parse cleanly.
+_PAYLOAD_FENCE_RE = re.compile(
+    r"^### payload/(?P<name>[^\n]+)\n```[^\n]*\n(?P<content>.*?)\n```",
+    re.MULTILINE | re.DOTALL)
+
+_CANDIDATE_JSON_FENCE_RE = re.compile(
+    r"^### candidate\.json\n```json\n(?P<content>.*?)\n```",
+    re.MULTILINE | re.DOTALL)
+
+
+def parse_payload_from_issue_body(body: str) -> tuple[dict, dict[str, bytes]]:
+    """Parse a candidate issue's body into (candidate_meta, payload_bytes).
+
+    Returns:
+        meta: the candidate.json dict embedded under `### candidate.json`.
+        payload_bytes: a mapping from `Path(rel).name` to the raw UTF-8
+            bytes captured under each `### payload/<name>.md` fenced block.
+
+    Raises `ValueError` if the body lacks a candidate.json block or any
+    declared `source_paths` entry has no matching fenced block. The caller
+    decides whether to skip-and-log or raise further.
+
+    Used by both `discover_uplinked_from_hub` (Phase 1 ledger recovery) and
+    the hub-side `maintainer/reject_candidate.py` (Phase 2 reject feedback)
+    -- one parser, one source of truth for the body schema.
+    """
+    json_match = _CANDIDATE_JSON_FENCE_RE.search(body)
+    if not json_match:
+        raise ValueError("issue body has no `### candidate.json` block")
+    meta = json.loads(json_match.group("content"))
+    payload: dict[str, bytes] = {}
+    for m in _PAYLOAD_FENCE_RE.finditer(body):
+        # `name` is `payload/<basename>` (full relative path under the
+        # envelope); the digest function keys on basename, so reduce here.
+        rel = m.group("name")
+        payload[Path(rel).name] = m.group("content").encode("utf-8")
+    for rel in meta["source_paths"] if "source_paths" in meta else []:
+        if Path(rel).name not in payload:
+            raise ValueError(
+                f"issue body declares source_paths={meta['source_paths']!r} "
+                f"but `### payload/{rel}` block is missing")
+    return meta, payload
+
+
+def discover_uplinked_from_hub(origin: str,
+                               repo: str = "napheir/governance-core",
+                               ) -> list[dict[str, Any]]:
+    """Rebuild uplink ledger entries from the hub's candidate issue history.
+
+    Queries open + closed `[candidate] ... (from <origin>)` issues via
+    `gh issue list --state all`. For each issue: parse the body to recover
+    the candidate metadata + payload bytes, recompute `_hash_payload([
+    (basename, bytes), ...])`, return one entry per issue ready to feed
+    `record_uplink`.
+
+    Recovery is best-effort: any single issue that fails to parse or whose
+    body schema does not match (e.g. pre-0.8.0 issues that may have had
+    payload trailing whitespace stripped by an earlier uplink.py) is logged
+    at INFO and skipped. The caller treats the absence of an entry as
+    "ledger unknown" and the regular sweep dedup path still applies.
+
+    Returns `[]` if `gh` is unavailable or the call fails (network /
+    auth), so recovery never blocks wrap-up.
+    """
+    search = f"[candidate] (from {origin})"
+    argv = ["gh", "issue", "list", "--repo", repo, "--state", "all",
+            "--search", search, "--json", "number,title,body,url",
+            "--limit", "200"]
+    try:
+        result = subprocess.run(argv, capture_output=True, check=True)
+    except FileNotFoundError:
+        logger.info("[ledger-recovery] `gh` not found; skipping recovery")
+        return []
+    except subprocess.CalledProcessError as exc:
+        logger.info("[ledger-recovery] gh issue list failed: %s",
+                    exc.stderr.decode("utf-8", errors="replace").strip()
+                    if exc.stderr else "(no stderr)")
+        return []
+    try:
+        issues = json.loads(result.stdout.decode("utf-8", errors="replace"))
+    except json.JSONDecodeError as exc:
+        logger.info("[ledger-recovery] gh output not JSON: %s", exc)
+        return []
+
+    rebuilt: list[dict[str, Any]] = []
+    for issue in issues:
+        body = issue["body"] if "body" in issue else ""
+        url = issue["url"] if "url" in issue else ""
+        number = issue["number"] if "number" in issue else "?"
+        try:
+            meta, payload = parse_payload_from_issue_body(body)
+        except (ValueError, json.JSONDecodeError) as exc:
+            logger.info("[ledger-recovery] issue #%s skipped (parse): %s",
+                        number, exc)
+            continue
+        if "id" not in meta:
+            logger.info("[ledger-recovery] issue #%s skipped (no id in "
+                        "candidate.json)", number)
+            continue
+        digest = _hash_payload(list(payload.items()))
+        rebuilt.append({
+            "digest": digest,
+            "candidate_id": meta["id"],
+            "issue_url": url,
+        })
+    return rebuilt
