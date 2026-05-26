@@ -50,6 +50,7 @@ from governance_core.candidates import collect as _collect
 from governance_core.candidates import envelope as _envelope
 from governance_core.candidates import ledger as _ledger
 from governance_core.candidates import registry as _registry
+from governance_core.candidates import rejected as _rejected
 from governance_core.candidates import uplink as _uplink
 
 
@@ -236,14 +237,49 @@ def cmd_sweep(args: argparse.Namespace) -> int:
                              f"the hub\n")
             led = _ledger.load_ledger(led_path)
 
+    # P-0076 Phase 2: consult the shipped rejected_registry.json. If an
+    # envelope's payload was previously rejected by the hub, surface the
+    # reason+advice so the consumer's owner can stop re-uplinking it.
+    rejected_reg = _rejected.load_rejected_registry()
+
     pending: list[tuple[Path, str]] = []
+    blocked: list[tuple[Path, dict]] = []
+    name_warnings: list[tuple[Path, dict]] = []
     for env in envelopes:
         try:
             digest = _ledger.payload_digest(env)
+            meta = _envelope.validate_envelope(env)
         except _envelope.EnvelopeError:
             continue
+        # `title` is the skill name (collect uses `skill.stem`); registry
+        # is keyed on full skill_name with `.md` if applicable. Try both
+        # to be lenient with how the registry author wrote the entry.
+        candidate_names = {meta["title"], meta["title"] + ".md"}
+        rej = None
+        for n in candidate_names:
+            r = _rejected.is_rejected(n, digest, rejected_reg)
+            if r is not None:
+                rej = r
+                break
+        if rej is not None and _rejected.should_block(rej):
+            blocked.append((env, rej))
+            continue
+        if rej is not None and rej["match"] == "name":
+            # name match without block_by_name -> warn but allow uplink
+            name_warnings.append((env, rej))
         if not _ledger.is_uplinked(led, digest):
             pending.append((env, digest))
+
+    for env, rej in blocked:
+        advisory = _rejected.format_advisory(
+            _envelope.validate_envelope(env)["title"], rej)
+        sys.stdout.write("[candidate] sweep: SKIPPED -- " + advisory + "\n")
+    for env, rej in name_warnings:
+        advisory = _rejected.format_advisory(
+            _envelope.validate_envelope(env)["title"], rej)
+        sys.stderr.write("[candidate] sweep: NOTE -- " + advisory
+                         + "\n  Uplinking the new content for hub "
+                         + "re-evaluation.\n")
 
     if not pending:
         sys.stdout.write("[candidate] sweep: no pending candidates -- "

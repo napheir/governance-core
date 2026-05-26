@@ -40,8 +40,21 @@ def main() -> None:
         sys.exit(0)
 
     try:
-        from governance_core.candidates import ledger
+        from governance_core.candidates import ledger, rejected
         pending = ledger.pending_candidate_skills(root)
+        # P-0076 Phase 2: cross-check pending against the rejected registry
+        # so an owner notices "this skill is still tagged candidate-common
+        # but hub already rejected it" at session start, not only after a
+        # wrap-up sweep.
+        reg = rejected.load_rejected_registry()
+        already_rejected: list[Path] = []
+        for skill_path in pending:
+            digest = ledger.skill_digest(skill_path)
+            for candidate_name in (skill_path.stem, skill_path.name):
+                r = rejected.is_rejected(candidate_name, digest, reg)
+                if r is not None and rejected.should_block(r):
+                    already_rejected.append(skill_path)
+                    break
     except Exception:  # noqa: BLE001 - never break session start
         sys.exit(0)
 
@@ -55,6 +68,13 @@ def main() -> None:
         f"yet uplinked to governance-core: {shown}{extra}\n"
         "  The next /wrap-up (step 4d) will uplink them; or run "
         "/submit-candidate now.\n")
+    if already_rejected:
+        names = ", ".join(p.stem for p in already_rejected[:8])
+        sys.stdout.write(
+            f"  WARNING: {len(already_rejected)} of these were previously "
+            f"REJECTED by the hub ({names}). Remove `layer: candidate-common` "
+            f"from their frontmatter or delete them to stop sweep retries -- "
+            f"see the rejection's advice for context.\n")
     sys.exit(0)
 
 

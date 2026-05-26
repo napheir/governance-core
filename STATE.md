@@ -17,6 +17,51 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-26 — P-0076 Phase 2 reject feedback registry
+
+- 改动：新建包源 `candidates/rejected_registry.json`（schema 1，含两条
+  backfill 条目对应 #4/#6 + #5/#7、`block_by_name: true` 标记 pre-0.8.0
+  sha 不可还原场景）。新建包源模块 `candidates/rejected.py`
+  （`load_rejected_registry` / `is_rejected` / `should_block` /
+  `format_advisory` 四个 API）。`cmd_sweep` 接 `is_rejected` 检查：
+  exact → 阻断 + stdout 打印结构化 SKIPPED advisory；name +
+  `block_by_name: true` → 阻断；name + `block_by_name: false` → stderr
+  warn + 仍 uplink（允许 hub 重评 rewrite）。`candidate-reminder.py`
+  hook 扩展：SessionStart 时 cross-check pending 与 registry，被拒
+  skill 在 banner 出 WARNING 行。新建 hub 工具
+  `maintainer/reject_candidate.py`（`--issue N --reason X --advice Y
+  [--also-close] [--dry-run]`），抓 issue body、复用 Phase 1 共享 parser
+  解析 payload、自动判 pre-0.8.0 rstrip 场景 → 写 registry +（可选）
+  关闭 issue 加 advisory comment。`pyproject.toml` package-data 加
+  `candidates/*.json` 让 registry 进 wheel。版本 0.7.0 → 0.8.0（按
+  P-0074/P-0075 模式一次性 bump 跨两 phase）。
+- 涉及：`governance_core/candidates/rejected.py`（新）+
+  `rejected_registry.json`（新）、`maintainer/reject_candidate.py`（新）、
+  `governance_core/tools/test_rejected_registry.py`（新，21 用例）、
+  `governance_core/tools/candidate.py`（接 `is_rejected`）、
+  `governance_core/hooks/candidate-reminder.py`（SessionStart 增 WARNING）、
+  `governance_core/__init__.py` + `pyproject.toml`（0.8.0、package-data
+  加 `candidates/*.json`）、`docs/core-manual.md`（§11 加 self-heal +
+  reject feedback 两段、新 §13 maintainer reject workflow）、`STATE.md`、
+  `shared_state/proposals/core/p-0076-*.md`。
+- 关键决策：registry schema 加 `block_by_name: bool` 字段（默认 false、
+  pre-0.8.0 backfill 设 true）让 maintainer 显式覆盖 name match 的"宽松"
+  默认；不引入"unreject"工作流（rewrite 用新名字、强制语义表态）；不自动
+  修改 consumer skill frontmatter（守 autonomy carve-out 不变量）；wheel
+  shipped registry，不走另立签名 feed（advisory 非 security critical、
+  wheel 签名已证来源）。
+- 测试：`test_rejected_registry` 21/21（is_rejected 6 + should_block 4 +
+  format_advisory 5 + malformed registry 2 + shipped registry smoke 4）；
+  全套回归 revocation 24 + renewal 13 + candidate-attribution 9 +
+  candidate-reminder 7 + update-reminder 9 + auth-guard 9 + auth-codec 11
+  + upgrade-dry-run 14 + candidate-recovery 14 + rejected-registry 21 =
+  131/131 全绿。wheel 0.8.0 build OK（`rejected.py` /
+  `rejected_registry.json` 进 wheel、`maintainer/` 不漏）。dogfood
+  `governance-core upgrade --project-root .` OK，hooks 19/18 registered、
+  doctor exit 0。`reject_candidate.py --dry-run --issue 4` 演练成功，
+  自动识别 pre-0.8.0、设 block_by_name=true、sha=null。P-0076 两 phase
+  全部实现完成。
+
 ### 2026-05-26 — P-0076 Phase 1 sweep ledger 自愈
 
 - 改动：`governance_core/candidates/ledger.py` 加

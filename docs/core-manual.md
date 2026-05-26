@@ -389,6 +389,121 @@ skills absent from the uplink ledger and surfaces them in the startup
 banner — so an un-uplinked candidate stays loudly visible even if
 `/wrap-up` is skipped entirely. The hook is silent for the hub project.
 
+### Sweep ledger self-heal (P-0076 Phase 1)
+
+The dedup ledger is consumer-side and gitignored — a wiped clone, a
+manual `rm -rf .governance/`, or a failed write all leave the consumer
+with a learned skill that was already uplinked but no record proving
+so. The next sweep would treat every existing envelope as net-new and
+flood the hub with duplicates.
+
+To prevent that, `cmd_sweep` self-heals at the start of every run when
+the ledger is empty + the outbox is non-empty + `gh` is available:
+`ledger.discover_uplinked_from_hub(origin, repo)` queries `gh issue
+list --state all --search "[candidate] (from <origin>)"`, parses each
+issue body's `### payload/<name>` fenced block, rehashes via
+`_hash_payload`, and writes the rebuilt entries into `_uplinked.json`.
+The healthy consumer (ledger intact) never triggers it.
+
+Recovery is fail-safe: any `gh` failure, JSON-decode error, or
+malformed issue body logs at INFO and returns empty so the existing
+sweep behavior takes over — recovery never blocks wrap-up.
+
+### Reject feedback registry (P-0076 Phase 2)
+
+A consumer can keep editing a rejected skill — payload digest changes —
+and the dedup ledger considers each variant net-new, so sweep keeps
+re-uplinking the same fundamentally-business-layer skill under fresh
+ids. P-0076 Phase 2 closes that gap with a hub→consumer feedback
+channel.
+
+The hub ships `governance_core/candidates/rejected_registry.json`
+(committed in package source, included in every wheel). Each entry
+records:
+
+```json
+{
+  "rejected_at": "2026-05-26",
+  "skill_name": "p4-scenario-fixture-construction",
+  "payload_sha256": "ee67474d..." or null,
+  "block_by_name": false,
+  "origin": "trade-agent",
+  "issue_urls": [...],
+  "reason": "Business-layer content. ...",
+  "advice": "Keep as a local learned skill. Remove `layer: candidate-common`..."
+}
+```
+
+Consumer-side `cmd_sweep` consults the registry via
+`governance_core.candidates.rejected.is_rejected(name, sha)`:
+
+| Match           | block_by_name | Action                                                                                  |
+|-----------------|---------------|-----------------------------------------------------------------------------------------|
+| `exact` (sha=)  | (irrelevant)  | **Block** uplink. Print structured `[candidate] sweep: SKIPPED ...` advisory on stdout. |
+| `name` (sha≠)   | `true`        | **Block** uplink. (Used for pre-0.8.0 backfill where sha was unrecoverable.)             |
+| `name` (sha≠)   | `false`       | Warn on stderr (`[candidate] sweep: NOTE ...`) and **allow** uplink so the hub re-evaluates. |
+| no match        | —             | Normal collect/uplink path.                                                              |
+
+The advisory is consumer-visible: it carries the reason text and
+advice text the maintainer wrote, plus issue URLs. The mechanism is
+advisory only: nothing in this module modifies a consumer's skill
+files. The aim is owner awareness, not control.
+
+`candidate-reminder.py` SessionStart hook (Phase 2 extension) also
+cross-checks pending skills against the registry and adds a
+`WARNING: N of these were previously REJECTED by the hub (...)` line
+to the startup banner when applicable — surfacing the situation
+without waiting for the next wrap-up.
+
+Consumers learn of new rejections via the existing `update-reminder`
+flow (P-0073): a maintainer ships a new wheel → consumer's
+SessionStart banner prompts an upgrade within ~12h of the release.
+
+## 13. Maintainer reject workflow (P-0076 Phase 2)
+
+When an uplinked candidate is business-layer content (or otherwise
+unfit), package the reject into a durable record using:
+
+```pwsh
+python maintainer/reject_candidate.py \
+    --issue <N> \
+    --reason "Why this is not a common capability ..." \
+    --advice "What the consumer should do ..." \
+    [--also-close]
+```
+
+The tool:
+
+1. Fetches the issue body via `gh issue view`.
+2. Parses the embedded `### payload/<name>` fenced block using the
+   shared parser from P-0076 Phase 1.
+3. Computes the payload's SHA-256 over the bytes the issue carries.
+4. Detects whether the issue was created by **pre-0.8.0** uplink
+   (which had stripped trailing whitespace, so the digest is
+   approximate). Pre-0.8.0 → sets `payload_sha256: null` and
+   `block_by_name: true` so the registry still blocks regardless of
+   the consumer's exact bytes. Post-0.8.0 → records the precise sha.
+5. Appends (or merges into an existing same-name entry) in
+   `governance_core/candidates/rejected_registry.json`.
+6. With `--also-close`, posts the reason+advice as a comment and
+   closes the issue as `not planned`.
+
+**Writing a good reason+advice pair**:
+
+- **reason**: name the structural problem, not just the symptom.
+  "Business-layer content (HK options strangle50 / o2_score
+  boundaries / signals path)" tells the consumer's owner what to look
+  for. "Doesn't fit" doesn't.
+- **advice**: be actionable. "Remove `layer: candidate-common`" /
+  "Rename to `<x>` if you want to retry" / "Delete if no longer used"
+  is concrete; "consider whether this is generic" is not.
+
+The registry is shipped in the next wheel; consumers pick it up at
+their next `governance-core upgrade`. To remove a rejection later
+(e.g. you decide a skill is in fact common after all), edit the JSON
+directly and bump the version — there is no `unreject` workflow on
+purpose, to keep the policy auditable.
+
 ### Hub side — curating incoming candidates
 
 As governance-core's maintainer:
