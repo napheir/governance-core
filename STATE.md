@@ -17,6 +17,51 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-27 — P-0077 uplink drift diff + --body-file (issue #15)
+
+- 改动：`candidates/uplink.py` 大改 —— `build_issue` 加 drift 分支：
+  当 envelope 有 `drift_target` + `baseline_sha256` 且
+  `installer._pkg_source_path` 解析得到 baseline 时，body 渲染
+  unified diff（against baseline）+ `payload_form: diff` +
+  `payload_sha256:` 行（按 ledger._hash_payload 同算法）；无法解析
+  baseline 时 fallback legacy full-payload。net-new envelope 路径不
+  变（P-0076 ledger rehash 仍依赖 full payload fence）。`gh_command`
+  argv 从 `--body body` 改 `--body-file <tempfile>`：用
+  `NamedTemporaryFile(delete=False)` 写 body，pass file path 到 gh，
+  finally `unlink(missing_ok=True)`。这绕过 Windows
+  CreateProcessW ~32K UNICODE_STRING cmdline 限制（Python 把这个
+  surface 为 FileNotFoundError，旧版本误归类为"gh missing"）。
+  `UplinkError` 在 stderr 含 "label not found" pattern 时附 hint
+  打印 `gh label create candidate / kind/skill / kind/hook /
+  kind/mechanism` 4 行。`candidates/ledger.py`
+  `parse_payload_from_issue_body` 加 drift body 短路：识别
+  `payload_form: diff` 后从 body 读 `payload_sha256:` 返回，跳过
+  rehash；`discover_uplinked_from_hub` drift body 直接用
+  meta["payload_sha256"]。`maintainer/reject_candidate.py` 同样
+  drift 路径不 rehash + 不走 pre-0.8.0 heuristic。版本 0.8.0 →
+  0.9.0。docs/core-manual.md §11 加 P-0077 drift-as-diff 子节 + hub
+  labels setup 子节。
+- 涉及：`governance_core/candidates/uplink.py`、
+  `governance_core/candidates/ledger.py`、
+  `maintainer/reject_candidate.py`、
+  `governance_core/tools/test_uplink_drift_diff.py`（新，20 用例）、
+  `governance_core/__init__.py` + `pyproject.toml`（0.9.0）、
+  `docs/core-manual.md`、`STATE.md`、
+  `shared_state/proposals/core/p-0077-*.md`。
+- 关键决策：`payload_form: diff` 显式 metadata（不靠"猜身体形状"）；
+  drift fallback 到 legacy full-payload 让 uplink 永不因 baseline
+  miss 阻塞；P-0076 net-new rehash 路径完全保留（向后兼容）；
+  `--body-file` Linux/macOS 也用（统一行为、no-op for them）；
+  Windows newline 提醒在测试用 `write_bytes` 控制 bytes。
+- 测试：`test_uplink_drift_diff` 20/20（build_issue 9 + parser 5 +
+  discover_recovery 3 + gh_command 3）；全套回归 revocation 24 +
+  renewal 13 + candidate-attribution 9 + candidate-reminder 7 +
+  update-reminder 9 + auth-guard 9 + auth-codec 11 + upgrade-dry-run
+  14 + candidate-recovery 14 + rejected-registry 21 +
+  uplink-drift-diff 20 = 151/151 全绿。wheel 0.9.0 含 uplink/ledger/
+  test_uplink_drift_diff；dogfood upgrade OK；doctor exit 0、hooks
+  19/registered 18。
+
 ### 2026-05-26 — P-0076 Phase 2 reject feedback registry
 
 - 改动：新建包源 `candidates/rejected_registry.json`（schema 1，含两条

@@ -109,15 +109,24 @@ def cmd_reject(args: argparse.Namespace) -> int:
 
     skill_name = meta["title"]
     origin = meta["origin"]
-    digest = _ledger._hash_payload(list(payload.items()))
 
-    # Pre-0.8.0 detection: heuristic on whether the parsed payload ends
-    # with a newline. Older uplink.build_issue used .rstrip(), so an
-    # rstripped payload almost certainly does NOT end in '\n'. The
-    # caller can override.
-    pre_080 = args.legacy_rstrip or (
-        not args.legacy_rstrip_no
-        and all(not b.endswith(b"\n") for b in payload.values()))
+    # P-0077: drift bodies carry `payload_form: diff` and a verified
+    # `payload_sha256` -- take it directly, no rehash possible.
+    # Net-new bodies (post-0.8.0 full payload) rehash; pre-0.8.0
+    # (rstripped) bodies still get rehashed too, but the digest is
+    # approximate -- the heuristic below detects and flags those.
+    if "payload_form" in meta and meta["payload_form"] == "diff":
+        digest = meta["payload_sha256"]
+        pre_080 = False  # drift bodies are post-0.8.0 by construction
+    else:
+        digest = _ledger._hash_payload(list(payload.items()))
+        # Pre-0.8.0 detection: heuristic on whether the parsed payload
+        # ends with a newline. Older `uplink.build_issue` used
+        # `.rstrip()`, so a stripped payload almost certainly does NOT
+        # end in '\n'. The caller can override.
+        pre_080 = args.legacy_rstrip or (
+            not args.legacy_rstrip_no
+            and all(not b.endswith(b"\n") for b in payload.values()))
 
     registry_path = _rejected.registry_path()
     before = _rejected.load_rejected_registry()

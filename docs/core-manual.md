@@ -409,6 +409,66 @@ Recovery is fail-safe: any `gh` failure, JSON-decode error, or
 malformed issue body logs at INFO and returns empty so the existing
 sweep behavior takes over — recovery never blocks wrap-up.
 
+### Drift candidates carry diffs, not full files (P-0077)
+
+A drift envelope is captured when an install-managed file has been
+locally edited — `installer._capture_drift` packages the consumer's
+**current** file bytes for transport. Pre-0.9.0, the entire current
+file rode in the issue body; for files in the 40+ KB range this hit
+two failures simultaneously:
+
+- Windows `CreateProcessW` cmdline cap (~32K UNICODE_STRING) — Python
+  surfaces this as a misleading `FileNotFoundError` ("`gh` CLI not
+  found").
+- The hub-side `ISSUE_BODY_LIMIT` (60K chars) — a 143KB drifted file
+  cannot even build a candidate issue.
+
+The hub already ships the upstream baseline; reshipping the full
+current bytes is wasted transport. Starting with 0.9.0, when an
+envelope has `drift_target` + `baseline_sha256` and the baseline can
+be located via `installer._pkg_source_path`, `uplink.build_issue`
+emits a unified diff under `### drift diff (unified, against
+baseline)` plus a metadata header:
+
+```
+- drift_target: `tools/proposal_lib.py`
+- baseline_sha256: `…`
+- payload_form: diff
+- payload_sha256: `…`
+```
+
+The `payload_sha256` field carries the consumer-side digest the ledger
+would have recorded (basename + null + bytes hash); the hub's
+`parse_payload_from_issue_body` short-circuits on `payload_form: diff`
+and takes this sha directly, so `discover_uplinked_from_hub` (P-0076
+Phase 1) and `maintainer/reject_candidate.py` (P-0076 Phase 2) both
+keep working without rehashing.
+
+Fallback: if `_pkg_source_path` cannot resolve the drift target
+(unfamiliar autonomy path, missing source), `build_issue` reverts to
+the legacy full-payload form. Net-new candidates (no `drift_target`)
+always use the full-payload form so ledger rehash still works.
+
+The `gh` invocation also switches to `--body-file <tempfile>`, which
+sidesteps the Windows cmdline cap entirely for any candidate body size
+that fits the 60K hub limit. Linux/macOS behavior is unchanged.
+
+### Hub setup: required labels
+
+Fresh hub repos need three `kind/*` labels plus the umbrella
+`candidate` label, or `gh issue create --label kind/X` fails with
+"label not found":
+
+```bash
+gh label create "candidate"      --color D4C5F9 -R <hub-repo>
+gh label create "kind/skill"     --color C5DEF5 -R <hub-repo>
+gh label create "kind/hook"      --color C5DEF5 -R <hub-repo>
+gh label create "kind/mechanism" --color C5DEF5 -R <hub-repo>
+```
+
+`uplink.uplink_envelope` recognizes the "label not found" stderr
+pattern and prints the same `gh label create` block as a hint.
+
 ### Reject feedback registry (P-0076 Phase 2)
 
 A consumer can keep editing a rejected skill — payload digest changes —

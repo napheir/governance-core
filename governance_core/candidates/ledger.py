@@ -136,27 +136,58 @@ _CANDIDATE_JSON_FENCE_RE = re.compile(
     r"^### candidate\.json\n```json\n(?P<content>.*?)\n```",
     re.MULTILINE | re.DOTALL)
 
+# P-0077: drift envelope body lists `- payload_form: diff` + a `- payload_sha256: ...`
+# line above the diff fence. The parser uses these to skip rehashing for
+# drift issues (the diff body doesn't reconstruct the original bytes).
+_PAYLOAD_FORM_RE = re.compile(
+    r"^- payload_form:\s*(?P<form>\S+)\s*$", re.MULTILINE)
+_PAYLOAD_SHA_RE = re.compile(
+    r"^- payload_sha256:\s*`?(?P<sha>[0-9a-fA-F]+)`?\s*$", re.MULTILINE)
+
 
 def parse_payload_from_issue_body(body: str) -> tuple[dict, dict[str, bytes]]:
     """Parse a candidate issue's body into (candidate_meta, payload_bytes).
 
     Returns:
-        meta: the candidate.json dict embedded under `### candidate.json`.
+        meta: the candidate.json dict embedded under `### candidate.json`,
+            augmented with `payload_form` and `payload_sha256` fields when
+            the issue is a drift body (P-0077). For net-new bodies these
+            keys are absent.
         payload_bytes: a mapping from `Path(rel).name` to the raw UTF-8
-            bytes captured under each `### payload/<name>.md` fenced block.
+            bytes captured under each `### payload/<name>.md` fenced
+            block. Empty dict for drift bodies (whose payload is the
+            authoritative sha in `meta["payload_sha256"]`, not bytes).
 
     Raises `ValueError` if the body lacks a candidate.json block or any
-    declared `source_paths` entry has no matching fenced block. The caller
-    decides whether to skip-and-log or raise further.
+    declared `source_paths` entry has no matching fenced block (in the
+    full-payload / net-new shape).
 
-    Used by both `discover_uplinked_from_hub` (Phase 1 ledger recovery) and
-    the hub-side `maintainer/reject_candidate.py` (Phase 2 reject feedback)
-    -- one parser, one source of truth for the body schema.
+    Used by both `discover_uplinked_from_hub` (P-0076 Phase 1 ledger
+    recovery), the hub-side `maintainer/reject_candidate.py` (P-0076
+    Phase 2 reject feedback), and the P-0077 drift-diff body shape --
+    one parser, one source of truth.
     """
     json_match = _CANDIDATE_JSON_FENCE_RE.search(body)
     if not json_match:
         raise ValueError("issue body has no `### candidate.json` block")
     meta = json.loads(json_match.group("content"))
+
+    # P-0077: drift body short-circuit. If the body declares
+    # `payload_form: diff`, the consumer has already computed the
+    # payload sha; rehashing the diff is meaningless. Surface both
+    # `payload_form` and `payload_sha256` on the returned `meta` so
+    # callers can decide.
+    form_match = _PAYLOAD_FORM_RE.search(body)
+    sha_match = _PAYLOAD_SHA_RE.search(body)
+    if form_match and form_match.group("form") == "diff":
+        if not sha_match:
+            raise ValueError(
+                "issue body has `payload_form: diff` but no "
+                "`payload_sha256:` line")
+        meta["payload_form"] = "diff"
+        meta["payload_sha256"] = sha_match.group("sha")
+        return meta, {}
+
     payload: dict[str, bytes] = {}
     for m in _PAYLOAD_FENCE_RE.finditer(body):
         # `name` is `payload/<basename>` (full relative path under the
@@ -226,7 +257,13 @@ def discover_uplinked_from_hub(origin: str,
             logger.info("[ledger-recovery] issue #%s skipped (no id in "
                         "candidate.json)", number)
             continue
-        digest = _hash_payload(list(payload.items()))
+        # P-0077: drift bodies carry `payload_sha256` from the consumer
+        # directly; the diff cannot be rehashed to reproduce the original
+        # payload bytes. Net-new bodies still rehash via `_hash_payload`.
+        if "payload_form" in meta and meta["payload_form"] == "diff":
+            digest = meta["payload_sha256"]
+        else:
+            digest = _hash_payload(list(payload.items()))
         rebuilt.append({
             "digest": digest,
             "candidate_id": meta["id"],

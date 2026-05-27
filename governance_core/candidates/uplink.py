@@ -18,8 +18,11 @@ cannot be uplinked under a forged origin.
 
 from __future__ import annotations
 
+import difflib
+import hashlib
 import json
 import subprocess
+import tempfile
 from pathlib import Path
 
 from governance_core.auth import codec
@@ -56,8 +59,41 @@ def scan_envelope(envelope_dir: Path) -> list[sensitive_scan.Finding]:
     return findings
 
 
+def _baseline_for_drift(meta: dict) -> Path | None:
+    """Locate the upstream baseline file for a drift envelope's `drift_target`.
+
+    Returns the package-source path under `governance_core/` corresponding
+    to the drift target's autonomy-layer path, or None when the path is
+    not install-managed (or the package source is missing). P-0077 uses
+    this to render a unified diff against baseline instead of shipping
+    the entire current file.
+    """
+    if "drift_target" not in meta:
+        return None
+    # Local import to avoid the candidates module importing installer at
+    # package init time -- installer is a heavier module and pulls in
+    # subprocess + git plumbing transitively.
+    from governance_core.installer import _pkg_source_path
+    src = _pkg_source_path(meta["drift_target"])
+    if src is None or not src.exists():
+        return None
+    return src
+
+
 def build_issue(envelope_dir: Path) -> tuple[str, str, list[str]]:
     """Build the (title, body, labels) for a candidate envelope's issue.
+
+    For a drift envelope (P-0077): the body carries a unified diff
+    against the upstream baseline plus a `payload_form: diff` /
+    `payload_sha256:` metadata pair, instead of the full current file.
+    The hub already ships the baseline bytes; no need to retransmit
+    them. Falls back to the legacy full-payload form when the baseline
+    cannot be located (unfamiliar drift_target, missing package
+    source) so uplink never blocks on a baseline-lookup failure.
+
+    Net-new envelopes (no `drift_target`) still ship the full payload
+    fence -- P-0076 Phase 1's `discover_uplinked_from_hub` rebuilds the
+    digest by rehashing those fenced bytes.
 
     Raises UplinkError if the assembled body exceeds the issue size guard.
     """
@@ -65,6 +101,9 @@ def build_issue(envelope_dir: Path) -> tuple[str, str, list[str]]:
     title = (f"[candidate] {meta['kind']}: {meta['title']} "
              f"(from {meta['origin']})")
     labels = [CANDIDATE_LABEL, f"kind/{meta['kind']}"]
+
+    baseline = _baseline_for_drift(meta)
+    drift_form = baseline is not None  # only "diff" when we can actually diff
 
     parts = [
         f"## Candidate: {meta['title']}",
@@ -78,19 +117,48 @@ def build_issue(envelope_dir: Path) -> tuple[str, str, list[str]]:
     if "drift_target" in meta:
         parts.append(f"- drift_target: `{meta['drift_target']}`")
         parts.append(f"- baseline_sha256: `{meta['baseline_sha256']}`")
+    if drift_form:
+        # Compute consumer's payload sha256 so the hub-side parser can
+        # take it directly without rehashing the diff (which would not
+        # reconstruct the original bytes).
+        payload_rel = meta["source_paths"][0]
+        current_bytes = (envelope_dir / payload_rel).read_bytes()
+        payload_sha = hashlib.sha256()
+        # Match `ledger._hash_payload` keying: basename + null sep + bytes.
+        payload_sha.update(Path(payload_rel).name.encode("utf-8"))
+        payload_sha.update(b"\0")
+        payload_sha.update(current_bytes)
+        payload_sha.update(b"\0")
+        parts.append("- payload_form: diff")
+        parts.append(f"- payload_sha256: `{payload_sha.hexdigest()}`")
+
     parts += ["", "### Rationale", "", meta["rationale"], "",
               "### candidate.json", "```json",
               (envelope_dir / envelope.CANDIDATE_JSON).read_text(
                   encoding="utf-8").rstrip(), "```"]
-    for rel in meta["source_paths"]:
-        # P-0076 Phase 1: do NOT rstrip the payload. `ledger.payload_digest`
-        # hashes the raw file bytes, so issue body must carry them verbatim
-        # for `discover_uplinked_from_hub` to rebuild a matching digest.
-        # Trailing newlines are preserved; the fenced block closes cleanly
-        # either way (the trailing ``` sits on its own line below).
-        parts += ["", f"### {rel}", "```",
-                  (envelope_dir / rel).read_text(encoding="utf-8"),
-                  "```"]
+
+    if drift_form:
+        # Render unified diff against upstream baseline.
+        current_text = (envelope_dir / meta["source_paths"][0]).read_text(
+            encoding="utf-8")
+        baseline_text = baseline.read_text(encoding="utf-8")
+        diff = "".join(difflib.unified_diff(
+            baseline_text.splitlines(keepends=True),
+            current_text.splitlines(keepends=True),
+            fromfile=f"baseline/{meta['drift_target']}",
+            tofile=f"consumer/{meta['drift_target']}"))
+        parts += ["", "### drift diff (unified, against baseline)",
+                  "```diff", diff.rstrip("\n"), "```"]
+    else:
+        for rel in meta["source_paths"]:
+            # P-0076 Phase 1: do NOT rstrip the payload. `ledger.payload_digest`
+            # hashes the raw file bytes, so issue body must carry them verbatim
+            # for `discover_uplinked_from_hub` to rebuild a matching digest.
+            # Trailing newlines are preserved; the fenced block closes cleanly
+            # either way (the trailing ``` sits on its own line below).
+            parts += ["", f"### {rel}", "```",
+                      (envelope_dir / rel).read_text(encoding="utf-8"),
+                      "```"]
     body = "\n".join(parts) + "\n"
     if len(body) > ISSUE_BODY_LIMIT:
         raise UplinkError(
@@ -100,11 +168,19 @@ def build_issue(envelope_dir: Path) -> tuple[str, str, list[str]]:
     return title, body, labels
 
 
-def gh_command(title: str, body: str, labels: list[str],
+def gh_command(title: str, body_file: str, labels: list[str],
                repo: str) -> list[str]:
-    """Build the `gh issue create` argv for a candidate issue."""
+    """Build the `gh issue create` argv for a candidate issue.
+
+    Takes a path to a tempfile holding the body rather than the body
+    inline (P-0077): on Windows, `subprocess.run(['gh', ..., '--body',
+    body])` exceeds `CreateProcessW`'s ~32K UNICODE_STRING cmdline cap
+    for bodies in the 40K+ range, which Python misleadingly surfaces as
+    `FileNotFoundError`. Writing the body to a temp file and passing
+    `--body-file` sidesteps the cmdline length entirely.
+    """
     argv = ["gh", "issue", "create", "--repo", repo,
-            "--title", title, "--body", body]
+            "--title", title, "--body-file", body_file]
     for label in labels:
         argv += ["--label", label]
     return argv
@@ -139,17 +215,42 @@ def uplink_envelope(envelope_dir: Path, auth_code: str,
             f"secret(s) -- uplink to a PUBLIC repo aborted:\n{lines}")
 
     title, body, labels = build_issue(envelope_dir)
-    argv = gh_command(title, body, labels, repo)
     if dry_run:
-        shown = argv[:-1] + [f"<body {len(body)} chars>"]
+        # No tempfile written for dry-run; show what argv would look like.
+        argv_preview = gh_command(title, "<body-file>", labels, repo)
+        shown = argv_preview[:-1] + [f"<body {len(body)} chars>"]
         return ("[dry-run] would run:\n  " + " ".join(shown)
                 + f"\n\n--- issue title ---\n{title}\n"
                 + f"--- issue body ---\n{body}")
+    # P-0077: write body to a tempfile and pass --body-file to `gh issue
+    # create` so we never hit Windows's CreateProcessW cmdline cap.
+    body_file = tempfile.NamedTemporaryFile(
+        "w", suffix=".md", delete=False, encoding="utf-8")
     try:
-        result = subprocess.run(argv, capture_output=True, text=True,
-                                check=True)
-    except FileNotFoundError:
-        raise UplinkError("`gh` CLI not found -- install GitHub CLI to uplink")
-    except subprocess.CalledProcessError as exc:
-        raise UplinkError(f"gh issue create failed: {exc.stderr.strip()}")
+        body_file.write(body)
+        body_file.close()
+        argv = gh_command(title, body_file.name, labels, repo)
+        try:
+            result = subprocess.run(argv, capture_output=True, text=True,
+                                    check=True)
+        except FileNotFoundError:
+            raise UplinkError(
+                "`gh` CLI not found -- install GitHub CLI to uplink")
+        except subprocess.CalledProcessError as exc:
+            stderr = exc.stderr.strip()
+            # P-0077: a missing kind/<x> or `candidate` label on the hub
+            # surfaces as "label not found" -- hint at the fix instead of
+            # echoing the bare gh error.
+            if "not found" in stderr.lower() and "label" in stderr.lower():
+                raise UplinkError(
+                    f"gh issue create failed: {stderr}\n"
+                    "  Hint: the hub repo is missing a required label. "
+                    "Run on the hub:\n"
+                    "    gh label create 'candidate' --color D4C5F9\n"
+                    "    gh label create 'kind/skill' --color C5DEF5\n"
+                    "    gh label create 'kind/hook' --color C5DEF5\n"
+                    "    gh label create 'kind/mechanism' --color C5DEF5")
+            raise UplinkError(f"gh issue create failed: {stderr}")
+    finally:
+        Path(body_file.name).unlink(missing_ok=True)
     return result.stdout.strip()
