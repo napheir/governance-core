@@ -33,8 +33,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from governance_core import auth
-from governance_core.auth import codec
+from . import codec, sign, verify
 
 FEED_SCHEMA = 1
 
@@ -126,7 +125,7 @@ def remove_revocation(feed: dict[str, Any],
 
 def sign_feed(feed_bytes: bytes, seed: bytes) -> str:
     """Return the b64url Ed25519 signature over `feed_bytes`."""
-    return codec.b64url_encode(auth.sign(feed_bytes, seed))
+    return codec.b64url_encode(sign(feed_bytes, seed))
 
 
 def verify_feed(feed_bytes: bytes, signature_b64: str,
@@ -140,7 +139,7 @@ def verify_feed(feed_bytes: bytes, signature_b64: str,
         sig = codec.b64url_decode(signature_b64.strip())
     except (ValueError, TypeError) as exc:
         raise RevocationFeedError(f"signature is not valid base64url: {exc}")
-    if not auth.verify(feed_bytes, sig, public_key):
+    if not verify(feed_bytes, sig, public_key):
         raise RevocationFeedError("revocation feed signature does not verify")
     try:
         feed = json.loads(feed_bytes.decode("utf-8"))

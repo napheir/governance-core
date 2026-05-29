@@ -33,7 +33,7 @@ def _synthetic(tmp: Path) -> Path:
     (hooks / "sensitive-data-guard.py").write_text(  # a known fail-open name
         "import sys\ntry:\n    from governance_core.sensitive_scan import scan_text\n"
         "except Exception:\n    sys.exit(0)\n", encoding="utf-8")
-    (hooks / "auth-guard.py").write_text(  # the known exempt name
+    (hooks / "fail-closed-importer.py").write_text(  # fail-closed gc importer
         "from governance_core.auth import codec\nimport sys\nsys.exit(2)\n",
         encoding="utf-8")
     (hooks / "newcomer.py").write_text(  # unclassified gc importer
@@ -59,17 +59,17 @@ def main() -> int:
     with tempfile.TemporaryDirectory() as td:
         hooks = _synthetic(Path(td))
         names = {"self-contained.py", "sensitive-data-guard.py",
-                 "auth-guard.py", "newcomer.py"}
+                 "fail-closed-importer.py", "newcomer.py"}
         disc = check_runtime_import_discipline(hooks, names)
         _case("self-contained hook not classified as importer",
               "self-contained.py" not in (disc["fail_open"] + disc["exempt"]
                                           + disc["violations"]))
         _case("fail-open importer -> fail_open",
               disc["fail_open"] == ["sensitive-data-guard.py"])
-        _case("exempt importer -> exempt",
-              disc["exempt"] == ["auth-guard.py"])
-        _case("unclassified gc importer -> violation",
-              disc["violations"] == ["newcomer.py"])
+        _case("no grandfather exemptions remain (P-0082)",
+              disc["exempt"] == [])
+        _case("every unlisted gc importer -> violation",
+              disc["violations"] == ["fail-closed-importer.py", "newcomer.py"])
         # scope: a gc-importing hook NOT in shipped names is ignored
         disc2 = check_runtime_import_discipline(hooks, {"self-contained.py"})
         _case("non-shipped hooks are out of scope",
@@ -82,12 +82,15 @@ def main() -> int:
     real = check_runtime_import_discipline(pkg_hooks, shipped)
     _case("shipped hooks: NO unclassified violations",
           real["violations"] == [])
-    _case("shipped hooks: auth-guard is the tracked exception",
-          real["exempt"] == ["auth-guard.py"])
+    _case("shipped hooks: auth-guard is now self-contained (not an importer)",
+          "auth-guard.py" not in (real["fail_open"] + real["exempt"]
+                                  + real["violations"]))
+    _case("shipped hooks: NO grandfather exceptions remain",
+          real["exempt"] == [])
     _case("shipped hooks: every declared fail-open importer is present + imports gc",
           set(real["fail_open"]) == set(FAIL_OPEN_GC_IMPORTERS))
-    _case("exempt set is exactly {auth-guard.py}",
-          set(GC_IMPORT_EXEMPT) == {"auth-guard.py"})
+    _case("exempt set is empty (P-0082)",
+          set(GC_IMPORT_EXEMPT) == set())
 
     passed = sum(_results)
     total = len(_results)

@@ -35,7 +35,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from governance_core import auth
+from . import sign, verify
 
 AUTH_CODE_PREFIX = "GC1"
 # Schemas this codec can verify. New codes are issued at CURRENT_SCHEMA;
@@ -99,7 +99,7 @@ def canonical_payload(consumer_id: str, issued: str,
 
 def make_auth_code(payload: bytes, seed: bytes) -> str:
     """Sign `payload` with `seed` and return the GC1 authorization code."""
-    sig = auth.sign(payload, seed)
+    sig = sign(payload, seed)
     return f"{AUTH_CODE_PREFIX}.{b64url_encode(payload)}.{b64url_encode(sig)}"
 
 
@@ -153,7 +153,7 @@ def verify_auth_code(code: str, public_key: bytes,
         sig = b64url_decode(parts[2])
     except (ValueError, TypeError) as exc:
         raise AuthCodeError(f"authorization code is not valid base64url: {exc}")
-    if not auth.verify(payload_bytes, sig, public_key):
+    if not verify(payload_bytes, sig, public_key):
         raise AuthCodeError("authorization code signature does not verify")
     try:
         payload = json.loads(payload_bytes.decode("utf-8"))

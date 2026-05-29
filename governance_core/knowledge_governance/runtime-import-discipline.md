@@ -56,32 +56,35 @@ This is why every per-tool-call guard (`command-guard`, `scope-guard`,
 | `sensitive-data-guard` | yes (`sensitive_scan`) | guards + **fails open** | OK ✅ |
 | `candidate-reminder` / `renewal-reminder` / `update-reminder` | yes | guards + fails open (SessionStart, advisory) | OK ✅ |
 | `skill-usage-tracker` | yes (`discovery.tracker`) | guards + fails open (PostToolUse) | OK ✅ |
-| **`auth-guard`** | **yes** (`auth.codec` / `revocation`) | **fails closed**, PreToolUse `*` | **VIOLATION** ❌ |
+| `auth-guard` | **no** (vendored `_gc_auth`, P-0082) | fails closed, PreToolUse `*` | self-contained ✅ |
 
-`auth-guard` is the sole violator: it must fail closed (no valid package ⇒ no
-capabilities is the *point*), so it cannot fail open on an import error — the
-only correct fix is to make it **self-contained**. That refactor (vendor the
-`codec` + `_ed25519` + `revocation` chain + `pubkey.json` as install-copied
-hook helpers, the way `proposal-classify-fast` vendors `_classify_match`) is
-tracked as **P-0082**.
+`auth-guard` must fail closed (no valid package ⇒ no capabilities is the
+*point*), so it cannot fail open on an import error. **P-0082** made it
+self-contained: the installer vendors `governance_core/auth/` (the `codec` +
+`_ed25519` + `revocation` chain + `pubkey.json`) to `.claude/hooks/_gc_auth/`
+and the hook imports that copy via `sys.path` — the same model as
+`proposal-classify-fast` vendoring `_classify_match`, scaled to a package. The
+auth subpackage was converted to relative imports so the one source works both
+as `governance_core.auth` (package use) and as the vendored `_gc_auth`. No
+importer remains in violation.
 
 ## 4. Enforcement
 
 `governance_core/runtime_import_audit.py` is the single source of truth:
 
 - `FAIL_OPEN_GC_IMPORTERS` — the verified fail-open importers (allowed).
-- `GC_IMPORT_EXEMPT` — fail-closed importers grandfathered pending a fix
-  (currently `{auth-guard.py}`; **remove when P-0082 lands**).
+- `GC_IMPORT_EXEMPT` — fail-closed importers grandfathered pending a fix.
+  **Empty as of P-0082** (auth-guard was vendored); a future fail-closed
+  importer would be added here only as an explicit, tracked, temporary entry.
 - `check_runtime_import_discipline(hooks_dir, shipped_hook_names)` classifies
   each shipped hook; any importer that is in **neither** set is a *violation*.
 
 `governance-core doctor` calls it and **exits 9** on any unclassified importer,
 so a new `governance_core`-importing hook cannot ship without an explicit
 decision: make it self-contained, or — after verifying it guards the import and
-fails open — add it to `FAIL_OPEN_GC_IMPORTERS`. `auth-guard` is reported as a
-tracked exception and does not fail doctor (grandfather pattern, mirroring
-P-0075's prune-exempt: enforce going forward, self-decay when the violator is
-fixed).
+fails open — add it to `FAIL_OPEN_GC_IMPORTERS`. With the exemption set empty,
+discipline is now enforced with no exceptions (the grandfather of P-0081
+self-decayed when P-0082 vendored auth-guard).
 
 ## 5. Adding a new hook — checklist
 

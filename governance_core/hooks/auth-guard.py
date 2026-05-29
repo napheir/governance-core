@@ -38,6 +38,16 @@ import tempfile
 import urllib.request
 from pathlib import Path
 
+# P-0082: auth-guard is self-contained -- it imports the auth primitives from
+# the vendored `_gc_auth` package installed beside this hook, NOT from
+# `governance_core`. A fail-closed per-call gate must never depend on the
+# package being importable, or a broken/uninstalled package would freeze every
+# tool call (issue #3 / runtime-import-discipline). `_gc_auth` is a copy of
+# governance_core/auth/ written by the installer; same code, no namespace dep.
+_HOOK_DIR = Path(__file__).resolve().parent
+if str(_HOOK_DIR) not in sys.path:
+    sys.path.insert(0, str(_HOOK_DIR))
+
 _BLOCK_HEADER = (
     "[AUTH GUARD] BLOCKED: governance-core authorization is invalid, "
     "missing, or revoked -- all capabilities are disabled."
@@ -86,7 +96,7 @@ def _parse_iso(text: str) -> datetime.datetime:
 
 def _verify_code(auth_code: str, public_key: bytes) -> bool:
     """Verify `auth_code` (signature + expiry); return True iff valid."""
-    from governance_core.auth import codec
+    from _gc_auth import codec
     try:
         codec.verify_auth_code(auth_code, public_key)
         return True
@@ -101,7 +111,7 @@ def _fetch_feed(feed_url: str, public_key: bytes):
     verify -- yields None. A forged feed is therefore treated as no feed,
     never as a trusted empty one.
     """
-    from governance_core.auth import revocation
+    from _gc_auth import revocation
     try:
         with urllib.request.urlopen(
                 feed_url, timeout=_FETCH_TIMEOUT_SECONDS) as resp:
@@ -123,7 +133,7 @@ def _revocation_gate(root: Path, consumer_id: str, feed_url: str,
     per `_FEED_TTL`. The cache holds the last verified feed, the last
     successful-fetch and last-attempt times, and the first-seen time.
     """
-    from governance_core.auth import revocation
+    from _gc_auth import revocation
     cache_path = revocation.feed_cache_path(root)
     now = _now()
 
@@ -191,7 +201,7 @@ def main() -> None:
     auth_code = cfg["authorization"]["auth_code"]
 
     try:
-        from governance_core.auth import codec
+        from _gc_auth import codec
         public_key = codec.load_bundled_public_key()
     except Exception as exc:  # noqa: BLE001
         _block(f"governance-core package public key unavailable ({exc})",
@@ -229,7 +239,7 @@ def main() -> None:
 
     # --- Gate 2: revocation (schema-2 codes only) -------------------------
     try:
-        from governance_core.auth import codec
+        from _gc_auth import codec
         payload = codec.decode_payload(auth_code)
     except Exception as exc:  # noqa: BLE001
         _block(f"cannot read authorization payload ({exc})", _RECOVER_INSTALL)

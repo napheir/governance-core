@@ -17,6 +17,44 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-29 — P-0082 self-contain auth-guard（vendor auth 子包，关 #3）
+
+- 改动：**Phase A** —— `governance_core/auth/` 内部绝对导入改**相对**
+  （`__init__`/`codec`/`revocation`：`from . import _ed25519/codec/sign/verify`
+  + 替换 `auth.sign`/`auth.verify` 调用点），使 auth 子包**可重定位**（同一份源
+  既作 `governance_core.auth` 包用、又能作独立包 import），逻辑零改。**Phase B**
+  —— installer 加 `COPY_CATEGORIES ("auth" → .claude/hooks/_gc_auth)` +
+  `CATEGORY_OF["auth"]` + `_copy_tree` 跳 `__pycache__`/`.pyc`；`auth-guard.py`
+  顶部加 `_HOOK_DIR` + `sys.path.insert`，5 处 import 从 `governance_core.auth`
+  改 `_gc_auth`（**自包含、无 `import governance_core`**）；`runtime_import_audit`
+  的 `GC_IMPORT_EXEMPT` **清空**（P-0081 grandfather 自衰减）；
+  `runtime-import-discipline.md` §3/§4 更新；`test_auth_guard` 在临时 repo vendor
+  `_gc_auth`、`test_runtime_import_audit` 改空-exempt 断言。版本 0.15.0 → 0.16.0。
+  **关 #3**。
+- 涉及：`governance_core/auth/{__init__,codec,revocation}.py`、
+  `governance_core/hooks/auth-guard.py`、`governance_core/installer.py`、
+  `governance_core/runtime_import_audit.py`、
+  `governance_core/knowledge_governance/runtime-import-discipline.md`、
+  `governance_core/tools/{test_auth_guard,test_runtime_import_audit}.py`、
+  `governance_core/__init__.py` + `pyproject.toml`（0.16.0）、`STATE.md`、
+  `shared_state/proposals/core/p-0082-*.md`。
+- 关键决策：**单一源** `governance_core/auth/`，`_gc_auth/` 是 install 产物
+  （Art.8 同代码路径、Art.11.4 不进 wheel —— wheel 仍只 `governance_core*`，
+  auth/ 作为包发布、`_gc_auth` 不在内）。**相对导入使 vendoring 无需源变换**
+  （faithful copy，installer 直接 rglob 拷贝）。prune 是 **manifest-diff** 式 →
+  `_gc_auth` 进 install set（category auth）即永不误删（**双 upgrade 验证存活**）。
+  **fail-closed 语义不变**（坏 auth → exit 2），但 freeze 风险消除：hook + 其依赖
+  现在是一个 install 单元（不再依赖 governance_core 可 pip-import）。dogfood
+  `upgrade` 不热替换当前 session 的 live hook（启动时加载）→ 零冻结风险。
+- 测试：**Phase A** 可重定位 round-trip（独立 `_gc_auth` import + sign/verify）
+  + `test_auth_codec`/`test_revocation`/`test_auth_guard` green。**Phase B** 全套
+  `tools/test_*.py` **21/21**（`test_auth_guard` 用 vendored 布局、
+  `test_runtime_import_audit` 空 exempt）；`hook_imports_gc(auth-guard)=False`；
+  `governance-core doctor` exit 0 **无 tracked-exception 行**（exempt 空、全面强制）；
+  直调安装版 auth-guard 对真实 config **exit 0 授权**；**双 upgrade `_gc_auth` 5
+  文件存活**；wheel 0.16.0 build OK（top-level 仅 `governance_core` + dist-info、
+  auth/ 5 文件+pubkey 在内、`_gc_auth` 不进 wheel、`maintainer/` 不泄漏）。
+
 ### 2026-05-29 — P-0081 立 runtime-import-discipline 不变式 + doctor 检查（#3 根治）
 
 - 改动：查 issue #3 发现前提已过时（当前 6 hook + 8 tool 都 import governance_core，
@@ -82,27 +120,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   (`governance_core/**` 不 gate)、有 classify entry 放行。dogfood upgrade exit 0
   (hook 注册进 settings.local.json)、doctor exit 0。wheel 0.14.0 build OK（top-level
   仅 `governance_core` + dist-info、8 文件全在、`maintainer/` 不泄漏）。
-
-### 2026-05-29 — fix #2 discovery GBK UnicodeDecodeError (Art.7.4)
-
-- 改动：给 discovery 里读 git 输出的 `subprocess.run` 加
-  `encoding="utf-8", errors="replace"`——`tracker.py`（`git diff/log` 算 session
-  complexity 的两处）+ `discovery/__init__.py`（`resolve_project_root` 的
-  `git rev-parse --show-toplevel`）。Windows 上 `text=True` 缺 encoding 时按
-  GBK 解码 git 输出，遇非 ASCII 的 commit message / 文件名 / 仓库路径即
-  `UnicodeDecodeError`，把该数据从复杂度计算里丢掉（issue #2 现象）。版本
-  0.12.0 → 0.13.0。
-- 涉及：`governance_core/discovery/tracker.py`、`governance_core/discovery/__init__.py`、
-  `governance_core/__init__.py` + `pyproject.toml`（0.13.0）、`STATE.md`。
-- 关键决策：`errors="replace"` 保证彻底无解码崩溃且**不丢文件**（直接回应 issue
-  的 "offending file dropped from computation"）；修的是 tracker import 链的**整个
-  bug 类**（tracker 两处 + resolve_project_root），不止 issue 点名的单行。
-  `tools/test_command_guard.py` 有同款 `text=True` 无 encoding，但属测试文件、非
-  runtime 路径，记下未动。NO_PROPOSAL（简单 bug fix）。原 issue 报 0.5.0，
-  line 116 的 `.usage.json` 读早带 encoding；真 offending read 是 subprocess git
-  解码。#3（auth-guard import 隔离）另议（security hook 重构、需 proposal）。
-- 测试：全套 `tools/test_*.py` 17/17；`python -m governance_core.discovery.tracker
-  --should-extract` 运行 clean；dogfood `governance-core upgrade` exit 0。
 
 ### 2026-05-27 — P-0077 uplink drift diff + --body-file (issue #15)
 

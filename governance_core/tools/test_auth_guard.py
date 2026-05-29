@@ -58,6 +58,12 @@ def _make_repo(auth_code: str) -> tuple[Path, Path]:
     hook = tmp / ".claude" / "hooks" / "auth-guard.py"
     hook.parent.mkdir(parents=True)
     shutil.copy2(_pkg_hook(), hook)
+    # P-0082: auth-guard imports the vendored `_gc_auth` package installed
+    # beside it (the installer copies governance_core/auth/ -> _gc_auth/).
+    # Replicate that layout so the hook resolves its self-contained deps.
+    auth_src = Path(governance_core.__file__).resolve().parent / "auth"
+    shutil.copytree(auth_src, hook.parent / "_gc_auth",
+                    ignore=shutil.ignore_patterns("__pycache__"))
     cfg = tmp / ".governance" / "config.json"
     cfg.parent.mkdir(parents=True)
     cfg.write_text(json.dumps({"authorization": {"auth_code": auth_code}}),

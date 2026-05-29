@@ -41,12 +41,12 @@ FAIL_OPEN_GC_IMPORTERS: frozenset[str] = frozenset({
 })
 
 # Fail-CLOSED governance_core importers grandfathered pending a
-# self-containment refactor. REMOVE auth-guard.py when P-0082 vendors its
-# auth chain (codec + _ed25519 + revocation + pubkey.json); the check then
-# enforces full discipline with no exceptions.
-GC_IMPORT_EXEMPT: frozenset[str] = frozenset({
-    "auth-guard.py",
-})
+# self-containment refactor. Empty as of P-0082: auth-guard was vendored
+# (it now imports the install-copied `_gc_auth` package, not governance_core),
+# so the check enforces full discipline with NO exceptions. A future
+# fail-closed importer would be added here only as an explicit, tracked,
+# temporary grandfather.
+GC_IMPORT_EXEMPT: frozenset[str] = frozenset()
 
 # Matches a top-level or indented `import governance_core` /
 # `from governance_core[...] import ...` statement.

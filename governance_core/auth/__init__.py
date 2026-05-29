@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import os
 
-from governance_core.auth import _ed25519
+from . import _ed25519
 
 SEED_BYTES = 32
 PUBLIC_KEY_BYTES = 32

@@ -74,6 +74,9 @@ COPY_CATEGORIES = [
     ("contracts", "contracts"),
     ("agent_rules", "agent_rules"),
     ("tools",     "tools"),
+    # P-0082: vendor the auth subpackage beside auth-guard so the hook is
+    # self-contained (no `import governance_core`). Same source, copied.
+    ("auth",      ".claude/hooks/_gc_auth"),
 ]
 
 # P-0065 Phase 2: copy-category source subdir -> installed_files.json
@@ -86,6 +89,7 @@ CATEGORY_OF = {
     "contracts": "contract",
     "agent_rules": "agent_rule",
     "tools": "tool",
+    "auth": "auth",
 }
 
 KNOWLEDGE_COPY_MAP = [
@@ -255,6 +259,8 @@ def _copy_tree(src: Path, dst: Path, dry_run: bool = False) -> list[Path]:
     for s in src.rglob("*"):
         if s.is_dir():
             continue
+        if "__pycache__" in s.parts or s.suffix == ".pyc":
+            continue  # never copy bytecode (e.g. when vendoring auth/, P-0082)
         if s.name == "README.md" and s.parent == src:
             # Skip per-category READMEs in the package (they're just docs)
             continue
