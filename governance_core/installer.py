@@ -980,6 +980,24 @@ def doctor(project_root: Path) -> int:
         logger.error("[doctor] hooks installed but not registered in "
                       "settings.local.json: %s", unregistered)
         return 6
+    # P-0081: runtime-import-discipline -- a shipped hook that imports
+    # governance_core must guard it + fail open; a fail-closed gate must be
+    # self-contained (else a broken package freezes every tool call). Any
+    # unclassified importer fails doctor; auth-guard is a tracked exception
+    # pending P-0082. See runtime_import_audit + the governance doc.
+    from governance_core.runtime_import_audit import (
+        check_runtime_import_discipline)
+    disc = check_runtime_import_discipline(hooks_dir, set(_load_hooks_manifest()))
+    if disc["violations"]:
+        logger.error("[doctor] runtime-import-discipline: shipped hooks import "
+                      "governance_core but are unclassified -- make them "
+                      "self-contained or verify fail-open: %s",
+                      disc["violations"])
+        return 9
+    if disc["exempt"]:
+        logger.info("[doctor] runtime-import-discipline: %d tracked exception(s) "
+                    "pending self-containment: %s",
+                    len(disc["exempt"]), disc["exempt"])
     # P-0065 Phase 1: authorization must be present and still verify
     if "authorization" not in cfg or "auth_code" not in cfg["authorization"]:
         logger.error("[doctor] no authorization in config.json "

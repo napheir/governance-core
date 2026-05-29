@@ -17,6 +17,37 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-29 — P-0081 立 runtime-import-discipline 不变式 + doctor 检查（#3 根治）
+
+- 改动：查 issue #3 发现前提已过时（当前 6 hook + 8 tool 都 import governance_core，
+  非"唯一"），但内核成立。**锐化不变式**：import governance_core 的 hook 必须守护
+  import 且 fail-open；必须 fail-CLOSED 的安全门则必须自包含——证据是除 auth-guard
+  外所有 importer 都守护 + fail-open（sensitive-data-guard 注释明写"auth-guard
+  already fails closed"）。auth-guard 是唯一违反者（PreToolUse `*` + fail-closed →
+  governance_core 不可导入即冻结每次工具调用）。新增治理文档
+  `knowledge_governance/runtime-import-discipline.md` + 新模块
+  `runtime_import_audit.py`（`FAIL_OPEN_GC_IMPORTERS`/`GC_IMPORT_EXEMPT`/
+  `check_runtime_import_discipline`）+ doctor 检查（unclassified gc-importer →
+  exit 9；auth-guard 以文档化临时例外 grandfather，doctor 保持 exit 0、对新 hook
+  强制）。**不动 auth-guard 代码**（636 行 crypto vendor 留 P-0082）。版本 0.14.0
+  → 0.15.0。
+- 涉及：`governance_core/runtime_import_audit.py`（新）、`installer.py`（doctor 加
+  P-0081 检查，新退出码 9）、`knowledge_governance/runtime-import-discipline.md`（新）、
+  `tools/test_runtime_import_audit.py`（新，13 用例）、`__init__.py` + `pyproject.toml`
+  （0.15.0）、`STATE.md`、`shared_state/proposals/core/p-0081-*.md`。
+- 关键决策：**不进宪法**（治理文档 + doctor 检查，免 /iterate-constitution 重流程；
+  要 entrench 可后续加一行 Art.11 引用）；grandfather auth-guard（仿 P-0075
+  prune-exempt：向前强制、P-0082 落地后自衰减）；检查作用域限 shipped hooks（manifest
+  名单），不误伤消费者自有 hook；不变式从"per-call guard 自包含"锐化为"fail-open-guarded
+  或自包含、安全门自包含"。**#3 保持 OPEN**，P-0082 vendor auth-guard 后才关。
+- 测试：`test_runtime_import_audit` 13/13（hook_imports_gc 4 + 合成 dir 5 + 真实
+  shipped hooks 4：无 unclassified 违规 / auth-guard 是 tracked 例外 / 5 个 fail-open
+  importer 都在且确 import gc / exempt 恰为 {auth-guard.py}）；全套 `tools/test_*.py`
+  **21/21**；`governance-core doctor` exit 0 并打印 "runtime-import-discipline:
+  1 tracked exception(s) ... ['auth-guard.py']"；dogfood upgrade exit 0；wheel
+  0.15.0 build OK（top-level 仅 `governance_core` + dist-info、新模块/doc/测试在内、
+  `maintainer/` 不泄漏）。
+
 ### 2026-05-29 — P-0080 promote classify fast-path hard-block cluster (#17 + #13)
 
 - 改动：curate trade-agent 的 classify fast-path 集群入包源（P-0065 决策，原
@@ -72,30 +103,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   解码。#3（auth-guard import 隔离）另议（security hook 重构、需 proposal）。
 - 测试：全套 `tools/test_*.py` 17/17；`python -m governance_core.discovery.tracker
   --should-extract` 运行 clean；dogfood `governance-core upgrade` exit 0。
-
-### 2026-05-29 — reject candidates #8 + #9（重投的 trade-coupled skills）
-
-- 改动：用 `maintainer/reject_candidate.py --also-close` 拒 #8
-  (cross-agent-gate-spec-mock) + #9 (p4-scenario-fixture-construction)。
-  **关键**：两者都是**已拒 skill 的重投** —— `rejected_registry.json` 早有这
-  两个 skill_name 条目（cross-agent-gate 曾为 #5/#7、p4-scenario 曾为 #4/#6，
-  P-0076 backfill，`block_by_name: true`）。工具把 #8/#9 的 issue URL 追加进
-  既有条目 + 发 advisory 评论 + 关 issue 为 not-planned。版本 0.11.0 → 0.12.0
-  （shipped `rejected_registry.json` 内容变了，保版本↔内容洁净）。
-- 涉及：`governance_core/candidates/rejected_registry.json`（追加 issue URL +
-  时间戳）、`governance_core/__init__.py` + `pyproject.toml`（0.12.0）、`STATE.md`。
-- 关键决策：两者均 trade-coupled（多 clone 拓扑在单 agent core 退化 + trade 域
-  selection/risk/option/sector）；保留 `block_by_name: true`（pre-0.8.0 条目、
-  按名硬拒）。**洞察**：trade-agent 会重传已拒 skill，极可能因其装的
-  governance-core 版本早于 0.8.0+（未含 shipped rejected_registry），sweep 不知
-  跳过 —— trade-agent 应 upgrade。无 proposal（curation bookkeeping、非能力变更）。
-  通用内核欢迎作"去 trade 化的新 candidate / hub 自 authored 的 skill guide"
-  （既有 advice 已载明：p4 的 schema-provenance 模式、cross-agent 的抽象 spec-mock
-  模式由 hub 直接 author）。
-- 测试：`test_rejected_registry` 21/21（含 shipped registry 含两 skill 的 smoke）；
-  全套 `tools/test_*.py` 17/17；dogfood upgrade exit 0；wheel 0.12.0 build OK
-  （top-level 仅 `governance_core` + dist-info、rejected_registry 在内、
-  `maintainer/` 不泄漏）。
 
 ### 2026-05-27 — P-0077 uplink drift diff + --body-file (issue #15)
 
