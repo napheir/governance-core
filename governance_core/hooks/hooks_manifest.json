@@ -9,6 +9,7 @@
     "constitutional-review.py": {"event": "PreToolUse",      "matcher": "Edit|Write"},
     "data-source-guard.py":     {"event": "PreToolUse",      "matcher": "Bash|Edit|Write"},
     "sensitive-data-guard.py":  {"event": "PreToolUse",      "matcher": "Edit|Write"},
+    "proposal-classify-fast.py": {"event": "PreToolUse",     "matcher": "Edit|Write|MultiEdit|NotebookEdit"},
     "merge-audit.py":           {"event": "PostToolUse",     "matcher": "Bash"},
     "repo-health.py":           {"event": "PostToolUse",     "matcher": "Bash"},
     "direction-guard.py":       {"event": "PostToolUse",     "matcher": "Edit|Write"},

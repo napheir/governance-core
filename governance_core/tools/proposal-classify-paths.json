@@ -1,0 +1,50 @@
+{
+  "_doc": "Path allowlist consumed by tools/proposal_lib.py classify --quick (P-0076 Phase 2/3) + .claude/hooks/proposal-classify-fast.py PreToolUse hook (P-0076 Phase 4). When an Edit/Write target path matches ANY glob below, classify verdict = PROPOSAL_REQUIRED regardless of description. Hot-editable: tools re-read on every invocation.",
+  "_source": "P-0076 Phase 2 — high-sensitivity path allowlist machine-derived from L2 (proposal.md classify §必判) + L1 (Art.5.4 触发条件). Sized to <50 file matches against repo on Phase 2 validation.",
+  "_match_semantics": "fnmatch-style glob; matched against repo-relative POSIX path (forward slashes). Case-sensitive. Tested with python -m fnmatch.",
+  "version": "1.0.0",
+  "categories": {
+    "governance": {
+      "_why": "Constitution-level files. Editing these = governance change requiring proposal (L1 Art.13 + L2 §1 改全局治理).",
+      "globs": [
+        "CLAUDE.md",
+        "constitution/**/*.md",
+        "contracts/**/*",
+        "agent_rules/**/*",
+        ".governance/**/*"
+      ]
+    },
+    "harness": {
+      "_why": "Skill/hook/agent definition files. Editing changes claude harness behavior for all sessions (L2 §1 改 hook 源 / skill 体系). Note: .claude/skills/learned/*.md (agent-generated workflow notes) excluded — they're per-agent extraction artifacts, not harness source.",
+      "globs": [
+        ".claude/commands/**/*.md",
+        ".claude/hooks/**/*.py",
+        ".claude/skills/*.md",
+        ".claude/agents/**/*.md"
+      ]
+    },
+    "routing": {
+      "_why": "Router/keyword configs that drive auto-injection and gate behavior (L2 §3 改 generated state / 改自动化策略).",
+      "globs": [
+        "knowledge/INDEX.routing.json",
+        "tools/proposal-classify-keywords.json",
+        "tools/proposal-classify-paths.json"
+      ]
+    },
+    "infra": {
+      "_why": "Cross-clone sync / proposal lifecycle / audit tooling. Edit affects all 5 clones (L2 §2 跨 clone + §3 改自动化策略).",
+      "globs": [
+        "tools/sync_infra.py",
+        "tools/proposal_lib.py",
+        "tools/audit_*.py"
+      ]
+    },
+    "settings": {
+      "_why": "Claude Code permissions / hook registration. Editing changes default-deny defaults (L2 §3 改自动化策略 + Art.12 第3款 hook 注册).",
+      "globs": [
+        ".claude/settings.local.json",
+        ".claude/settings.json"
+      ]
+    }
+  }
+}

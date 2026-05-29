@@ -57,6 +57,15 @@
       "decision": "promoted",
       "note": "P-0079: Step 0 carrier gate folded into package source learn.md; examples de-trade-ified (generic domain/topic path); v0.11.0; tests 17/17 + dogfood + wheel isolation OK",
       "reviewed_at": "2026-05-29T06:09:36Z"
+    },
+    {
+      "id": "cand-trade-agent-20260529-proposal-classify-fast-path-machine-hard",
+      "origin": "trade-agent",
+      "kind": "mechanism",
+      "title": "proposal classify fast-path: machine hard-block hook + configs + tests + doc",
+      "decision": "promoted",
+      "note": "P-0080: full bundle landed (8 net-new + #13 _cmd_classify merge + hook registered); 0.14.0; tests 20/20, hard-block 6 states verified, wheel isolation OK after package-data tools/*.json fix",
+      "reviewed_at": "2026-05-29T06:55:11Z"
     }
   ]
 }

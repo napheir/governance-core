@@ -853,6 +853,151 @@ def _cmd_show(args):
     return 0
 
 
+# ---------------------------------------------------------------------------
+# P-0076: classify subcommand — fast-path machine classifier
+# ---------------------------------------------------------------------------
+
+_CLASSIFY_PATHS_FILE = REPO_ROOT / "tools" / "proposal-classify-paths.json"
+_CLASSIFY_KEYWORDS_FILE = REPO_ROOT / "tools" / "proposal-classify-keywords.json"
+_CLASSIFY_LOG = REPO_ROOT / ".claude" / "cache" / "classify_log.jsonl"
+
+
+def _classify_load_paths() -> list[tuple[str, str]]:
+    """Return [(category, glob), ...] for the high-sensitivity allowlist."""
+    if not _CLASSIFY_PATHS_FILE.is_file():
+        return []
+    data = json.loads(_CLASSIFY_PATHS_FILE.read_text(encoding="utf-8"))
+    return [(c, g) for c, body in data["categories"].items() for g in body["globs"]]
+
+
+def _classify_load_keywords() -> list[str]:
+    if not _CLASSIFY_KEYWORDS_FILE.is_file():
+        return []
+    data = json.loads(_CLASSIFY_KEYWORDS_FILE.read_text(encoding="utf-8"))
+    return [k for k in data.get("keywords", []) if isinstance(k, str)]
+
+
+def _classify_session_id() -> str:
+    sid = os.environ.get("CLAUDE_SESSION_ID", "").strip()
+    if sid:
+        return sid
+    fallback = Path.home() / ".claude" / "session_id_current.txt"
+    if fallback.is_file():
+        try:
+            return fallback.read_text(encoding="utf-8").strip() or "unknown"
+        except OSError:
+            return "unknown"
+    return "unknown"
+
+
+def _classify_quick(paths: list[str], description: str) -> dict:
+    """Mechanical classifier: path allowlist + keyword regex.
+
+    Returns {verdict, reason, matches, mode}.
+    """
+    sys.path.insert(0, str(REPO_ROOT / "tools"))
+    from _classify_match import match
+
+    path_globs = _classify_load_paths()
+    keywords = _classify_load_keywords()
+
+    path_hits = []
+    for p in paths:
+        pnorm = p.replace("\\", "/")
+        if pnorm.startswith("./"):
+            pnorm = pnorm[2:]
+        if pnorm.startswith(str(REPO_ROOT).replace("\\", "/") + "/"):
+            pnorm = pnorm[len(str(REPO_ROOT).replace("\\", "/")) + 1:]
+        for cat, glob in path_globs:
+            if match(pnorm, glob):
+                path_hits.append({"path": pnorm, "category": cat, "glob": glob})
+                break
+
+    keyword_hits = []
+    if description:
+        d_lower = description.lower()
+        for kw in keywords:
+            if kw.lower() in d_lower:
+                keyword_hits.append(kw)
+
+    if path_hits or keyword_hits:
+        reasons = []
+        if path_hits:
+            cats = sorted({h["category"] for h in path_hits})
+            reasons.append(f"path match: {','.join(cats)}")
+        if keyword_hits:
+            reasons.append(f"keyword: {','.join(keyword_hits[:3])}")
+        return {
+            "verdict": "PROPOSAL_REQUIRED",
+            "reason": "; ".join(reasons),
+            "matches": {"paths": path_hits, "keywords": keyword_hits},
+            "mode": "quick",
+        }
+    return {
+        "verdict": "NO_PROPOSAL",
+        "reason": "no path/keyword hit in allowlist",
+        "matches": {"paths": [], "keywords": []},
+        "mode": "quick",
+    }
+
+
+def _classify_append_log(entry: dict) -> None:
+    _CLASSIFY_LOG.parent.mkdir(parents=True, exist_ok=True)
+    with _CLASSIFY_LOG.open("a", encoding="utf-8", newline="\n") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+
+
+def _cmd_classify(args):
+    if not args.path:
+        print("[FAIL] --path required (at least one)", file=sys.stderr)
+        return 1
+
+    if args.quick:
+        result = _classify_quick(args.path, args.description)
+    else:
+        result = {
+            "verdict": "NEEDS_CLARIFICATION",
+            "reason": (
+                "non-quick mode requires LLM judgment — run quick mode for "
+                "mechanical answer, or invoke /proposal classify <desc> "
+                "skill-flow for full LLM analysis"
+            ),
+            "matches": {},
+            "mode": "llm-deferred",
+        }
+
+    entry = {
+        "ts": _dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+        "session_id": _classify_session_id(),
+        "agent": detect_agent(),
+        "paths": [p.replace("\\", "/") for p in args.path],
+        "description": args.description,
+        "verdict": result["verdict"],
+        "reason": result["reason"],
+        "mode": result["mode"],
+    }
+    try:
+        _classify_append_log(entry)
+    except OSError as e:
+        print(f"[WARN] log write failed: {e}", file=sys.stderr)
+
+    if args.json:
+        print(json.dumps(result, ensure_ascii=False))
+    else:
+        print(f"[classify] {result['verdict']}")
+        print(f"reason: {result['reason']}")
+        if result["matches"].get("paths"):
+            for hit in result["matches"]["paths"]:
+                print(f"  path: {hit['path']} -> {hit['category']}/{hit['glob']}")
+        if result["matches"].get("keywords"):
+            print(f"  keywords: {', '.join(result['matches']['keywords'])}")
+        print(f"mode: {result['mode']}")
+    return 0
+
+
+# ---------------------------------------------------------------------------
+
+
 def main(argv=None) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -900,6 +1045,18 @@ def main(argv=None) -> int:
     p.add_argument("--id", required=True)
     p.set_defaults(func=_cmd_show)
 
+    p = sub.add_parser("classify",
+                       help="Classify Edit/Write target as NO_PROPOSAL / PROPOSAL_REQUIRED / NEEDS_CLARIFICATION (P-0076)")
+    p.add_argument("--path", action="append", default=[],
+                   help="Target path to classify (repeatable). Repo-relative; absolute also accepted.")
+    p.add_argument("--description", default="",
+                   help="Optional description (only used in non-quick LLM-prompt mode; ignored under --quick)")
+    p.add_argument("--quick", action="store_true",
+                   help="Machine-only classification (path allowlist + keyword regex); no LLM round trip")
+    p.add_argument("--json", action="store_true",
+                   help="Output JSON only (suppress human-readable line)")
+    p.set_defaults(func=_cmd_classify)
+
     args = parser.parse_args(argv)
     try:
         return args.func(args)
@@ -913,3 +1070,4 @@ def main(argv=None) -> int:
 
 if __name__ == "__main__":
     sys.exit(main())
+
