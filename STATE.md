@@ -17,6 +17,30 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-29 — reject candidates #8 + #9（重投的 trade-coupled skills）
+
+- 改动：用 `maintainer/reject_candidate.py --also-close` 拒 #8
+  (cross-agent-gate-spec-mock) + #9 (p4-scenario-fixture-construction)。
+  **关键**：两者都是**已拒 skill 的重投** —— `rejected_registry.json` 早有这
+  两个 skill_name 条目（cross-agent-gate 曾为 #5/#7、p4-scenario 曾为 #4/#6，
+  P-0076 backfill，`block_by_name: true`）。工具把 #8/#9 的 issue URL 追加进
+  既有条目 + 发 advisory 评论 + 关 issue 为 not-planned。版本 0.11.0 → 0.12.0
+  （shipped `rejected_registry.json` 内容变了，保版本↔内容洁净）。
+- 涉及：`governance_core/candidates/rejected_registry.json`（追加 issue URL +
+  时间戳）、`governance_core/__init__.py` + `pyproject.toml`（0.12.0）、`STATE.md`。
+- 关键决策：两者均 trade-coupled（多 clone 拓扑在单 agent core 退化 + trade 域
+  selection/risk/option/sector）；保留 `block_by_name: true`（pre-0.8.0 条目、
+  按名硬拒）。**洞察**：trade-agent 会重传已拒 skill，极可能因其装的
+  governance-core 版本早于 0.8.0+（未含 shipped rejected_registry），sweep 不知
+  跳过 —— trade-agent 应 upgrade。无 proposal（curation bookkeeping、非能力变更）。
+  通用内核欢迎作"去 trade 化的新 candidate / hub 自 authored 的 skill guide"
+  （既有 advice 已载明：p4 的 schema-provenance 模式、cross-agent 的抽象 spec-mock
+  模式由 hub 直接 author）。
+- 测试：`test_rejected_registry` 21/21（含 shipped registry 含两 skill 的 smoke）；
+  全套 `tools/test_*.py` 17/17；dogfood upgrade exit 0；wheel 0.12.0 build OK
+  （top-level 仅 `governance_core` + dist-info、rejected_registry 在内、
+  `maintainer/` 不泄漏）。
+
 ### 2026-05-29 — P-0079 promote /learn carrier-class gate (candidate #11), de-trade-ified
 
 - 改动：curate trade-agent #11 入包源（P-0065 决策，优先级清单第 2 项）。在

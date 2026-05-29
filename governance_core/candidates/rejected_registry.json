@@ -1,29 +1,31 @@
 {
   "schema": 1,
-  "updated": "2026-05-26T00:00:00Z",
+  "updated": "2026-05-29T06:20:35Z",
   "rejected": [
     {
-      "rejected_at": "2026-05-26",
+      "rejected_at": "2026-05-29",
       "skill_name": "p4-scenario-fixture-construction",
       "payload_sha256": null,
       "block_by_name": true,
       "origin": "trade-agent",
       "issue_urls": [
         "https://github.com/napheir/governance-core/issues/4",
-        "https://github.com/napheir/governance-core/issues/6"
+        "https://github.com/napheir/governance-core/issues/6",
+        "https://github.com/napheir/governance-core/issues/9"
       ],
       "reason": "Business-layer content. Payload references trade-agent specifics (strangle50_config.json, o2_score boundary values 91.99/92.00/92.01, signals/predictions/run_summary, confidence_tier, post-cutover date filter 'names >= 20260424'). Reads as a project-internal SOP for the trade pipeline rather than a reusable design principle a governance-infrastructure package can offer to every consumer.",
       "advice": "Keep as a local learned skill in trade-agent. Remove `layer: candidate-common` from the skill's frontmatter, or delete the skill if no longer used. The schema-enforced provenance pattern itself could survive as a common skill guide if rewritten stripped of the strangle / o2_score / signals path specifics."
     },
     {
-      "rejected_at": "2026-05-26",
+      "rejected_at": "2026-05-29",
       "skill_name": "cross-agent-gate-spec-mock",
       "payload_sha256": null,
       "block_by_name": true,
       "origin": "trade-agent",
       "issue_urls": [
         "https://github.com/napheir/governance-core/issues/5",
-        "https://github.com/napheir/governance-core/issues/7"
+        "https://github.com/napheir/governance-core/issues/7",
+        "https://github.com/napheir/governance-core/issues/8"
       ],
       "reason": "Business-layer content. Outputs reference trade-specific paths (tests/scenarios/trade_stage_X, tests/daily/mock_components.py, tests/daily/test_pipeline_gates.py); domain framing ('selection/risk module', 'option/account/sector state') is trade-pipeline language; the 'parquet pattern P-0070/0071' citation is trade-agent's internal proposal ids, not governance-core's. The abstract spec-mock pattern itself is worth keeping as a governance-core authored skill guide -- the hub will author that directly, separate from the trade-internal SOP.",
       "advice": "Keep as a local learned skill in trade-agent. Remove `layer: candidate-common` from the skill's frontmatter, or delete the skill if no longer used."
