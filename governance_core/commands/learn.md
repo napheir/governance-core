@@ -13,6 +13,49 @@ theme: universal
 
 ## 执行流程
 
+### Step 0: 判定 carrier_class + 载体形式（MD vs HTML profile）
+
+**强制**：写入 `knowledge/**` 前必须先决定 carrier_class（P-0053）与载体形式
+（P-0054）。这一步决定 Step 1 之后用什么模板、走 MD 还是 HTML profile。
+
+**Step 0.1 — 判 carrier_class**（详见
+`knowledge/governance/knowledge-carrier-classes.md` §2）：
+
+| 内容性质 | carrier_class |
+|---|---|
+| 一次性决策 + tradeoff（写定不动） | `decision-record` |
+| 系统结构 / 概念图 / 流程图 / 不漂移叙事 | `reference` |
+| 操作步骤 / playbook | `runbook` |
+| frozen 实验报告 / 数据集 snapshot | `experiment-record` |
+| 会随生产漂移的现状（数字 / 参数 / 数据集 ref） | `current-state` |
+| 从事故 / 决策提炼的 reusable 因果模式 | `derived-lesson` |
+
+**Step 0.2 — 判载体形式**（详见
+`knowledge/governance/knowledge-html-profile.md` §1）：
+
+| carrier_class | 载体形式 |
+|---|---|
+| `reference` / `runbook` / `derived-lesson` | MD 默认；**含流程图 / 序列图 / 状态机 / 复杂叙事 → HTML profile（推荐）** |
+| `current-state` | **强制 HTML profile**（v1.3.0 cutover 后；当前 pilot 期外的可留 MD，但新写应直接 HTML） |
+| `decision-record` / `experiment-record` | **禁止 HTML**（diff-friendly 优先，必须 MD） |
+
+**Step 0.3 — 输出**（在本次会话明确声明）：
+
+```
+[carrier_class] reference
+[carrier_form] HTML profile   ← 因含"端到端流程图"
+[target_path] knowledge/<domain>/<topic>-flow.html
+```
+
+**误用红线**：
+- 写"端到端流程"、"管线流程图"、"数据流"、"调用链"类含流程图叙事 → 默认走
+  **HTML profile + Mermaid 双层**，不要默认 MD
+- 写 ADR / 实验报告 → **禁止 HTML**，必须 MD
+- `current-state` 写漂移数字 → 必须含 autogen 块（`<!-- BEGIN AUTOGEN -->`）
+
+判定完成后再进入 Step 1。HTML 载体的具体骨架 / Mermaid 双层 / autogen 协议见
+`knowledge/governance/knowledge-html-profile.md` §2-§4，不在本 skill 复述。
+
 ### Step 1: 识别知识类型
 
 回顾本次会话中的工作，识别属于哪类知识：

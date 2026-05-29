@@ -48,6 +48,15 @@
       "decision": "promoted",
       "note": "P-0078: folded into governance_core package source (additive); diff verified (recount CLEAN / pure-add), tests 17/17 + smoke green",
       "reviewed_at": "2026-05-29T05:52:37Z"
+    },
+    {
+      "id": "cand-trade-agent-20260527-drift-learn-md",
+      "origin": "trade-agent",
+      "kind": "mechanism",
+      "title": "drift learn.md",
+      "decision": "promoted",
+      "note": "P-0079: Step 0 carrier gate folded into package source learn.md; examples de-trade-ified (generic domain/topic path); v0.11.0; tests 17/17 + dogfood + wheel isolation OK",
+      "reviewed_at": "2026-05-29T06:09:36Z"
     }
   ]
 }

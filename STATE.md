@@ -17,6 +17,33 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-29 — P-0079 promote /learn carrier-class gate (candidate #11), de-trade-ified
+
+- 改动：curate trade-agent #11 入包源（P-0065 决策，优先级清单第 2 项）。在
+  `governance_core/commands/learn.md` 的 `## 执行流程` 与 `### Step 1` 之间插入
+  **Step 0：判定 carrier_class + 载体形式**（0.1 class 决策表 6 类 / 0.2 载体
+  形式 MD vs HTML profile 表 / 0.3 声明输出格式 / 误用红线）—— 写 `knowledge/**`
+  前强制声明 carrier_class（P-0053）+ 载体（P-0054）。引用的两 spec 都已在包源
+  （`knowledge-carrier-classes.md` §2、`knowledge-html-profile.md` §1，后者刚被
+  P-0078 扩）。版本 0.10.0 → 0.11.0（learn.md ship 进 wheel）。`candidate.py
+  promote` 记 #11 `promoted`。
+- 涉及：`governance_core/commands/learn.md`、`governance_core/__init__.py` +
+  `pyproject.toml`（0.11.0）、`maintainer/consumer_registry.json`、`STATE.md`、
+  `shared_state/proposals/core/p-0079-*.md`（提案档案）。
+- 关键决策：**去 trade 化** —— trade-agent payload 示例带 trade 味
+  （`knowledge/trading/trade-end-to-end-flow.html`、"写 trade 全流程"），下发
+  全体 consumer 前改成领域中立（`knowledge/<domain>/<topic>-flow.html`、误用
+  红线去 "trade"）；机制逐字保留、只改示例。**强制闸门**有意为之：把今天仅
+  "文档化"的 P-0053/54 carrier 纪律变成 /learn 里的"闸门化"。验证：
+  `git diff --ignore-cr-at-eol` 语义 diff = 2 hunk / 44 增 / 0 删（raw diff
+  82 删 202 增的噪声纯属 CRLF↔LF + 尾换行；sha 差异同因，内容与 baseline 等价）。
+  新增段 trade 泄漏检查通过（仅余通用英文词 "tradeoff"；既有 agent-role 枚举
+  `{rules,trade,data,...}` 与本次无关）。
+- 测试：全套 `tools/test_*.py` 17/17 PASS（skill 正文不单测，跑全套确认无连带
+  破坏）；dogfood `governance-core upgrade --project-root .` exit 0，安装副本
+  `.claude/commands/learn.md` 已带 Step 0；wheel 0.11.0 build OK（top-level 仅
+  `governance_core` + dist-info，learn.md 在内、`maintainer/` 不泄漏）。
+
 ### 2026-05-29 — P-0078 promote HTML profile cluster (candidates #16 + #10)
 
 - 改动：curate trade-agent 回传的 HTML profile 集群入包源（P-0065 maintainer
