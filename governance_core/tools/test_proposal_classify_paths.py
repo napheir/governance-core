@@ -1,8 +1,11 @@
 """Validate tools/proposal-classify-paths.json (P-0076 Phase 2).
 
-- Schema: 17 globs across 5 categories, no duplicates
+- Schema: 19 globs across 5 categories, no duplicates
 - Syntactic validity: each glob parsable by fnmatch
 - Dry-run: matched repo file count < 50 (budget)
+- Regression (P-0084): the governance category is scoped to authoritative
+  .governance sources; the transient gitignored candidate-outbox/ and the
+  install-time derivative installed_files.json must NOT be flagged.
 """
 import json
 import subprocess
@@ -30,6 +33,29 @@ def main() -> int:
     for cat, g in all_globs:
         match("dummy/path.md", g)
     print("[OK] all globs compile via _classify_match")
+
+    # Regression (P-0084): governance glob scoping.
+    def flagged(path: str) -> bool:
+        return any(match(path, g) for _, g in all_globs)
+
+    must_miss = [
+        ".governance/candidate-outbox/cand-x/candidate.json",
+        ".governance/installed_files.json",
+    ]
+    must_hit = [
+        ".governance/clauses/art_13_constitution_protection.md",
+        ".governance/core_keywords.json",
+        ".governance/config.json",
+        "CLAUDE.md",
+    ]
+    for p in must_miss:
+        assert not flagged(p), f"P-0084 regression: {p} must NOT be flagged"
+    for p in must_hit:
+        assert flagged(p), f"P-0084 regression: {p} must be flagged"
+    print(
+        "[OK] P-0084 governance scoping: candidate-outbox/installed_files miss, "
+        "authoritative governance sources hit"
+    )
 
     res = subprocess.run(
         ["git", "ls-files"],

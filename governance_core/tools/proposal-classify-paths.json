@@ -1,17 +1,20 @@
 {
   "_doc": "Path allowlist consumed by tools/proposal_lib.py classify --quick (P-0076 Phase 2/3) + .claude/hooks/proposal-classify-fast.py PreToolUse hook (P-0076 Phase 4). When an Edit/Write target path matches ANY glob below, classify verdict = PROPOSAL_REQUIRED regardless of description. Hot-editable: tools re-read on every invocation.",
   "_source": "P-0076 Phase 2 — high-sensitivity path allowlist machine-derived from L2 (proposal.md classify §必判) + L1 (Art.5.4 触发条件). Sized to <50 file matches against repo on Phase 2 validation.",
+  "_refinement": "v1.1.0 (P-0084, promoted from common-layer candidate #19, trade-agent, 2026-05-29): narrow the governance catch-all '.governance/**/*' to the genuinely authoritative subpaths (clauses/ + core_keywords.json + config.json). The catch-all produced a FALSE-POSITIVE PROPOSAL_REQUIRED on the transient gitignored '.governance/candidate-outbox/' staging area (collect.py OUTBOX_REL) — every candidate-envelope edit during /submit-candidate or /upgrade drift-uplink got hard-blocked and required a spurious `classify --quick`. The matcher (_classify_match.py) has no negation operator, so the fix is explicit enumeration rather than exclude. Also drops '.governance/installed_files.json' (a pure install-time derivative, not authored).",
   "_match_semantics": "fnmatch-style glob; matched against repo-relative POSIX path (forward slashes). Case-sensitive. Tested with python -m fnmatch.",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "categories": {
     "governance": {
-      "_why": "Constitution-level files. Editing these = governance change requiring proposal (L1 Art.13 + L2 §1 改全局治理).",
+      "_why": "Constitution-level files. Editing these = governance change requiring proposal (L1 Art.13 + L2 §1 改全局治理). Scoped to authoritative .governance sources; transient candidate-outbox/ and derivative installed_files.json are deliberately excluded.",
       "globs": [
         "CLAUDE.md",
         "constitution/**/*.md",
         "contracts/**/*",
         "agent_rules/**/*",
-        ".governance/**/*"
+        ".governance/clauses/**/*",
+        ".governance/core_keywords.json",
+        ".governance/config.json"
       ]
     },
     "harness": {

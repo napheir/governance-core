@@ -6,6 +6,38 @@
 
 ---
 
+### 2026-05-29 — P-0081 立 runtime-import-discipline 不变式 + doctor 检查（#3 根治）
+
+- 改动：查 issue #3 发现前提已过时（当前 6 hook + 8 tool 都 import governance_core，
+  非"唯一"），但内核成立。**锐化不变式**：import governance_core 的 hook 必须守护
+  import 且 fail-open；必须 fail-CLOSED 的安全门则必须自包含——证据是除 auth-guard
+  外所有 importer 都守护 + fail-open（sensitive-data-guard 注释明写"auth-guard
+  already fails closed"）。auth-guard 是唯一违反者（PreToolUse `*` + fail-closed →
+  governance_core 不可导入即冻结每次工具调用）。新增治理文档
+  `knowledge_governance/runtime-import-discipline.md` + 新模块
+  `runtime_import_audit.py`（`FAIL_OPEN_GC_IMPORTERS`/`GC_IMPORT_EXEMPT`/
+  `check_runtime_import_discipline`）+ doctor 检查（unclassified gc-importer →
+  exit 9；auth-guard 以文档化临时例外 grandfather，doctor 保持 exit 0、对新 hook
+  强制）。**不动 auth-guard 代码**（636 行 crypto vendor 留 P-0082）。版本 0.14.0
+  → 0.15.0。
+- 涉及：`governance_core/runtime_import_audit.py`（新）、`installer.py`（doctor 加
+  P-0081 检查，新退出码 9）、`knowledge_governance/runtime-import-discipline.md`（新）、
+  `tools/test_runtime_import_audit.py`（新，13 用例）、`__init__.py` + `pyproject.toml`
+  （0.15.0）、`STATE.md`、`shared_state/proposals/core/p-0081-*.md`。
+- 关键决策：**不进宪法**（治理文档 + doctor 检查，免 /iterate-constitution 重流程；
+  要 entrench 可后续加一行 Art.11 引用）；grandfather auth-guard（仿 P-0075
+  prune-exempt：向前强制、P-0082 落地后自衰减）；检查作用域限 shipped hooks（manifest
+  名单），不误伤消费者自有 hook；不变式从"per-call guard 自包含"锐化为"fail-open-guarded
+  或自包含、安全门自包含"。**#3 保持 OPEN**，P-0082 vendor auth-guard 后才关。
+- 测试：`test_runtime_import_audit` 13/13（hook_imports_gc 4 + 合成 dir 5 + 真实
+  shipped hooks 4：无 unclassified 违规 / auth-guard 是 tracked 例外 / 5 个 fail-open
+  importer 都在且确 import gc / exempt 恰为 {auth-guard.py}）；全套 `tools/test_*.py`
+  **21/21**；`governance-core doctor` exit 0 并打印 "runtime-import-discipline:
+  1 tracked exception(s) ... ['auth-guard.py']"；dogfood upgrade exit 0；wheel
+  0.15.0 build OK（top-level 仅 `governance_core` + dist-info、新模块/doc/测试在内、
+  `maintainer/` 不泄漏）。
+
+
 ### 2026-05-29 — P-0080 promote classify fast-path hard-block cluster (#17 + #13)
 
 - 改动：curate trade-agent 的 classify fast-path 集群入包源（P-0065 决策，原
