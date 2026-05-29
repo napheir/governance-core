@@ -17,6 +17,33 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-29 — P-0085 promote #18: knowledge-html-profile §2.5 业务优先节
+
+- 改动：策展通用层候选 **issue #18**（mechanism / drift, trade-agent）—— 把 net-new
+  规范节 **§2.5「信息构建原则（业务优先）」**（~100 行）promote 进
+  `governance_core/knowledge_governance/knowledge-html-profile.md`，profile
+  v1.0.0 → 1.1.0。§2.5 规定 HTML 的**叙事语域**（§2.1–§2.4 管结构）：主叙事用业务
+  语言、机器细节下沉 `<details>`、表格列优先业务语义、whole-document 应用范围。
+- baseline drift（候选 baseline `432b40…` ≠ 当前源 `1ddbf8…`）→ **不信旧行号**，
+  按上下文锚点手工应用（§2.4 末插 §2.5；§2.1 summary / §6 行 / §8 / §9 同步改）。
+- **de-trade-ify**（skill step 3）：机制文字逐字保留，仅把消费者域示例换成 gc 自身域 ——
+  §2.5.3 正/反例 trade 期权 pipeline（`option_selector` / strangle）→ **gc upgrade/install
+  pipeline**（原子覆盖安装 / 改动文件转存 candidate-outbox）；§2.5.6 反模式去掉 `P-0081`
+  与 trade section 名（signal_reader / scheduler / 面板）；provenance 改记 P-0085。
+- **audit 工具与机器契约不动**：§2.5 是 voice/framing，机器无法判定 → 明确为
+  human-review 层（§2.5.5 + §8）；`audit_html_profile.py` 只校验结构、**不随 profile
+  v1.1.0 bump**。
+- 涉及：`governance_core/knowledge_governance/knowledge-html-profile.md`、
+  `pyproject.toml` + `governance_core/__init__.py`（0.18.0 → 0.19.0）、`STATE.md`、
+  `shared_state/proposals/core/p-0085-*.md`。
+- 关键决策：改包源（Art.11.2），不碰自治副本；独立 proposal/commit（与 #19 分开）。
+  **发现既有 de-trade 缺口**：profile §3.3.1（`signal_reader/dedup` Mermaid 例）+ §4.1
+  （`artifacts/strangle50/...` autogen 例）是 P-0078 cluster 遗留的 trade 残留，**不在
+  P-0085 scope**（Non-Goals 不动 §3/§4）—— 已向 user 提示为后续候选。
+- 测试：全套 `tools/test_*.py` **21/21**；`audit_html_profile.py` exit 0（无 HTML 文件、
+  工具未改）；de-trade grep 闸门确认 §2.5（168–227 行）零 trade token；dogfood `upgrade`
+  → autonomy profile 刷新到 v1.1.0；`governance-core doctor` exit 0。
+
 ### 2026-05-29 — P-0084 promote #19: narrow classify-paths governance glob
 
 - 改动：策展通用层候选 **issue #19**（mechanism, trade-agent）—— bug fix。
@@ -62,44 +89,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   （available-skills 列出 `/curate-candidate`）；`governance-core doctor` exit 0；
   wheel 0.17.0 build OK（top-level 仅 `governance_core` + dist-info、skill 在内、
   `maintainer/` 不泄漏）。
-
-### 2026-05-29 — P-0082 self-contain auth-guard（vendor auth 子包，关 #3）
-
-- 改动：**Phase A** —— `governance_core/auth/` 内部绝对导入改**相对**
-  （`__init__`/`codec`/`revocation`：`from . import _ed25519/codec/sign/verify`
-  + 替换 `auth.sign`/`auth.verify` 调用点），使 auth 子包**可重定位**（同一份源
-  既作 `governance_core.auth` 包用、又能作独立包 import），逻辑零改。**Phase B**
-  —— installer 加 `COPY_CATEGORIES ("auth" → .claude/hooks/_gc_auth)` +
-  `CATEGORY_OF["auth"]` + `_copy_tree` 跳 `__pycache__`/`.pyc`；`auth-guard.py`
-  顶部加 `_HOOK_DIR` + `sys.path.insert`，5 处 import 从 `governance_core.auth`
-  改 `_gc_auth`（**自包含、无 `import governance_core`**）；`runtime_import_audit`
-  的 `GC_IMPORT_EXEMPT` **清空**（P-0081 grandfather 自衰减）；
-  `runtime-import-discipline.md` §3/§4 更新；`test_auth_guard` 在临时 repo vendor
-  `_gc_auth`、`test_runtime_import_audit` 改空-exempt 断言。版本 0.15.0 → 0.16.0。
-  **关 #3**。
-- 涉及：`governance_core/auth/{__init__,codec,revocation}.py`、
-  `governance_core/hooks/auth-guard.py`、`governance_core/installer.py`、
-  `governance_core/runtime_import_audit.py`、
-  `governance_core/knowledge_governance/runtime-import-discipline.md`、
-  `governance_core/tools/{test_auth_guard,test_runtime_import_audit}.py`、
-  `governance_core/__init__.py` + `pyproject.toml`（0.16.0）、`STATE.md`、
-  `shared_state/proposals/core/p-0082-*.md`。
-- 关键决策：**单一源** `governance_core/auth/`，`_gc_auth/` 是 install 产物
-  （Art.8 同代码路径、Art.11.4 不进 wheel —— wheel 仍只 `governance_core*`，
-  auth/ 作为包发布、`_gc_auth` 不在内）。**相对导入使 vendoring 无需源变换**
-  （faithful copy，installer 直接 rglob 拷贝）。prune 是 **manifest-diff** 式 →
-  `_gc_auth` 进 install set（category auth）即永不误删（**双 upgrade 验证存活**）。
-  **fail-closed 语义不变**（坏 auth → exit 2），但 freeze 风险消除：hook + 其依赖
-  现在是一个 install 单元（不再依赖 governance_core 可 pip-import）。dogfood
-  `upgrade` 不热替换当前 session 的 live hook（启动时加载）→ 零冻结风险。
-- 测试：**Phase A** 可重定位 round-trip（独立 `_gc_auth` import + sign/verify）
-  + `test_auth_codec`/`test_revocation`/`test_auth_guard` green。**Phase B** 全套
-  `tools/test_*.py` **21/21**（`test_auth_guard` 用 vendored 布局、
-  `test_runtime_import_audit` 空 exempt）；`hook_imports_gc(auth-guard)=False`；
-  `governance-core doctor` exit 0 **无 tracked-exception 行**（exempt 空、全面强制）；
-  直调安装版 auth-guard 对真实 config **exit 0 授权**；**双 upgrade `_gc_auth` 5
-  文件存活**；wheel 0.16.0 build OK（top-level 仅 `governance_core` + dist-info、
-  auth/ 5 文件+pubkey 在内、`_gc_auth` 不进 wheel、`maintainer/` 不泄漏）。
 
 ### 2026-05-27 — P-0077 uplink drift diff + --body-file (issue #15)
 

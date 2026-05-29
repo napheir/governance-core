@@ -6,6 +6,45 @@
 
 ---
 
+### 2026-05-29 — P-0082 self-contain auth-guard（vendor auth 子包，关 #3）
+
+- 改动：**Phase A** —— `governance_core/auth/` 内部绝对导入改**相对**
+  （`__init__`/`codec`/`revocation`：`from . import _ed25519/codec/sign/verify`
+  + 替换 `auth.sign`/`auth.verify` 调用点），使 auth 子包**可重定位**（同一份源
+  既作 `governance_core.auth` 包用、又能作独立包 import），逻辑零改。**Phase B**
+  —— installer 加 `COPY_CATEGORIES ("auth" → .claude/hooks/_gc_auth)` +
+  `CATEGORY_OF["auth"]` + `_copy_tree` 跳 `__pycache__`/`.pyc`；`auth-guard.py`
+  顶部加 `_HOOK_DIR` + `sys.path.insert`，5 处 import 从 `governance_core.auth`
+  改 `_gc_auth`（**自包含、无 `import governance_core`**）；`runtime_import_audit`
+  的 `GC_IMPORT_EXEMPT` **清空**（P-0081 grandfather 自衰减）；
+  `runtime-import-discipline.md` §3/§4 更新；`test_auth_guard` 在临时 repo vendor
+  `_gc_auth`、`test_runtime_import_audit` 改空-exempt 断言。版本 0.15.0 → 0.16.0。
+  **关 #3**。
+- 涉及：`governance_core/auth/{__init__,codec,revocation}.py`、
+  `governance_core/hooks/auth-guard.py`、`governance_core/installer.py`、
+  `governance_core/runtime_import_audit.py`、
+  `governance_core/knowledge_governance/runtime-import-discipline.md`、
+  `governance_core/tools/{test_auth_guard,test_runtime_import_audit}.py`、
+  `governance_core/__init__.py` + `pyproject.toml`（0.16.0）、`STATE.md`、
+  `shared_state/proposals/core/p-0082-*.md`。
+- 关键决策：**单一源** `governance_core/auth/`，`_gc_auth/` 是 install 产物
+  （Art.8 同代码路径、Art.11.4 不进 wheel —— wheel 仍只 `governance_core*`，
+  auth/ 作为包发布、`_gc_auth` 不在内）。**相对导入使 vendoring 无需源变换**
+  （faithful copy，installer 直接 rglob 拷贝）。prune 是 **manifest-diff** 式 →
+  `_gc_auth` 进 install set（category auth）即永不误删（**双 upgrade 验证存活**）。
+  **fail-closed 语义不变**（坏 auth → exit 2），但 freeze 风险消除：hook + 其依赖
+  现在是一个 install 单元（不再依赖 governance_core 可 pip-import）。dogfood
+  `upgrade` 不热替换当前 session 的 live hook（启动时加载）→ 零冻结风险。
+- 测试：**Phase A** 可重定位 round-trip（独立 `_gc_auth` import + sign/verify）
+  + `test_auth_codec`/`test_revocation`/`test_auth_guard` green。**Phase B** 全套
+  `tools/test_*.py` **21/21**（`test_auth_guard` 用 vendored 布局、
+  `test_runtime_import_audit` 空 exempt）；`hook_imports_gc(auth-guard)=False`；
+  `governance-core doctor` exit 0 **无 tracked-exception 行**（exempt 空、全面强制）；
+  直调安装版 auth-guard 对真实 config **exit 0 授权**；**双 upgrade `_gc_auth` 5
+  文件存活**；wheel 0.16.0 build OK（top-level 仅 `governance_core` + dist-info、
+  auth/ 5 文件+pubkey 在内、`_gc_auth` 不进 wheel、`maintainer/` 不泄漏）。
+
+
 ### 2026-05-29 — P-0081 立 runtime-import-discipline 不变式 + doctor 检查（#3 根治）
 
 - 改动：查 issue #3 发现前提已过时（当前 6 hook + 8 tool 都 import governance_core，
