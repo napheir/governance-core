@@ -262,6 +262,7 @@ class SkillTracker:
             try:
                 result = subprocess.run(
                     cmd, capture_output=True, text=True, cwd=cwd, timeout=5,
+                    encoding="utf-8", errors="replace",
                 )
                 files.update(f for f in result.stdout.strip().split("\n") if f)
             except (subprocess.TimeoutExpired, OSError):
@@ -274,6 +275,7 @@ class SkillTracker:
             result = subprocess.run(
                 ["git", "log", "--oneline", "--since=midnight", "--format=%s"],
                 capture_output=True, text=True, cwd=cwd, timeout=5,
+                encoding="utf-8", errors="replace",
             )
             stdout = result.stdout or ""
             commits = [c for c in stdout.strip().split("\n") if c]

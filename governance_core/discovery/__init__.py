@@ -48,6 +48,7 @@ def resolve_project_root(module_file: Optional[str] = None) -> Path:
         result = subprocess.run(
             ["git", "rev-parse", "--show-toplevel"],
             capture_output=True, text=True, timeout=5,
+            encoding="utf-8", errors="replace",
         )
         if result.returncode == 0 and result.stdout.strip():
             _ROOT_CACHE = Path(result.stdout.strip()).resolve()

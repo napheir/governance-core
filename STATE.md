@@ -17,6 +17,27 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-29 — fix #2 discovery GBK UnicodeDecodeError (Art.7.4)
+
+- 改动：给 discovery 里读 git 输出的 `subprocess.run` 加
+  `encoding="utf-8", errors="replace"`——`tracker.py`（`git diff/log` 算 session
+  complexity 的两处）+ `discovery/__init__.py`（`resolve_project_root` 的
+  `git rev-parse --show-toplevel`）。Windows 上 `text=True` 缺 encoding 时按
+  GBK 解码 git 输出，遇非 ASCII 的 commit message / 文件名 / 仓库路径即
+  `UnicodeDecodeError`，把该数据从复杂度计算里丢掉（issue #2 现象）。版本
+  0.12.0 → 0.13.0。
+- 涉及：`governance_core/discovery/tracker.py`、`governance_core/discovery/__init__.py`、
+  `governance_core/__init__.py` + `pyproject.toml`（0.13.0）、`STATE.md`。
+- 关键决策：`errors="replace"` 保证彻底无解码崩溃且**不丢文件**（直接回应 issue
+  的 "offending file dropped from computation"）；修的是 tracker import 链的**整个
+  bug 类**（tracker 两处 + resolve_project_root），不止 issue 点名的单行。
+  `tools/test_command_guard.py` 有同款 `text=True` 无 encoding，但属测试文件、非
+  runtime 路径，记下未动。NO_PROPOSAL（简单 bug fix）。原 issue 报 0.5.0，
+  line 116 的 `.usage.json` 读早带 encoding；真 offending read 是 subprocess git
+  解码。#3（auth-guard import 隔离）另议（security hook 重构、需 proposal）。
+- 测试：全套 `tools/test_*.py` 17/17；`python -m governance_core.discovery.tracker
+  --should-extract` 运行 clean；dogfood `governance-core upgrade` exit 0。
+
 ### 2026-05-29 — reject candidates #8 + #9（重投的 trade-coupled skills）
 
 - 改动：用 `maintainer/reject_candidate.py --also-close` 拒 #8
@@ -67,39 +88,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   破坏）；dogfood `governance-core upgrade --project-root .` exit 0，安装副本
   `.claude/commands/learn.md` 已带 Step 0；wheel 0.11.0 build OK（top-level 仅
   `governance_core` + dist-info，learn.md 在内、`maintainer/` 不泄漏）。
-
-### 2026-05-29 — P-0078 promote HTML profile cluster (candidates #16 + #10)
-
-- 改动：curate trade-agent 回传的 HTML profile 集群入包源（P-0065 maintainer
-  决策）。① #16 → `governance_core/tools/build_knowledge_dashboard.py`：加
-  `_extract_html_frontmatter`（解析 `<meta name="kc:*">` head 标签 +
-  `<p class="summary">`），HTML 知识条目走 **sandboxed iframe** modal
-  （`sandbox=allow-same-origin allow-scripts` 以跑 vendored mermaid）+
-  `.modal-wide` 容纳宽表/图（payload_form: diff，7 hunk）。② #10 →
-  `governance_core/knowledge_governance/knowledge-html-profile.md`：纯新增
-  §2.2.1（可选跨引用 kc:* 标签 briefing/related/supersedes/superseded-by，
-  1:1 映射 .md frontmatter）+ §3.3.1（Mermaid strict-mode pitfalls：label
-  双引号包裹、`\n` 换行替代 `<br/>`、ASCII 特殊字符）。版本 0.9.0 → 0.10.0
-  （这两文件 ship 进 wheel，consumer 经 upgrade 拉取）。`candidate.py promote`
-  对两 candidate 记 `promoted` 入 `maintainer/consumer_registry.json`。
-- 涉及：`governance_core/tools/build_knowledge_dashboard.py`、
-  `governance_core/knowledge_governance/knowledge-html-profile.md`、
-  `governance_core/__init__.py` + `pyproject.toml`（0.10.0）、
-  `maintainer/consumer_registry.json`、`STATE.md`、
-  `shared_state/proposals/core/p-0078-*.md`（提案档案）。
-- 关键决策：**apply 前验 drift** —— 比对 candidate `baseline_sha256` 与当前
-  包源 sha：#10 baseline == 当前（纯新增，diff -u 确认 0 删除/50 增），#16
-  baseline 已漂移（`1fabb66…`→`9c299fd…`），但 `git apply -p1 --recount`
-  靠上下文重定位 7 hunk → CLEAN。`promote` 对 `kind=mechanism` 不自动放置、
-  只打印"手工放进包源" + 记决策 —— 符合 Art.11.2（手改包源、不碰自治层副本）。
-  接受 ceremonial-proposal 张力：单 agent 自审自执，但 proposal 价值在"curation
-  决策记录本身" + 改动下发全体 consumer 的 blast radius。#10 §2.2.1 引用 #16
-  新增的 `_extract_html_frontmatter` —— spec 与渲染器互相印证、配套促进。
-- 测试：全套 `tools/test_*.py` 17/17 PASS；`_extract_html_frontmatter` smoke
-  （kc:* 含新 briefing 标签 + summary 提取通过）；`audit_html_profile` exit 0；
-  dogfood `governance-core upgrade --project-root .` exit 0（128 files、18 hooks）；
-  wheel 0.10.0 build OK（top-level 仅 `governance_core` + dist-info，
-  html-profile/dashboard 在内、`maintainer/` 不泄漏，Art.11.4 隔离守住）。
 
 ### 2026-05-27 — P-0077 uplink drift diff + --body-file (issue #15)
 
