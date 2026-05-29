@@ -221,6 +221,72 @@ _TLDR_RE = re.compile(r"^\s*(?:>\s*)?\*\*TL;DR\*\*\s*[:：]?\s*(.+?)$", re.MULTI
 _INLINE_FMT_RE = re.compile(r"\*\*(.+?)\*\*|\*(.+?)\*|`(.+?)`|\[(.+?)\]\([^)]*\)")
 
 
+# P-0077: HTML profile (P-0054 §2.1) — meta tag namespace + summary element
+_HTML_KC_META_RE = re.compile(
+    r'<meta\s+name=["\']kc:([\w\-]+)["\']\s+content=["\']([^"\']*)["\']\s*/?>',
+    re.IGNORECASE,
+)
+_HTML_SUMMARY_RE = re.compile(
+    r'<p\s+class=["\']summary["\']\s*>(.*?)</p>',
+    re.IGNORECASE | re.DOTALL,
+)
+_HTML_TAG_STRIP_RE = re.compile(r"<[^>]+>")
+
+# kc:* meta tag name → dashboard frontmatter field
+_KC_META_MAP = {
+    "title": "title",
+    "owner": "owner",
+    "status": "status",
+    "created": "created",
+    "updated": "updated",
+    "tags": "tags",
+    "carrier-class": "carrier_class",
+    "briefing": "briefing",
+}
+
+
+def _extract_html_frontmatter(text: str) -> tuple[dict, str]:
+    """Return (fields_dict, summary_text) from an HTML profile file (P-0054).
+
+    Reads `<head>` `<meta name="kc:*">` tags into dashboard's frontmatter
+    dict shape (same keys as `_parse_frontmatter` for .md files). Reads
+    `<p class="summary">` content as the TL;DR equivalent (P-0054 §2.1
+    skeleton convention).
+
+    Does NOT read `<section class="autogen-block">` payloads — sensitive-
+    data-guard rationale (P-0077 Guardrails: avoid indexing autogen JSON
+    config values into dashboard search index).
+    """
+    fields: dict = {}
+    for m in _HTML_KC_META_RE.finditer(text):
+        kc_name, content = m.group(1).strip(), m.group(2).strip()
+        if not content:
+            continue
+        field = _KC_META_MAP.get(kc_name)
+        if field is None:
+            continue
+        if field == "tags":
+            fields[field] = [t.strip() for t in content.split(",") if t.strip()]
+        else:
+            fields[field] = content
+
+    summary = ""
+    sm = _HTML_SUMMARY_RE.search(text)
+    if sm:
+        raw = sm.group(1)
+        cleaned = _HTML_TAG_STRIP_RE.sub("", raw)
+        cleaned = re.sub(r"\s+", " ", cleaned).strip()
+        if len(cleaned) > _SUMMARY_MAX_CHARS:
+            truncated = cleaned[:_SUMMARY_MAX_CHARS]
+            space = truncated.rfind(" ")
+            if space > _SUMMARY_MAX_CHARS - 40:
+                truncated = truncated[:space]
+            cleaned = truncated + "..."
+        summary = cleaned
+
+    return fields, summary
+
+
 def _extract_summary(body: str) -> str:
     """First TL;DR line OR first ordinary paragraph from a markdown body.
 
@@ -273,7 +339,13 @@ def _collect_entries(category_dir: Path, knowledge_root: Path) -> list[dict]:
     entries: list[dict] = []
     if not category_dir.is_dir():
         return entries
-    for path in sorted(category_dir.rglob("*.md")):
+    # P-0077: union of .md + .html (HTML profile per P-0054). Both forms
+    # share the dashboard's frontmatter dict shape so downstream rendering
+    # treats them uniformly.
+    candidates = sorted(
+        list(category_dir.rglob("*.md")) + list(category_dir.rglob("*.html"))
+    )
+    for path in candidates:
         if path.name in SKIP_FILENAMES:
             continue
         try:
@@ -281,7 +353,14 @@ def _collect_entries(category_dir: Path, knowledge_root: Path) -> list[dict]:
         except OSError as exc:
             logger.warning("skip %s: %s", path, exc)
             continue
-        fields, body = _parse_frontmatter(text)
+        if path.suffix.lower() == ".html":
+            fields, _html_summary = _extract_html_frontmatter(text)
+            body = ""  # HTML body rendered via iframe in modal (Phase 2)
+            _is_html = True
+        else:
+            fields, body = _parse_frontmatter(text)
+            _html_summary = ""
+            _is_html = False
         links: dict[str, list[str]] = {}
         for field in LINK_FIELDS:
             raw = fields[field] if field in fields else ""
@@ -313,11 +392,18 @@ def _collect_entries(category_dir: Path, knowledge_root: Path) -> list[dict]:
             "valid_from": fields["valid_from"] if "valid_from" in fields else "",
             # Briefing-mode surfacing (knowledge_frontmatter_schema v1.1.0):
             # one of "pinned" / "serendipity" / "" (absent = not surfaced).
+            # P-0077 A3: carrier-agnostic — both .md `briefing:` and HTML
+            # `kc:briefing` land here identically.
             "briefing": fields["briefing"] if "briefing" in fields else "",
             # Summary extracted at collect time (used by Briefing-mode panels;
             # avoids carrying the full body around in the entry dict).
-            "summary": _extract_summary(body),
-            "body_html": _render_body_html(body),
+            # P-0077: HTML files use <p class="summary"> per P-0054 §2.1.
+            "summary": _html_summary if _is_html else _extract_summary(body),
+            # P-0077: HTML files render via iframe in modal (Phase 2);
+            # body_html stays empty so search index doesn't ingest autogen
+            # block JSON (sensitive-data-guard concern, P-0077 Guardrails).
+            "body_html": "" if _is_html else _render_body_html(body),
+            "carrier_form": "html" if _is_html else "md",
             "links": links,
             "referenced_by": [],  # populated after reverse-index pass
         })
@@ -738,11 +824,32 @@ def _render_entry_bodies(categories: list[dict], knowledge_root: Path) -> str:
             title = html.escape(entry["title"])
             path_disp = html.escape(f'knowledge/{entry["knowledge_rel"]}')
             body_html = entry["body_html"]
-            parts.append(
-                f'<div class="entry-body" data-entry-body="{rel}" '
-                f'data-entry-title="{title}" data-entry-path="{path_disp}">'
-                f'{body_html}</div>'
-            )
+            carrier = entry.get("carrier_form", "md")
+            if carrier == "html":
+                # P-0077 A2: iframe modal for HTML profile entries; src is
+                # relative-from-dashboard-html (../../knowledge/<rel> because
+                # dashboard.html lives at shared_state/knowledge/, and the
+                # entry sits at <clone>/knowledge/<rel>). Use absolute
+                # file:// URL via knowledge_rel + caller-resolved knowledge
+                # root.
+                iframe_src = html.escape(
+                    "file:///" + str(
+                        (knowledge_root / entry["knowledge_rel"]).resolve()
+                    ).replace("\\", "/")
+                )
+                parts.append(
+                    f'<div class="entry-body" data-entry-body="{rel}" '
+                    f'data-entry-title="{title}" data-entry-path="{path_disp}" '
+                    f'data-entry-carrier="html" '
+                    f'data-entry-iframe-src="{iframe_src}"></div>'
+                )
+            else:
+                parts.append(
+                    f'<div class="entry-body" data-entry-body="{rel}" '
+                    f'data-entry-title="{title}" data-entry-path="{path_disp}" '
+                    f'data-entry-carrier="md">'
+                    f'{body_html}</div>'
+                )
 
     # Append skill bodies so the tier index's "skill:<name>" data-entry-body
     # keys resolve in the same _dashboardOpenEntry(rel) lookup.
@@ -1699,7 +1806,29 @@ function _dashboardOpenEntry(rel) {
     }
   }
   if (!src) return;
-  modalBody.innerHTML = src.innerHTML;
+  // P-0077 A2: HTML profile entries (carrier=html) render via iframe with
+  // sandbox=allow-same-origin allow-scripts so the file's vendored mermaid
+  // can execute. .md entries (carrier=md or absent) continue inline.
+  // P-0077 follow-up 2: HTML modal gets wider panel (.modal-wide class)
+  // because HTML profile content typically has tables/diagrams that benefit
+  // from extra horizontal space; .md content is naturally narrower text.
+  var carrier = src.getAttribute('data-entry-carrier') || 'md';
+  var modalPanel = document.getElementById('modal-panel');
+  if (carrier === 'html') {
+    if (modalPanel) modalPanel.classList.add('modal-wide');
+    var iframeSrc = src.getAttribute('data-entry-iframe-src') || '';
+    if (iframeSrc) {
+      modalBody.innerHTML = '<iframe class="entry-iframe" '
+        + 'sandbox="allow-same-origin allow-scripts" '
+        + 'src="' + iframeSrc + '" '
+        + 'style="width:100%;height:78vh;border:0;background:#1a1a1a;"></iframe>';
+    } else {
+      modalBody.innerHTML = '<p style="padding:1em;">HTML profile entry missing iframe-src.</p>';
+    }
+  } else {
+    if (modalPanel) modalPanel.classList.remove('modal-wide');
+    modalBody.innerHTML = src.innerHTML;
+  }
   if (modalTitle) modalTitle.textContent = src.dataset.entryTitle || '';
   if (modalPath) modalPath.textContent = src.dataset.entryPath || '';
   // Both visibility paths: dynamically-ensured modals have inline
@@ -2741,7 +2870,8 @@ p.empty{{color:#666;font-style:italic;margin:8px 0}}
 .owl{{display:inline-block;margin-right:6px;font-size:26px;vertical-align:-3px}}
 #entry-modal{{position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.75);z-index:100;display:flex;align-items:flex-start;justify-content:center;padding:40px 20px;overflow-y:auto}}
 #entry-modal[hidden]{{display:none}}
-#modal-panel{{background:#1a1a1a;border:1px solid #3a3a3a;border-radius:8px;max-width:900px;width:100%;box-shadow:0 10px 40px rgba(0,0,0,0.5);display:flex;flex-direction:column;max-height:calc(100vh - 80px)}}
+#modal-panel{{background:#1a1a1a;border:1px solid #3a3a3a;border-radius:8px;max-width:min(1200px,92vw);width:100%;box-shadow:0 10px 40px rgba(0,0,0,0.5);display:flex;flex-direction:column;max-height:calc(100vh - 80px)}}
+#modal-panel.modal-wide{{max-width:min(1500px,96vw)}}
 #modal-head{{display:flex;align-items:center;padding:12px 20px;border-bottom:1px solid #333;gap:12px}}
 #modal-title{{margin:0;font-size:17px;color:#9cdcfe;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}}
 #modal-path{{font-size:11px;color:#888;font-family:monospace;background:#222;padding:2px 8px;border-radius:3px}}

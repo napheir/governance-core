@@ -114,6 +114,30 @@ Mermaid Rendering）的"受限语义 HTML + Mermaid 双层"思路（render + sou
 4. **`<title>` 与 `kc:title` 一致**
 5. **`<html lang="zh-CN">`**（项目主语言；英文文件用 `en`）
 
+### 2.2.1 可选元数据（P-0077 follow-up）
+
+以下 `kc:*` 标签为**可选**，与 .md frontmatter 字段一一对应。Agent 视需要添加；
+缺省即"未配置"，不报错：
+
+| 可选 meta | 等价 .md frontmatter | 取值 | 行为 |
+|---|---|---|---|
+| `kc:briefing` | `briefing: pinned` / `briefing: serendipity` | `pinned` / `serendipity` | dashboard briefing panel surfacing；`pinned` 置顶 |
+| `kc:related` | `related: [...]` | 逗号分隔路径列表 | 反向索引 + dashboard "related" 链接（v1.3.0 之后启用，先 reserve） |
+| `kc:supersedes` | `supersedes: <path>` | 单一路径 | 标记本文取代了哪份历史 entry（dashboard 显示 supersedes 链） |
+| `kc:superseded-by` | `superseded_by: <path>` | 单一路径 | 标记本文已被取代（dashboard 显示 deprecation 链） |
+
+例（trade pin 自己的 pipeline_current.html）：
+
+```html
+<meta name="kc:briefing" content="pinned">
+```
+
+放在与 7 个必填 meta 同一 `<head>` 区，顺序不强制。
+
+dashboard 消费侧（`tools/build_knowledge_dashboard.py:_extract_html_frontmatter`）
+已在 P-0077 Phase 1 接入 briefing 字段；缺省时 entry 不进 pinned bucket
+（与 .md 缺省同语义）。
+
 ### 2.3 格式硬约束
 
 - **强制 indented、禁止 minify**：每个标签开新行，2 空格缩进
@@ -182,6 +206,31 @@ or 提供清晰的展开提示）。**source 可读性是 fallback，不是 debu
 - 不在 Mermaid 源里嵌入 raw `<script>` / `<iframe>` / `javascript:` URL
 - Mermaid runtime 本地 vendored（pinned 版本 + license + integrity hash 记录），
   禁止 CDN（见 §5）
+
+### 3.3.1 Strict mode 常见 pitfalls（P-0077 follow-up）
+
+`securityLevel: "strict"` 下 Mermaid 比常用 demo 更严格。trade 2026-05-26
+首次 HTML pilot 实测踩到 2 类雷：
+
+| ❌ 错误写法 | ✅ 正确写法 | 原因 |
+|---|---|---|
+| `A[Stage 0<br/>signal_reader<br/>dedup]` | `A["Stage 0\nsignal_reader\ndedup"]` 或 `A[Stage 0 signal_reader dedup]` | strict 禁止 raw HTML in labels（`<br/>` 被剥 + 触发 syntax error） |
+| `ART[artifacts/trade/&lbrace;ts&rbrace;/]` | `ART["artifacts/trade/{ts}/"]`（双引号包） | 裸 `{` 在 mermaid 是 rhombus 起始符；用双引号字面化整段 label |
+| `B[some > comparison]` | `B["some > comparison"]` | `>`（未转义或 `&gt;` decode 后）破坏 arrow 解析 |
+| `C[<b>bold</b> text]` | `C["**bold** text"]` 或纯文本 | strict 禁 HTML；mermaid 支持 markdown-like 加粗（需双引号） |
+
+**通用规则**：含**任何 ASCII 标点**（`{` `}` `<` `>` `|` `;`）的 label 一律用双引号
+包裹（`A["..."]`），不用 mermaid bare label 语法。这种习惯对 strict / loose
+模式都安全，是 mermaid v10+/v11+ 通用最佳实践。
+
+**多行 label**：`\n` 在双引号 label 中代表换行（不是 `<br/>`）：
+```
+A["line 1\nline 2\nline 3"]
+```
+
+**故障表现**：错误的 mermaid 源在 dashboard modal / file:// 直开时显示
+"Syntax error in text mermaid version XX" + 炸弹图标。源 `<details>` 仍可
+点开看原文（§3.2 fallback），方便定位。
 
 ### 3.4 用 Mermaid 还是 SVG？
 
@@ -342,3 +391,4 @@ audit 工具版本号跟随。当前 audit_html_profile.py v1.0.0 对应本文 v
 **Status**: 本文随 P-0054 Phase 1 落地。Phase 2 准备本地 vendored Mermaid +
 CSS/JS；Phase 3 pilot `harness_defense.html`；Phase 4 实施 build_autogen_blocks.py；
 Phase 5 (rules agent) pilot `s50_current.html`；Phase 6 audit；Phase 7 sync。
+

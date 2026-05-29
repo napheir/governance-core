@@ -30,5 +30,24 @@
       "recorded_at": "2026-05-19T05:37:40Z"
     }
   ],
-  "candidates": []
+  "candidates": [
+    {
+      "id": "cand-trade-agent-20260527-drift-knowledge-html-profile-md",
+      "origin": "trade-agent",
+      "kind": "mechanism",
+      "title": "drift knowledge-html-profile.md",
+      "decision": "promoted",
+      "note": "P-0078: folded into governance_core package source (additive); diff verified (recount CLEAN / pure-add), tests 17/17 + smoke green",
+      "reviewed_at": "2026-05-29T05:52:37Z"
+    },
+    {
+      "id": "cand-trade-agent-20260527-drift-build-knowledge-dashboard-py",
+      "origin": "trade-agent",
+      "kind": "mechanism",
+      "title": "drift build_knowledge_dashboard.py",
+      "decision": "promoted",
+      "note": "P-0078: folded into governance_core package source (additive); diff verified (recount CLEAN / pure-add), tests 17/17 + smoke green",
+      "reviewed_at": "2026-05-29T05:52:37Z"
+    }
+  ]
 }
