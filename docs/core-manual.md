@@ -583,6 +583,20 @@ Promotion is a judgment call: the tooling collects and presents; the
 maintainer decides. A promoted capability reaches every consumer through the
 next release.
 
+**Curating a drift `mechanism` candidate.** `promote` does not auto-place a
+`mechanism` — and a P-0077 drift candidate targets a file governance-core
+itself ships, so verify the payload still applies before placing it by hand.
+Compare the candidate's `baseline_sha256` against the current package source
+(`sha256sum governance_core/<path>`): equal → the payload applies cleanly;
+drifted → use `git apply -p1 --recount`, which relocates the hunks by context
+(a plain `git apply` fails on the stale line numbers). Apply to
+`governance_core/` only — never the autonomy-layer copy (Art.11.2) — run the
+test suite, `governance-core upgrade --project-root .` to dogfood, then
+`candidate.py promote ... --decision promoted` to record the decision and
+close the issue. P-0078 (the HTML profile cluster, issues #16 + #10) is the
+worked example: #10's baseline matched (pure-add), #16's had drifted but
+`--recount` relocated all 7 hunks cleanly.
+
 ## 12. Consumer updates (P-0073)
 
 A consumer updates governance-core in two steps:
