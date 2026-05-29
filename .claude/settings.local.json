@@ -100,6 +100,17 @@
             "timeout": 15
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "_managed": "governance-core",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/proposal-classify-fast.py\"",
+            "timeout": 15
+          }
+        ]
       }
     ],
     "SessionStart": [
@@ -109,6 +120,11 @@
           {
             "type": "command",
             "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/candidate-reminder.py\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/renewal-reminder.py\"",
             "timeout": 15
           },
           {
