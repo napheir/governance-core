@@ -17,6 +17,29 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-05-30 — P-0086 de-trade 既有 profile 示例残留（P-0078 cluster 清理）
+
+- 改动：承 P-0085 策展时 grep 闸门发现的**既有** trade 域残留（P-0078 cluster
+  promote HTML profile 时未彻底 de-trade），按 user 指令"也一并处理"清干净。改
+  `governance_core/knowledge_governance/knowledge-html-profile.md`，profile
+  v1.1.0 → **v1.1.1**（Patch：仅示例措辞、无契约变更）。
+- 清理 6 处（完整 grep 清单）：§2.2.1 caption（`trade pin pipeline_current.html`）、
+  §3.3.1 出处归因（`trade 2026-05-26`）、§3.3.1 strict-mode Mermaid 例
+  （`signal_reader/dedup` + `artifacts/trade/{ts}` → gc `collect/dedup` +
+  `artifacts/audit/{ts}`）、§4.1 autogen 整例（`s50-tier-metrics` +
+  `artifacts/strangle50/...` + Tier/Precision 表 → `governance-audit-summary` +
+  proposals/hooks/clauses 审计表）、§7 pilot 行 + Status footer
+  （`s50_current.html`/rules → 中性消费者域）。语法/契约教训逐字保留。
+- 涉及：`governance_core/knowledge_governance/knowledge-html-profile.md`、
+  `pyproject.toml` + `governance_core/__init__.py`（0.19.0 → 0.20.0）、`STATE.md`、
+  `shared_state/proposals/core/p-0086-*.md`。
+- 关键决策：机制/契约/结构零改 → **audit 工具不 bump**；保留 §7 `harness_defense.html`
+  （owner=core，gc 合法）+ §9 v1.1.0 的 "trade-agent" **候选来源归因**（准确 provenance、
+  非域示例）；版本历史条目**不复述** trade token（否则自触 grep 闸门）。
+- 测试：de-trade grep 闸门**清洁**（唯一命中"折叠面板"是通用 `<details>` 术语，
+  非 trade）；全套 `tools/test_*.py` **21/21**；`audit_html_profile.py` exit 0（工具未改）；
+  dogfood `upgrade` + `doctor` exit 0。
+
 ### 2026-05-29 — P-0085 promote #18: knowledge-html-profile §2.5 业务优先节
 
 - 改动：策展通用层候选 **issue #18**（mechanism / drift, trade-agent）—— 把 net-new
