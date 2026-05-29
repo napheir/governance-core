@@ -6,6 +6,42 @@
 
 ---
 
+### 2026-05-29 — P-0080 promote classify fast-path hard-block cluster (#17 + #13)
+
+- 改动：curate trade-agent 的 classify fast-path 集群入包源（P-0065 决策，原
+  #12/#13/#14 阻塞件经索要后由 #17 完整重投）。落 **8 个 net-new**：
+  `hooks/proposal-classify-fast.py`（L5 PreToolUse 硬阻断 hook：触及高敏路径且本
+  session 未 classify 即 exit 2）、`tools/_classify_match.py`（gitignore-glob
+  matcher）、`tools/proposal-classify-paths.json`（高敏路径 allowlist：governance/
+  harness/routing/infra/settings 五类）、`tools/proposal-classify-keywords.json`
+  （结构变更关键词）、3 个测试、`knowledge_governance/proposal-classify-fast-path.md`
+  （reference doc）。**合并 #13** 的 `_cmd_classify`/`_classify_quick` + argparse
+  入 `tools/proposal_lib.py`（`git apply --recount`，3 hunk/158 增/0 删纯增）。
+  `hooks_manifest.json` 注册新 hook（PreToolUse, Edit|Write|MultiEdit|NotebookEdit）。
+  版本 0.13.0 → 0.14.0。
+- 涉及：`governance_core/hooks/proposal-classify-fast.py` + `hooks_manifest.json`、
+  `governance_core/tools/{_classify_match.py, proposal-classify-paths.json,
+  proposal-classify-keywords.json, test_proposal_classify*.py(×3), proposal_lib.py}`、
+  `governance_core/knowledge_governance/proposal-classify-fast-path.md`、
+  `governance_core/__init__.py` + `pyproject.toml`（0.14.0 + package-data 加
+  `tools/*.json`）、`maintainer/consumer_registry.json`、`STATE.md`、
+  `shared_state/proposals/core/p-0080-*.md`。
+- 关键决策：**抓到打包 bug** —— 首次 wheel build 缺两个 `tools/*.json`（默认不打包
+  data 文件；editable 安装掩盖了），会下发"找不到配置的坏 hook"给消费者 →
+  `pyproject.toml` package-data 补 `tools/*.json`，重建后 8 文件全入 wheel。这正是
+  dogfood + wheel 隔离纪律存在的意义。hook **不 import governance_core**（守 copy-based
+  不变式，恰是 #3 auth-guard 违反的）；配置 **无 trade 泄漏**（globs 是 gc 自身结构）。
+  **自托管 nuance**：globs 是自治层相对路径、不含 `governance_core/**`，故 hub 的包源
+  开发不被 gate；被 gate 的是 root/自治层治理文件。#14 sync_infra 多 clone 接线按
+  trade-agent scope note + 单 agent 拓扑排除。
+- 测试：全套自治层 `tools/test_*.py` **20/20**（17 + 3 新 classify）；**硬阻断 hook
+  直调验 6 态**：BLOCK(新 session+治理/harness 路径 exit 2)、ALLOW(非 allowlist)、
+  逃生门 `CLAUDE_CLASSIFY_FAST_DISABLE=1`、fail-open(坏 JSON)、自托管 nuance
+  (`governance_core/**` 不 gate)、有 classify entry 放行。dogfood upgrade exit 0
+  (hook 注册进 settings.local.json)、doctor exit 0。wheel 0.14.0 build OK（top-level
+  仅 `governance_core` + dist-info、8 文件全在、`maintainer/` 不泄漏）。
+
+
 ### 2026-05-29 — fix #2 discovery GBK UnicodeDecodeError (Art.7.4)
 
 - 改动：给 discovery 里读 git 输出的 `subprocess.run` 加
