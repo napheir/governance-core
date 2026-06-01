@@ -183,6 +183,16 @@ READ_ONLY_BASH_PATTERNS = [
 
 
 def is_read_only_bash(command: str) -> bool:
+    # A file-write redirect (> or >>) means the command writes to disk even
+    # when it starts with a read-only verb (e.g. `cat foo > /outside/path`,
+    # `grep x f > FILE`). Such a command must NOT be fast-exited as
+    # read-only, or its redirect target -- including critical paths -- would
+    # escape both the path-extraction and critical-path checks downstream.
+    # fd-duplication redirects (2>&1, >&2) are not file writes: the char
+    # right after `>` is `&`, which the negated class below excludes, so
+    # they do not trip this guard.
+    if re.search(r">>?\s*[^\s&|;<>]", command):
+        return False
     for pattern in READ_ONLY_BASH_PATTERNS:
         if pattern.match(command):
             return True

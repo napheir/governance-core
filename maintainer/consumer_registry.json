@@ -66,6 +66,15 @@
       "decision": "promoted",
       "note": "P-0080: full bundle landed (8 net-new + #13 _cmd_classify merge + hook registered); 0.14.0; tests 20/20, hard-block 6 states verified, wheel isolation OK after package-data tools/*.json fix",
       "reviewed_at": "2026-05-29T06:55:11Z"
+    },
+    {
+      "id": "cand-trade-agent-20260601-boundary-guard-read-only-fast-exit-must-",
+      "origin": "trade-agent",
+      "kind": "mechanism",
+      "title": "boundary-guard: read-only fast-exit must not skip write-redirect targets (incl critical paths)",
+      "decision": "promoted",
+      "note": "Promoted into governance_core/tools/session-boundary-guard.py is_read_only_bash redirect short-circuit + 4 regression cases (21->25); v0.20.1; Implements P-0087. Issue #20.",
+      "reviewed_at": "2026-06-01T05:33:12Z"
     }
   ]
 }

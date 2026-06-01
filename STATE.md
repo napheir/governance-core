@@ -17,6 +17,29 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-01 — P-0087 收编 issue #20：boundary-guard read-only 快速放行漏洞
+
+- 改动：策展通用层候选 **issue #20**（mechanism / drift, trade-agent）—— 修复
+  `session-boundary-guard.py` 的真实安全洞。`is_read_only_bash()` 用 start-anchored
+  匹配，任何以只读动词（cat/grep/tail…）开头的命令在路径提取 + 关键路径检查**之前**
+  就被当只读快速放行 → `cat foo > /越界` 甚至 `> ~/.ssh/...` 整个绕过守卫。实测当前
+  包源 guard 对 `cat <in> > <.ssh>` 返回 exit 0（放行），漏洞 live。
+- 修复（外科手术式，全文 diff 核实仅此改动）：`is_read_only_bash` 顶部加 redirect
+  短路 —— 命令含文件写重定向 `>`/`>>`（负字符类 `[^\s&|;<>]` 排除 `2>&1`/`>&2`
+  fd-dup）时返回 `False`，不再快速放行。测试 +4 回归用例（22 cat>outside 拦 /
+  23 cat>.ssh 关键拦 / 24 cat>inside 放行 / 25 `2>&1` 放行），21 → **25**。
+- 涉及：`governance_core/tools/session-boundary-guard.py`、
+  `governance_core/tools/test_session_boundary_guard.py`、
+  `pyproject.toml` + `governance_core/__init__.py`（0.20.0 → **0.20.1**，安全 patch）、
+  `maintainer/consumer_registry.json`（记 `promoted`）、`STATE.md`、
+  `shared_state/proposals/core/p-0087-*.md`。
+- 关键决策：mechanism 类候选手工放置包源（Art.11.2 只改 `governance_core/`）；
+  机制与示例已通用（`/outside`、`~/.ssh`）→ 无需 de-trade-ify；dogfood —— 本仓库
+  自身 guard 同样带洞，`upgrade` 后修复。
+- 测试：包源 guard 测试 **25/25**；repo-root `upgrade` 后 **25/25**；全套
+  `pytest tools/` **16 passed**；`doctor` exit 0；wheel 隔离（顶层仅
+  `governance_core*`、无 `maintainer/` 泄漏、修复在 wheel 副本中）。
+
 ### 2026-05-30 — P-0086 de-trade 既有 profile 示例残留（P-0078 cluster 清理）
 
 - 改动：承 P-0085 策展时 grep 闸门发现的**既有** trade 域残留（P-0078 cluster

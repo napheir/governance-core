@@ -312,11 +312,53 @@ def main() -> int:
                 print(f"  [FAIL] {label} (rc={rc}): {err.strip()[:200]}")
                 failed += 1
 
+        # ----- Redirect-after-read-only-verb regression (2026-05-29) -----
+        # A write redirect (> / >>) after a read-only verb (cat/grep/tail)
+        # used to be fast-exited as "read-only", bypassing BOTH the boundary
+        # check and the critical-path check. is_read_only_bash now returns
+        # False whenever a file-write redirect is present.
+        redirect_block_cases = [
+            (f"cat {inside_target} > {outside_target}",
+             "22. cat > outside (redirect after read-only verb) -> block", False),
+            (f"cat {inside_target} > {ssh_path}",
+             "23. cat > ~/.ssh path (redirect to critical) -> block CRITICAL", True),
+        ]
+        for cmd, label, want_critical in redirect_block_cases:
+            rc, err = run_hook(
+                {"tool_name": "Bash", "tool_input": {"command": cmd}},
+                cwd=agent_core,
+            )
+            crit_ok = ("CRITICAL" in err) if want_critical else True
+            if rc == 2 and crit_ok:
+                print(f"  [OK]   {label}")
+            else:
+                print(f"  [FAIL] {label} (rc={rc}): {err.strip()[:200]}")
+                failed += 1
+
+        # fd-dup redirect (2>&1) is not a file write -> must stay read-only;
+        # and an in-boundary write redirect after a read-only verb is allowed.
+        redirect_pass_cases = [
+            (f"cat {inside_target} > {inside_target}.bak",
+             "24. cat > inside (redirect in-boundary) -> allow"),
+            (f"grep x {inside_target} 2>&1",
+             "25. grep ... 2>&1 (fd-dup, not a file write) -> allow"),
+        ]
+        for cmd, label in redirect_pass_cases:
+            rc, err = run_hook(
+                {"tool_name": "Bash", "tool_input": {"command": cmd}},
+                cwd=agent_core,
+            )
+            if rc == 0:
+                print(f"  [OK]   {label}")
+            else:
+                print(f"  [FAIL] {label} (rc={rc}): {err.strip()[:200]}")
+                failed += 1
+
     print()
     if failed:
         print(f"[FAIL] {failed} case(s) failed")
         return 1
-    print("[PASS] all 21 cases passed")
+    print("[PASS] all 25 cases passed")
     return 0
 
 
