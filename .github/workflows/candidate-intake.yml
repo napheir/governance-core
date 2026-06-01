@@ -1,0 +1,46 @@
+name: candidate-intake
+
+# P-0082 Phase 1 -- deterministic hub-side structural validation + labeling on
+# every newly-opened candidate/feedback issue. NO LLM, NO promotion. The
+# promote/advise judgment is P-0082 Phase 2's scheduled routine.
+#
+# The script (maintainer/candidate_intake.py) fetches the published envelope
+# (a `<id>.tar.gz` asset on the `candidates` prerelease, published by
+# `candidate.py uplink`), runs the real validator + secret scanner, dedups vs
+# the rejected registry, and applies labels + one ack comment.
+
+on:
+  issues:
+    types: [opened]
+
+permissions:
+  issues: write      # apply labels + post the ack comment
+  contents: read     # fetch the published envelope (release asset)
+
+jobs:
+  intake:
+    runs-on: ubuntu-latest
+    # Cheap guard: only spin up on candidate/feedback-shaped issues. The script
+    # re-checks deterministically; this just avoids running on unrelated issues.
+    if: >-
+      startsWith(github.event.issue.title, '[candidate]') ||
+      contains(github.event.issue.body, '### candidate.json') ||
+      contains(github.event.issue.title, 'feedback')
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+
+      - name: Install gc (provides governance_core for the real validator + scanner)
+        run: pip install -e .
+
+      - name: Run deterministic intake
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          ISSUE_NUMBER: ${{ github.event.issue.number }}
+          ISSUE_TITLE: ${{ github.event.issue.title }}
+          ISSUE_BODY: ${{ github.event.issue.body }}
+        run: python maintainer/candidate_intake.py

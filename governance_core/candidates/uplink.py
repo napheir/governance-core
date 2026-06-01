@@ -21,9 +21,13 @@ from __future__ import annotations
 import difflib
 import hashlib
 import json
+import logging
+import shutil
 import subprocess
 import tempfile
 from pathlib import Path
+
+log = logging.getLogger("governance_core.candidates.uplink")
 
 from governance_core.auth import codec
 from governance_core.candidates import envelope
@@ -186,6 +190,52 @@ def gh_command(title: str, body_file: str, labels: list[str],
     return argv
 
 
+def publish_envelope(envelope_dir: Path, candidate_id: str,
+                     repo: str = UPSTREAM_REPO) -> str | None:
+    """Publish the envelope as a `candidates` prerelease asset (P-0088 Phase 2).
+
+    So the hub's candidate-intake CI can fetch + run the REAL validator/scanner
+    against the envelope (not brittle issue-body parsing), the envelope is
+    tarred to `<id>.tar.gz` and uploaded (idempotently, `--clobber`) to a single
+    `candidates` prerelease on the hub repo.
+
+    Best-effort: any failure is logged and swallowed -- the issue has already
+    been created, so a missing release asset only means CI cannot auto-fetch
+    (the candidate is then labeled needs-human and a maintainer handles it).
+    Returns the asset name on success, or None.
+
+    NOTE: uploading a release asset to `repo` requires write access to that
+    repo's releases. The GitHub-issue transport itself needs no write access;
+    this publish step degrades gracefully for arms-length consumers who lack it.
+    """
+    asset = f"{candidate_id}.tar.gz"
+    tmp = Path(tempfile.mkdtemp())
+    try:
+        # archive the envelope CONTENTS (candidate.json + payload/) -> <id>.tar.gz
+        shutil.make_archive(str(tmp / candidate_id), "gztar",
+                            root_dir=str(envelope_dir))
+        # ensure the holding prerelease exists (ignore "already exists")
+        subprocess.run(
+            ["gh", "release", "create", "candidates", "--repo", repo,
+             "--prerelease", "--title", "candidate envelopes (CI intake)",
+             "--notes", "Envelope assets for the candidate-intake CI (P-0082)."],
+            capture_output=True, text=True)
+        # upload / overwrite this candidate's asset
+        subprocess.run(
+            ["gh", "release", "upload", "candidates", "--repo", repo,
+             str(tmp / asset), "--clobber"],
+            capture_output=True, text=True, check=True)
+        log.info("[uplink] published envelope asset %s", asset)
+        return asset
+    except (subprocess.CalledProcessError, OSError, FileNotFoundError) as exc:
+        log.warning("[uplink] envelope publish skipped (%s); CI auto-fetch "
+                    "unavailable for %s -- candidate will be needs-human",
+                    exc.__class__.__name__, candidate_id)
+        return None
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def uplink_envelope(envelope_dir: Path, auth_code: str,
                     repo: str = UPSTREAM_REPO, dry_run: bool = False) -> str:
     """Scan, then uplink a candidate envelope as a GitHub issue.
@@ -253,4 +303,8 @@ def uplink_envelope(envelope_dir: Path, auth_code: str,
             raise UplinkError(f"gh issue create failed: {stderr}")
     finally:
         Path(body_file.name).unlink(missing_ok=True)
+    # P-0088 Phase 2: publish the envelope so the hub's candidate-intake CI can
+    # fetch + validate it. Best-effort -- the issue is already created; a
+    # publish failure must not fail the uplink.
+    publish_envelope(envelope_dir, meta["id"], repo=repo)
     return result.stdout.strip()

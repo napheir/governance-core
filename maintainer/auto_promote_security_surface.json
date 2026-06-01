@@ -1,0 +1,94 @@
+{
+  "_doc": "Auto-promote security surface for the gc curation routine (P-0082 Phase 0). A candidate whose source_paths touch ANY glob below is NEVER auto-promoted -> routed to needs-human (advise-only under the C-hybrid model). Deterministic deny-set; matched by _classify_match (gitignore-style globs). Hot-editable. Destination: gc repo maintainer/auto_promote_security_surface.json.",
+  "_model": "C-hybrid + T0. Auto-promote ONLY when: net-new (additive) AND kind in {skill,doc} AND layer=candidate-common AND no source_path matches this surface AND (for kind=skill) skill frontmatter is not governance/security-themed AND trusted non-revoked origin AND structural-valid AND no secrets AND not a previously-rejected digest AND trial-apply CI green. Everything else -> advise-only.",
+  "_source": "P-0082 Phase 0, settled 2026-06-01. Globs expressed in consumer-relative form (what a candidate declares in source_paths); they also match the gc package layout.",
+  "version": "0.1.0",
+  "categories": {
+    "enforcement_guards": {
+      "_why": "Execute as PreToolUse/PostToolUse guards. Adding/altering one changes enforcement for everyone.",
+      "globs": [
+        ".claude/hooks/**",
+        "hooks/**",
+        "tools/*-guard.py",
+        "tools/session-boundary-guard.py",
+        "tools/derive_session_boundary.py",
+        "tools/install_session_boundary_guard.ps1",
+        "**/hooks_manifest.json"
+      ]
+    },
+    "auth_lease": {
+      "_why": "Authentication / licensing / consumer authorization. Tampering bypasses the lease gate.",
+      "globs": [
+        ".claude/auth/**",
+        "**/_gc_auth/**",
+        "tools/auth-guard.py",
+        "**/pubkey.json",
+        "**/revocation.py",
+        "maintainer/**",
+        "**/consumer_registry.json"
+      ]
+    },
+    "scope_rules": {
+      "_why": "Scope / write-permission enforcement.",
+      "globs": [
+        "agent_rules/**",
+        "tools/check_scope.py"
+      ]
+    },
+    "constitution_contracts": {
+      "_why": "Constitution clauses, contracts, governance source. Contract changes break consumers.",
+      "globs": [
+        "clauses/**",
+        "**/art_*.md",
+        "constitution/**",
+        "CLAUDE.md",
+        "contracts/**",
+        "**/core_keywords.json",
+        "knowledge/governance/**",
+        "knowledge_governance/**"
+      ]
+    },
+    "routing_classify": {
+      "_why": "Router / classify configs that drive gating + auto-injection.",
+      "globs": [
+        "tools/proposal-classify-*.json",
+        "tools/proposal-classify-*.py",
+        "tools/_classify_match.py",
+        "**/INDEX.routing.json"
+      ]
+    },
+    "pipeline_self_protection": {
+      "_why": "CRITICAL: the candidate pipeline + CI the routine itself uses. A candidate altering this could subvert the auto-promote gate -> privilege escalation. Never auto.",
+      "globs": [
+        "candidates/**",
+        "tools/candidate.py",
+        "tools/validate_candidate.py",
+        "**/rejected_registry.json",
+        "**/_uplinked.json",
+        ".github/workflows/**"
+      ]
+    },
+    "settings": {
+      "_why": "Claude Code permissions + hook registration. Controls what runs.",
+      "globs": [
+        "**/settings.json",
+        "**/settings.local.json",
+        "tools/generate_settings.py"
+      ]
+    },
+    "install_distribution": {
+      "_why": "Install / materialization / cross-clone distribution. A bad change propagates structurally.",
+      "globs": [
+        "tools/sync_infra.py",
+        "tools/regen_constitution.py",
+        "**/discovery/**",
+        "governance_core/install*"
+      ]
+    }
+  },
+  "skill_theme_supplement": {
+    "_why": "Path alone cannot separate generic vs governance skills (both live in commands/ or skills/). For kind=skill, also parse the skill frontmatter.",
+    "hold_if_theme_in": ["governance", "security"],
+    "hold_if_tags_intersect": ["governance", "hook", "auth", "scope", "enforcement", "classify"]
+  }
+}

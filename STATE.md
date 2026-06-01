@@ -17,6 +17,30 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-01 — P-0088 P-0082 Phase 1 gc 侧：候选 intake CI + uplink 发布 envelope（+ #21 de-drift）
+
+- 改动：落地 trade-agent 交接的 P-0082 Phase 1（hub 侧确定性候选 intake，无 LLM、
+  绝不 promote）。4 phase：
+  - **三件套**：`maintainer/auto_promote_security_surface.json`（8 类 41 globs 拒绝集）、
+    `maintainer/candidate_intake.py`（`issues.opened` 跑：区分 candidate/feedback、拉发布
+    envelope 结构校验、secret 复扫**复用 uplink.scan_envelope**、查 rejected 去重、算
+    确定性 T0-eligibility、打标签+ack）、`.github/workflows/candidate-intake.yml`。
+    GC-TODO 全部用真实 gc API 收口；决策核心抽成纯函数 `compute_eligibility`。
+  - **uplink 发布**：`governance_core/candidates/uplink.py` 加 `publish_envelope` ——
+    issue 创建成功后**幂等+best-effort** 上传 envelope 为 `candidates` 预发布资产
+    `<id>.tar.gz`（修掉 handoff 的 `.tgz`/`.tar.gz` 不一致）；发布失败不让 uplink 失败。
+  - **labels**：建 5 个（feedback/valid/auto-eligible/needs-human/dup-of-rejected）。
+  - **#21 de-drift**（独立 commit）：从 `agent-least-privilege.md`(1) +
+    `resource-layer-hardening.md`(3) 的 `related:` 删失效 `proposals/` 引用，bump updated。
+- 涉及：上述 3 新文件 + uplink.py + `governance_core/tools/test_candidate_intake.py`(23) +
+  `test_candidate_uplink_publish.py`(4) + 版本 0.20.1 → **0.21.0** + 2 个 knowledge_governance 文档。
+- 关键决策/caveat：**uplink 发布需对 hub repo 写权限**——纯 issue 传输本不需要；无写权限
+  的消费者发布失败 → CI 拿不到 envelope → 标 needs-human（优雅降级，已在码注+小结标注）。
+  intake **无 promote 路径** → 本阶段零提权面。`maintainer/`+`.github/` 不进 wheel（Art.11.4）。
+- 测试：intake 23/23、uplink-publish 4/4、pytest 16 passed、session-boundary 25/25、
+  candidate 家族全绿；`upgrade`+`doctor` exit 0；wheel 隔离干净（顶层仅 `governance_core*`，
+  无 maintainer/.github 泄漏）。Check 9 只查 frontmatter LINK_FIELDS（读码确认）。
+
 ### 2026-06-01 — P-0087 收编 issue #20：boundary-guard read-only 快速放行漏洞
 
 - 改动：策展通用层候选 **issue #20**（mechanism / drift, trade-agent）—— 修复
