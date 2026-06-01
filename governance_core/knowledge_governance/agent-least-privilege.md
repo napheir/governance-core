@@ -3,10 +3,9 @@ title: "Agent Runtime Least-Privilege Principle"
 tags: [governance, security, least-privilege, defense-in-depth]
 status: active
 created: 2026-05-01
-updated: 2026-05-01
+updated: 2026-06-01
 owner: core
 related:
-  - proposals/harden_destructive_command_guard.md
   - agent_rules/shared.deny_commands.txt
   - agent_rules/shared.deny_commands_regex.txt
 ---

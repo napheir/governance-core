@@ -3,14 +3,11 @@ title: "Resource-layer hardening"
 tags: [governance, security, defense-in-depth, hardening, os]
 status: active
 created: 2026-05-01
-updated: 2026-05-01
+updated: 2026-06-01
 owner: core
 related:
   - knowledge/governance/agent-least-privilege.md
   - knowledge/decisions/adr-session-boundary-guard.md
-  - proposals/harden_destructive_command_guard.md
-  - proposals/project_boundary_guard_for_extra_project_writes.md
-  - proposals/harden_indirect_attack_paths.md
 ---
 
 # Resource-layer hardening (Phase D defense-in-depth)
