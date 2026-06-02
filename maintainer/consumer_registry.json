@@ -75,6 +75,24 @@
       "decision": "promoted",
       "note": "Promoted into governance_core/tools/session-boundary-guard.py is_read_only_bash redirect short-circuit + 4 regression cases (21->25); v0.20.1; Implements P-0087. Issue #20.",
       "reviewed_at": "2026-06-01T05:33:12Z"
+    },
+    {
+      "id": "cand-trade-agent-20260602-skill-usage-funnel-counters-surfaced-tri",
+      "origin": "trade-agent",
+      "kind": "mechanism",
+      "title": "Skill-usage funnel counters (Surfaced/Triggered/Loaded)",
+      "decision": "promoted",
+      "note": "P-0092: skill-usage funnel (Surfaced / Triggered / Loaded) folded into governance_core (tracker record_surfaced/record_triggered + atomic save; router records triggers before dedup, best-effort fail-open, registered FAIL_OPEN_GC_IMPORTERS; registry --funnel report). v0.23.0; full suite 25/25 + doctor exit 0 + wheel isolation OK. Issue #25.",
+      "reviewed_at": "2026-06-02T07:44:30Z"
+    },
+    {
+      "id": "cand-trade-agent-20260601-upgrade-review-at-session-start-surface-",
+      "origin": "trade-agent",
+      "kind": "mechanism",
+      "title": "upgrade-review at session-start: surface drift risk before apply (generic gc-consumer)",
+      "decision": "promoted",
+      "note": "P-0093: upgrade_review.py drift pre-pass (upgrade --dry-run classified NONE / GREEN / YELLOW / RED, never applies; protected_drift.json triggers RED) + update-reminder verdict wiring (best-effort, 25s timeout). classify() aligned to its documented contract; docstring genericized; mechanism otherwise verbatim. v0.23.0; full suite 25/25 + dogfood + wheel isolation OK. Issue #22.",
+      "reviewed_at": "2026-06-02T07:44:30Z"
     }
   ]
 }
