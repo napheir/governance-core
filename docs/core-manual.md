@@ -124,6 +124,22 @@ agent-core into `governance_core.discovery`, so `/extract-skill` and
 directly — no `../agent-core` sibling clone, no `PYTHONPATH`. Learned-skill
 state stays in the consuming project's `.claude/skills/learned/`.
 
+Skill usage is a three-layer **funnel** (P-0092, gc #25): a skill reaches the
+agent by being **Surfaced** (named in the SessionStart menu), **Triggered**
+(its router keyword hits and the body head is injected), or **Loaded** (full
+body pulled). `use_count` only counts Loaded, so learned/guide skills designed
+to act from the summary or the injected head score 0 even when applied. The
+tracker now records all three; read the funnel with:
+
+```pwsh
+python -m governance_core.discovery.registry --funnel
+```
+
+It classifies each learned/guide skill as a **retire** candidate (surfaced,
+never triggered or loaded), a **slim** candidate (triggered, never loaded — the
+head suffices), or a star. The counters are diagnostic only — they do not feed
+`weighted_scores` or change injection ordering.
+
 ## 9. Authorization (P-0065)
 
 Since P-0065, `governance-core install` / `upgrade` are gated on a
@@ -666,3 +682,26 @@ changes and emits an advisory — best-effort, never blocking. The
 `update-reminder` hook points the owner at `/upgrade`. A bare
 `governance-core upgrade` still works for a manual upgrade; it just skips
 the agent-review layer.
+
+### Upgrade drift-risk pre-pass (P-0093, gc #22)
+
+`tools/upgrade_review.py` is a deterministic, read-only **pre-pass** a consumer
+can run (manually or from a scheduled routine) to triage an available upgrade
+before applying it. It runs `upgrade --dry-run`, mechanically classifies the
+result, writes a report under `audit/upgrade_review/` (gitignored), and **never
+applies** (exit 0 always):
+
+- **NONE** — already up to date.
+- **GREEN** — new version, zero drift, no minor-line crossing — ready.
+- **YELLOW** — drift (local edits would be reverted), or a minor-line crossing.
+- **RED** — drift on a *protected* local fix, or a minor-line crossing that also
+  carries drift.
+
+A consumer lists files it deliberately keeps as local drift in
+`audit/upgrade_review/protected_drift.json` (`{"paths": [...]}`); a drift on one
+of those forces **RED**, because the upgrade would silently revert a fix the
+consumer means to keep. The `update-reminder` hook wires this in: when it
+already detects a newer version it runs the pre-pass best-effort (25s timeout)
+and appends the verdict to the banner, falling back to the plain banner on any
+error. The hub itself never runs it (the editable install early-exits). Apply
+always stays a human action via `/upgrade`.
