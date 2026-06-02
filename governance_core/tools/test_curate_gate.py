@@ -184,11 +184,16 @@ def main() -> int:
     _check(r.eligible is False and "reconstruct" in r.reasons[0],
            "13. unreconstructable body -> not eligible", failed)
 
+    # 14. empty / blank body -> not eligible (guard against a failed fetch)
+    r = cg.evaluate("   ", project_root=REPO_ROOT, run_trial=True)
+    _check(r.eligible is False and "empty" in r.reasons[0],
+           "14. empty body -> not eligible (guard)", failed)
+
     print()
     if failed:
         print(f"[FAIL] {len(failed)} case(s) failed")
         return 1
-    print("[PASS] all 13 cases passed")
+    print("[PASS] all 14 cases passed")
     return 0
 
 

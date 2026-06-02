@@ -240,6 +240,8 @@ def evaluate(issue_body: str, *, project_root: Path | None = None,
     candidate (relabel needs-human), never upgrade past a False.
     """
     root = project_root or Path.cwd()
+    if not isinstance(issue_body, str) or not issue_body.strip():
+        return GateResult(False, ["empty or unreadable issue body"])
     with tempfile.TemporaryDirectory() as tmp:
         env = reconstruct_envelope(issue_body, Path(tmp))
         if env is None:
@@ -279,10 +281,13 @@ def evaluate(issue_body: str, *, project_root: Path | None = None,
 
 
 def _fetch_issue_body(repo: str, issue: str) -> str:
+    # Decode gh's stdout as UTF-8 explicitly: `text=True` would use the
+    # platform locale encoding (GBK on a zh-Windows hub), which crashes on the
+    # non-ASCII bytes a real issue body carries. gh emits UTF-8.
     out = subprocess.run(
         ["gh", "issue", "view", issue, "--repo", repo, "--json", "body",
          "--jq", ".body"],
-        capture_output=True, text=True, check=True)
+        capture_output=True, encoding="utf-8", errors="replace", check=True)
     return out.stdout
 
 
