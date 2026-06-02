@@ -56,7 +56,14 @@ candidate's prior decision (if any).
 
 ### 3. Verify BEFORE applying
 
-- Fetch the issue body; extract `candidate.json` + payload(s).
+- Fetch the issue body **and its comments** (`gh issue view <N> --json
+  body,comments`); extract `candidate.json` + payload(s) from the body. **Read
+  the comments before acting** — a submitter may have posted a correction that
+  retracts or revises the candidate, and a comment supersedes a stale body
+  (precedent: gc #26 — the body's central claim was wrong; the truth was in a
+  follow-up. Promote the *corrected* kernel, not the retracted body). The
+  deterministic auto-promote gate reads body-only by design; the comment is
+  LLM-judgment input only.
 - **Drift candidates** carry `baseline_sha256`. Compare it to the *current*
   package source (`sha256sum governance_core/<target>`):
   - **equal** → the payload applies cleanly.

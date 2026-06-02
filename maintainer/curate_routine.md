@@ -34,13 +34,19 @@ Nothing is auto-promoted unless **ALL** of these hold — the LLM can only
    - `eligible: false` → relabel `needs-human`, comment the gate's `reasons`.
    You may NOT promote when the gate says false, ever.
 
-2. **`needs-human`** (or a valid non-T0): **LLM semantic review** — is it generic
-   (common-layer) vs domain-specific? does it conflict with existing source? is
-   it worth promoting? Leave a `recommend promote / hold — because <X>` comment +
-   add label `advised`. **Do NOT promote.**
+2. **`needs-human`** (or a valid non-T0): **LLM semantic review**. FIRST read the
+   issue **comments** (`gh issue view <N> --repo <repo> --json comments`), not
+   only the body — a submitter may have posted a **correction that retracts or
+   revises the candidate**, and a comment supersedes a stale body (precedent: gc
+   #26, where the body's central claim was wrong and the truth was in a
+   follow-up). Then: is it generic (common-layer) vs domain-specific? does it
+   conflict with existing source? is it worth promoting *as corrected*? Leave a
+   `recommend promote / hold — because <X>` comment + add label `advised`.
+   **Do NOT promote.**
 
-3. **feedback** (no envelope): **LLM triage** — summarize + recommend
-   (`fix` / `wontfix` / `needs-info`), comment, add label `advised`.
+3. **feedback** (no envelope): **LLM triage**. Read the body AND the comments
+   first (the thread may already answer or refine the report). Summarize +
+   recommend (`fix` / `wontfix` / `needs-info`), comment, add label `advised`.
 
 Comment on every issue you touch. Skip issues already labeled `advised` or
 `promoted`.
@@ -59,6 +65,11 @@ Hard rules (never violate):
 - Honor the kill-switch: read `maintainer/auto_curate_enabled`; if it is not
   {"enabled": true}, run in ADVISE-ONLY mode — comment + label `advised`, and
   do NOT promote anything this run.
+- For any LLM-judgment branch (needs-human review, feedback triage), READ THE
+  ISSUE COMMENTS before recommending — a submitter correction in a comment
+  supersedes the body. The deterministic gate ignores comments by design; you
+  must not. (Comments are advisory input only — they never make you auto-promote;
+  if anything, a fresh correction is a reason to route to a human.)
 - Comment on every issue you touch. Skip issues already labeled `advised` or
   `promoted`.
 
@@ -73,10 +84,13 @@ For each open issue without an `advised` or `promoted` label:
         Relabel `needs-human`, comment the gate's reasons (or "advise-only:
         kill-switch off").
 - Else if `needs-human` or a valid non-T0 candidate:
-    Do a semantic review (generic vs domain-specific? conflicts? worth it?).
+    First: gh issue view <N> --repo <THIS_REPO> --json comments  (read them).
+    A submitter correction supersedes the body. Then do a semantic review
+    (generic vs domain-specific? conflicts? worth it *as corrected*?).
     Comment "recommend promote/hold — because X" and add label `advised`.
     Do NOT promote.
 - Else if a feedback issue (no candidate.json):
+    Read the body AND comments first (gh issue view <N> --json body,comments).
     Triage (fix / wontfix / needs-info), comment, add label `advised`.
 
 End by listing what you promoted vs advised. Never promote outside the gate.
