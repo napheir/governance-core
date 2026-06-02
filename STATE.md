@@ -17,6 +17,19 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-02 — P-0096 curation 评审强制读 issue 评论（堵 #26 暴露的缺口）+ 发布 0.24.0
+
+- **发布**：v0.24.0（P-0094/P-0095）经 GitHub Release → CI Trusted Publisher 发到正式
+  PyPI（run 26820323541，publish-pypi 22s success）；3 commit push 到 origin/master。
+- **P-0096（task b）**：curation 的 LLM 评审层（`curate_routine.md` step 2 needs-human /
+  step 3 feedback + 嵌入 routine prompt + 一条 hard rule）现**强制先读 issue 评论**，提交方
+  自更正凌驾 body；`commands/curate-candidate.md` step 3 "fetch body" → "fetch body AND
+  comments"（引 gc #26 为先例）。**确定性 gate `curate_gate.py` 故意不动**——保持 body-only，
+  评论永不能翻转 auto-promote eligibility（守 P-0090 信任模型），评论仅作 LLM 判断输入。
+- 验证：suite 22 pytest + 25 script green；upgrade + doctor exit 0；dry-run 0 drift；
+  wheel 顶层仅 `governance_core*`、无 `maintainer/`/`curate_routine` 泄漏。版本 0.24.0 →
+  **0.24.1**（doc-only patch；0.24.1 是否发 PyPI 待定——消费者不跑 hub-only 的 curate）。
+
 ### 2026-06-02 — P-0094 / P-0095 收编两个 candidate（gc #27 EOL-drift + #26 sync-manifest note）
 
 - **P-0094（gc #27）EOL-normalize manifest hashing**：`installer.py` 新增
@@ -56,26 +69,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 验证：全套 `tools/test_*.py` **25/25**；`doctor` exit 0（router 归类 fail-open）；wheel 顶层仅
   `governance_core*`、9 文件在内、无 `maintainer/` 泄漏；`upgrade_review.py` 在 hub dogfood 跑通。
   版本 0.22.0 → **0.23.0**。关闭 GitHub #25、#22（附 curation 结果 + 致谢）。
-
-### 2026-06-02 — P-0091 释放知识渲染工具到 business 归属（gc #24，完整释放）
-
-- 改动：gc 从 trade-agent 抽取时把消费者的知识**渲染**工具卷进了治理包 → gc 控制了
-  "消费者怎么渲染自己的知识"，这条 governance→project 影响链不该存在（trade-agent 上
-  酿成 dashboard 回滚事故）。完整释放 3 工具到 business/consumer 归属（复用 P-0075 机制）：
-  - 删包源 `tools/build_knowledge_dashboard.py`、`tools/build_autogen_blocks.py`、
-    `commands/dashboard.md`；3 个自治层路径加进 `installer.STALE_PRUNE_EXEMPT`（现有消费者
-    含 gc 自身 upgrade 时**保留**副本）；从 `sync_infra.ALWAYS_COPY_FILES` 删 2 工具。
-  - **解耦**（防新消费者断）：`/learn` Step 5 + `/publish-knowledge` 4.8 的 dashboard 重建
-    改为"项目自备 renderer 才跑，没有就跳过"；contracts（frontmatter/index schema）+
-    `art_03` clause 的归属措辞去 gc-ownership 化（gc 拥有 contract/validator/taxonomy，
-    renderer 归消费者）。`knowledge-html-profile.md` 复查后保留（描述机制非归属）。
-  - 补 `test_upgrade_dry_run.py` 3 条具名 exempt 回归用例；core-manual released-to-business
-    节加 #24 cohort。版本 0.21.3 → **0.22.0**。
-- 关键决策/边界：gc 保留 validators(`audit_*`)/contracts/taxonomy；边界件(`build_skill_index`
-  等)+ `_tiers.json` 不碰（#24 另议/已项目所有）。
-- 测试：**dogfood upgrade 实证 3 副本被"released to business ownership"保留**（不删）、
-  doctor exit 0、upgrade-dry-run **17/17**（含 3 新 exempt）、pytest 16、wheel 隔离干净
-  （3 文件已从 wheel 移除，需先清 stale build/ 缓存才生效）。
 
 ### 2026-06-01 — P-0088 P-0082 Phase 1 gc 侧：候选 intake CI + uplink 发布 envelope（+ #21 de-drift）
 

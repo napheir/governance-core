@@ -6,6 +6,27 @@
 
 ---
 
+### 2026-06-02 — P-0091 释放知识渲染工具到 business 归属（gc #24，完整释放）
+
+- 改动：gc 从 trade-agent 抽取时把消费者的知识**渲染**工具卷进了治理包 → gc 控制了
+  "消费者怎么渲染自己的知识"，这条 governance→project 影响链不该存在（trade-agent 上
+  酿成 dashboard 回滚事故）。完整释放 3 工具到 business/consumer 归属（复用 P-0075 机制）：
+  - 删包源 `tools/build_knowledge_dashboard.py`、`tools/build_autogen_blocks.py`、
+    `commands/dashboard.md`；3 个自治层路径加进 `installer.STALE_PRUNE_EXEMPT`（现有消费者
+    含 gc 自身 upgrade 时**保留**副本）；从 `sync_infra.ALWAYS_COPY_FILES` 删 2 工具。
+  - **解耦**（防新消费者断）：`/learn` Step 5 + `/publish-knowledge` 4.8 的 dashboard 重建
+    改为"项目自备 renderer 才跑，没有就跳过"；contracts（frontmatter/index schema）+
+    `art_03` clause 的归属措辞去 gc-ownership 化（gc 拥有 contract/validator/taxonomy，
+    renderer 归消费者）。`knowledge-html-profile.md` 复查后保留（描述机制非归属）。
+  - 补 `test_upgrade_dry_run.py` 3 条具名 exempt 回归用例；core-manual released-to-business
+    节加 #24 cohort。版本 0.21.3 → **0.22.0**。
+- 关键决策/边界：gc 保留 validators(`audit_*`)/contracts/taxonomy；边界件(`build_skill_index`
+  等)+ `_tiers.json` 不碰（#24 另议/已项目所有）。
+- 测试：**dogfood upgrade 实证 3 副本被"released to business ownership"保留**（不删）、
+  doctor exit 0、upgrade-dry-run **17/17**（含 3 新 exempt）、pytest 16、wheel 隔离干净
+  （3 文件已从 wheel 移除，需先清 stale build/ 缓存才生效）。
+
+
 ### 2026-06-02 — fix: curate_gate `_fetch_issue_body` Windows GBK 解码崩溃（NO_PROPOSAL）
 
 - 触发:P-0090 例程 advise-only 实测后,本地对真实 issue 跑 `curate_gate.py` 核验闸门——
