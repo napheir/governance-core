@@ -1,13 +1,15 @@
 name: candidate-intake
 
-# P-0082 Phase 1 -- deterministic hub-side structural validation + labeling on
-# every newly-opened candidate/feedback issue. NO LLM, NO promotion. The
+# P-0082 Phase 1 (#23) -- deterministic hub-side metadata validation + labeling
+# on every newly-opened candidate/feedback issue. NO LLM, NO promotion. The
 # promote/advise judgment is P-0082 Phase 2's scheduled routine.
 #
-# The script (maintainer/candidate_intake.py) fetches the published envelope
-# (a `<id>.tar.gz` asset on the `candidates` prerelease, published by
-# `candidate.py uplink`), runs the real validator + secret scanner, dedups vs
-# the rejected registry, and applies labels + one ack comment.
+# The script (maintainer/candidate_intake.py) reads the candidate.json embedded
+# in the issue body, validates it with the real metadata validator
+# (governance_core.candidates.envelope.validate_metadata), computes a
+# deterministic T0-eligibility hint, and applies labels + one ack comment. It
+# needs NO payload on disk and writes nothing to the hub -- the payload checks
+# run at promote-time (Phase 2).
 
 on:
   issues:
@@ -15,7 +17,7 @@ on:
 
 permissions:
   issues: write      # apply labels + post the ack comment
-  contents: read     # fetch the published envelope (release asset)
+  contents: read     # checkout + pip install -e . (no envelope fetch)
 
 jobs:
   intake:

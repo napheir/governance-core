@@ -2,20 +2,23 @@
 
 Runs on `issues.opened` via .github/workflows/candidate-intake.yml. It is
 deterministic: NO LLM, NO judgment of worth, and -- critically -- NO
-promotion. It only:
+promotion. It works from the **embedded candidate.json only** (P-0082 #23):
+the metadata always travels in the issue body, so intake needs no payload on
+disk and no write to the hub. It only:
 
   - distinguishes a candidate issue from a free-text feedback issue,
-  - fetches the published candidate envelope and structurally validates it
-    with the real validator (`governance_core.candidates.envelope`),
-  - re-runs the SAME secret scanner the uplink gate uses
-    (`governance_core.candidates.uplink.scan_envelope`) -- no parallel scanner,
-  - dedups the payload digest against the rejected registry,
-  - computes a DETERMINISTIC T0-eligibility hint (net-new + kind + layer +
-    security surface), and
+  - validates the embedded candidate.json metadata with the real metadata
+    validator (`governance_core.candidates.envelope.validate_metadata`):
+    schema / kind / layer / source_paths / drift-field consistency,
+  - computes a DETERMINISTIC T0-eligibility hint from metadata alone
+    (net-new + kind + layer + security-surface), and
   - applies labels + posts one acknowledgement comment.
 
-The promote/advise judgment is P-0082 Phase 2's scheduled routine; this script
-never promotes, so it carries no privilege-escalation surface. The label and
+The payload-dependent checks (full structural validation, secret re-scan,
+rejected-digest dedup) need the payload files on disk, which only exist at
+PROMOTE-time -- a rare, hub-side, human/Phase-2-gated moment. They are NOT done
+here; they belong in P-0082 Phase 2's `curate_gate.py`. This script never
+promotes, so it carries no privilege-escalation surface. The label and
 eligibility outputs are advisory: a human (or the Phase 2 routine) decides.
 
 Target-path resolution (surface hit + net-new) is best-effort in Phase 1 and
@@ -30,13 +33,9 @@ import os
 import re
 import subprocess
 import sys
-import tempfile
 from pathlib import Path
 
 from governance_core.candidates import envelope as _envelope
-from governance_core.candidates import ledger as _ledger
-from governance_core.candidates import rejected as _rejected
-from governance_core.candidates import uplink as _uplink
 from governance_core.tools._classify_match import match as _glob_match
 
 logging.basicConfig(level=logging.INFO, format="[intake] %(message)s")
@@ -71,7 +70,7 @@ def comment(repo: str, issue: str, body_md: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Deterministic helpers
+# Deterministic helpers (all read candidate.json metadata only)
 # ---------------------------------------------------------------------------
 def parse_candidate_json(body: str) -> dict | None:
     """Extract and parse the ```json candidate.json block from an issue body."""
@@ -90,24 +89,19 @@ def is_feedback_issue(title: str, body: str) -> bool:
     return "### candidate.json" not in body and not title.startswith("[candidate]")
 
 
-def fetch_envelope(repo: str, candidate_id: str) -> Path | None:
-    """Download + extract the published envelope for `candidate_id`.
+def validate_metadata_ok(meta: dict) -> str | None:
+    """Validate the embedded candidate.json metadata; return an error or None.
 
-    Mirrors the uplink publish channel (P-0088 Phase 2): the envelope is an
-    asset named `<id>.tar.gz` on the `candidates` prerelease. Returns the
-    envelope dir (the one containing candidate.json), or None if unavailable.
+    Delegates to the real metadata-only validator
+    (`envelope.validate_metadata`) -- the same schema/kind/layer/source_paths
+    checks the envelope format enforces, minus the payload-on-disk check (which
+    needs the payload that only exists at promote-time).
     """
-    tmp = Path(tempfile.mkdtemp())
-    asset = f"{candidate_id}.tar.gz"
     try:
-        gh("release", "download", "candidates", "--repo", repo,
-           "-p", asset, "-D", str(tmp))
-        subprocess.run(["tar", "-xzf", str(tmp / asset), "-C", str(tmp)],
-                       check=True, capture_output=True)
-    except subprocess.CalledProcessError:
-        return None
-    cand = next(tmp.rglob("candidate.json"), None)
-    return cand.parent if cand else None
+        _envelope.validate_metadata(meta)
+    except _envelope.EnvelopeError as exc:
+        return str(exc)
+    return None
 
 
 def load_surface_globs() -> list[str]:
@@ -167,26 +161,9 @@ def is_net_new(source_paths: list[str]) -> bool:
     return True
 
 
-def is_rejected_dup(env_dir: Path, meta: dict) -> bool:
-    """True iff the payload digest matches a blocking rejected-registry entry."""
-    try:
-        digest = _ledger.payload_digest(env_dir)
-    except (OSError, _envelope.EnvelopeError):
-        return False
-    reg = _rejected.load_rejected_registry()
-    title = meta.get("title", "")
-    for name in (title, f"{title}.md"):
-        r = _rejected.is_rejected(name, digest, reg)
-        if r is not None and _rejected.should_block(r):
-            return True
-    return False
-
-
 def compute_eligibility(
     *,
-    structural_ok: bool,
-    secrets_found: bool,
-    is_dup: bool,
+    metadata_valid: bool,
     net_new: bool,
     surface_hit: str | None,
     kind: str,
@@ -194,18 +171,14 @@ def compute_eligibility(
 ) -> tuple[list[str], str]:
     """Pure deterministic label + eligibility decision (NO I/O).
 
-    This is the deterministic core of the intake and the unit-tested seam.
-    Returns (labels, eligibility_text). Never returns an `auto-promote` style
-    label -- the strongest positive signal is `auto-eligible`, which is only a
-    hint for the Phase 2 routine.
+    Computed from candidate.json metadata alone (P-0082 #23). This is the
+    deterministic core of the intake and the unit-tested seam. Returns
+    (labels, eligibility_text). Never returns an `auto-promote` style label --
+    the strongest positive signal is `auto-eligible`, which is only a hint for
+    the Phase 2 routine (which re-verifies the full gate before any promote).
     """
-    if not structural_ok:
-        return ["candidate", "invalid", "needs-human"], "invalid (envelope not structurally valid)"
-    if secrets_found:
-        return ["candidate", "invalid", "needs-human"], "invalid (secret found on re-scan)"
-    if is_dup:
-        return ["candidate", "valid", "dup-of-rejected", "needs-human"], \
-            "needs-human (matches a previously-rejected payload)"
+    if not metadata_valid:
+        return ["candidate", "invalid"], "invalid (candidate.json metadata invalid)"
     t0 = (net_new and kind in T0_KINDS and layer == "candidate-common"
           and surface_hit is None)
     if t0:
@@ -219,7 +192,7 @@ def compute_eligibility(
     elif layer != "candidate-common":
         reason = f"layer={layer}"
     else:
-        reason = "structural-only"
+        reason = "metadata-only"
     return ["candidate", "valid", "needs-human"], f"needs-human ({reason})"
 
 
@@ -248,63 +221,50 @@ def main() -> int:
         comment(repo, issue,
                 "**Intake (deterministic):** could not parse the candidate.json "
                 "block. Labeled `invalid` -- re-submit with a well-formed "
-                "envelope.")
+                "candidate.json.")
         log.info("candidate issue %s -> invalid (unparseable)", issue)
         return 0
 
     cid = meta.get("id", "?")
     kind = meta.get("kind", "?")
     layer = meta.get("layer", "?")
-    source_paths = meta.get("source_paths", [])
+    raw_paths = meta.get("source_paths", [])
+    source_paths = raw_paths if isinstance(raw_paths, list) else []
+
+    # 1. validate the embedded candidate.json metadata only (no payload on disk)
+    meta_error = validate_metadata_ok(meta)
+    metadata_valid = meta_error is None
 
     verdicts = [f"id `{cid}`, kind `{kind}`, layer `{layer}`"]
+    verdicts.append("candidate.json: VALID (metadata)" if metadata_valid
+                    else f"candidate.json: INVALID ({meta_error})")
 
-    # 1. structural validation against the fetched, published envelope
-    env_dir = fetch_envelope(repo, cid)
-    structural_ok = False
-    secrets_found = False
-    is_dup = False
-    if env_dir is None:
-        verdicts.append("envelope: NOT FETCHABLE (publish missing?) -- INVALID")
-    else:
-        try:
-            _envelope.validate_envelope(env_dir)
-            structural_ok = True
-            verdicts.append("envelope: VALID")
-        except _envelope.EnvelopeError as exc:
-            verdicts.append(f"envelope: INVALID ({exc})")
-
-        if structural_ok:
-            # 2. secret re-scan -- the SAME HIGH+MEDIUM gate uplink uses
-            findings = _uplink.scan_envelope(env_dir)
-            secrets_found = bool(findings)
-            verdicts.append("secrets: FOUND" if secrets_found
-                            else "secrets: clean (re-scan)")
-            # 3. dedup vs rejected registry
-            is_dup = is_rejected_dup(env_dir, meta)
-            verdicts.append("dedup: previously-rejected" if is_dup
-                            else "dedup: not a rejected digest")
-
-    # 4. deterministic T0-eligibility hint (informational)
-    surface_hit = (touches_surface(source_paths, load_surface_globs())
-                   if source_paths else None)
-    net_new = is_net_new(source_paths) if source_paths else True
-    verdicts.append(f"surface: {surface_hit}" if surface_hit
-                    else "surface: no deny-set hit")
-    verdicts.append("net-new: yes" if net_new else "net-new: no (overwrites tracked)")
+    # 2. metadata-only T0 inputs (only meaningful when metadata is valid)
+    surface_hit: str | None = None
+    net_new = True
+    if metadata_valid:
+        surface_hit = (touches_surface(source_paths, load_surface_globs())
+                       if source_paths else None)
+        net_new = is_net_new(source_paths) if source_paths else True
+        verdicts.append(f"surface: {surface_hit}" if surface_hit
+                        else "surface: no deny-set hit")
+        verdicts.append("net-new: yes" if net_new
+                        else "net-new: no (overwrites tracked)")
+        verdicts.append("payload checks (full structural / secret scan / dedup) "
+                        "deferred to promote-time")
 
     labels, eligibility = compute_eligibility(
-        structural_ok=structural_ok, secrets_found=secrets_found,
-        is_dup=is_dup, net_new=net_new, surface_hit=surface_hit,
-        kind=kind, layer=layer)
+        metadata_valid=metadata_valid, net_new=net_new,
+        surface_hit=surface_hit, kind=kind, layer=layer)
 
     add_labels(repo, issue, *labels)
     comment(repo, issue,
-            "**Intake (deterministic -- no judgment):**\n\n- "
+            "**Intake (deterministic -- no judgment, candidate.json only):**\n\n- "
             + "\n- ".join(verdicts)
             + f"\n- T0-eligibility: **{eligibility}**\n\n"
             "_Promote/advise is decided by the layer-2 curation routine "
-            "(P-0082 Phase 2)._")
+            "(P-0082 Phase 2); the full payload checks run there at "
+            "promote-time._")
     log.info("candidate %s -> %s", cid, eligibility)
     return 0
 
