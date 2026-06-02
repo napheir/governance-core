@@ -311,6 +311,18 @@ baseline, source `governance-core` version, and category. It is the
 authoritative answer to "is this path install-managed or business?" and the
 baseline for drift detection in later P-0065 phases.
 
+The baseline and the drift-check hash **EOL-normalized** content (`installer.
+_content_sha256` maps `\r\n`/`\r` -> `\n` before hashing), at both the
+`_write_installed_manifest` baseline and the `_capture_drift` current site
+(P-0094, gc #27). Without this, a consumer on `core.autocrlf=true` (the Windows
+default) re-checks-out git-tracked install-managed text as CRLF and every file
+false-drifts against its LF baseline. Note: this hub cannot reproduce that
+symptom — its autonomy layer is gitignored, so git never re-checks-it-out — so
+the fix is unit-tested (`tools/test_installer_drift_eol.py`) and verified by a
+post-re-baseline `upgrade --dry-run` reporting 0 drift. The first `upgrade`
+after upgrading to 0.24.0 may reflag a CRLF file once (old raw baseline vs new
+normalized current), then re-records normalized baselines — harmless.
+
 Query a path with the shipped tool:
 
 ```pwsh

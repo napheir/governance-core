@@ -17,6 +17,30 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-02 — P-0094 / P-0095 收编两个 candidate（gc #27 EOL-drift + #26 sync-manifest note）
+
+- **P-0094（gc #27）EOL-normalize manifest hashing**：`installer.py` 新增
+  `_content_sha256(path)`（hash 前把 `\r\n`/`\r` 归一化为 `\n`），在 `_write_installed_manifest`
+  baseline 与 `_capture_drift` current **两处**统一使用 —— 消除 Windows `core.autocrlf=true`
+  消费者每次 checkout 把 install-managed 文本文件当成 drift 的假阳性。新增
+  `tools/test_installer_drift_eol.py`（6 例：CRLF no-op / lone-CR / 真实改动仍捕获 /
+  baseline-drift 对称）。
+- **P-0095（gc #26）sync-repos manifest 对齐 note**：candidate body 已被提交方自己的
+  更正评论证伪（`/sync-repos` 是 git-merge、`MERGE_HEAD` 豁免 + `--no-verify` 成立，
+  **不**销毁 drift）。只收编**更正后的内核**：`commands/sync-repos.md` 加「同步后：对齐
+  gc-managed 层 manifest」+ `wrap-up.md` Step 5b 一行 cross-ref —— git 带不动 gitignored
+  的 `installed_files.json`，merge 后须补跑 `governance-core upgrade --project-root <clone>`
+  对齐，否则下次 upgrade 误报 drift（噪音，非数据丢失）。**未**下发被撤回的错误论断。
+- **关键决策**：(1) hub 自治层 gitignored、git 从不 CRLF 重写它 → hub **复现不了** #27 症状，
+  只能单元层验证；(2) dogfood 前先删旧 raw-byte manifest 做干净 re-baseline，避免归一化
+  `_capture_drift` 对旧 baseline 触发全量 transitional-reflag envelope 噪音；(3) 暴露 hub 侧
+  缺口 —— `curate_gate.py` 只读 issue body 不读评论，needs-human 评审会漏看更正评论
+  （已记入 #26 close 评论，作为 task b 的 follow-up proposal）。
+- 验证：全套 **25 script + 22 pytest**（含新 6 例）green；删 manifest → upgrade 干净
+  re-baseline → 二次 `upgrade --dry-run` 在 CRLF 工作树报 **0 drift**；`doctor` exit 0；
+  wheel 顶层仅 `governance_core*`、含新测试、无 `maintainer/` 泄漏。版本 0.23.0 → **0.24.0**。
+  关闭 GitHub #27、#26（附 curation 结果 + 致谢 + #26 特别致谢自更正）。
+
 ### 2026-06-02 — P-0092 / P-0093 收编两个 candidate（gc #25 funnel + #22 upgrade-review）
 
 - **P-0092（gc #25）skill-usage funnel**：`tracker.py` 原子 `_save`（tmp+`os.replace`）+
@@ -52,22 +76,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 测试：**dogfood upgrade 实证 3 副本被"released to business ownership"保留**（不删）、
   doctor exit 0、upgrade-dry-run **17/17**（含 3 新 exempt）、pytest 16、wheel 隔离干净
   （3 文件已从 wheel 移除，需先清 stale build/ 缓存才生效）。
-
-### 2026-06-02 — fix: curate_gate `_fetch_issue_body` Windows GBK 解码崩溃（NO_PROPOSAL）
-
-- 触发:P-0090 例程 advise-only 实测后,本地对真实 issue 跑 `curate_gate.py` 核验闸门——
-  #22(mechanism)正确返回 `eligible:false`,但 #24(feedback,body 含非 ASCII 花引号 0x94)
-  在 `_fetch_issue_body` 崩:子进程 `text=True` 在 Windows 按 **GBK** 解码 gh 输出 →
-  `UnicodeDecodeError` → body=None → `_extract_fence(None)` TypeError。远程 agent(Linux/UTF-8)
-  不触发,但 Windows hub 本地跑、或任何非 ASCII body 候选都会崩。
-- 修复(窄、清晰复现 → NO_PROPOSAL):`_fetch_issue_body` 改 `encoding="utf-8", errors="replace"`
-  (gh 本就输出 UTF-8);`evaluate` 加 body 防御(非 str/空 → `eligible:false`,不崩)。
-  测试 +1(case 14 空 body),13 → **14**。版本 0.21.2 → **0.21.3**。
-- 涉及:`maintainer/curate_gate.py`、`governance_core/tools/test_curate_gate.py`、pyproject+__init__。
-- 验证:#22/#24 现均 rc=0 干净 verdict(拒 mechanism / 拒 feedback);curate_gate 14/14、
-  pytest 16、doctor exit 0。
-- 未决(非本阶段):P-0090 远程例程 MANUAL run 显示**绿勾成功**但 GitHub 侧零写入(0 评论/标签)——
-  疑 session 内 `gh` 未认证到 issues:write(clone 访问 ≠ issue 写权限),待看 run transcript 定位。
 
 ### 2026-06-01 — P-0088 P-0082 Phase 1 gc 侧：候选 intake CI + uplink 发布 envelope（+ #21 de-drift）
 

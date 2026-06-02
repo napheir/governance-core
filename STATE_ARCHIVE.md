@@ -6,6 +6,23 @@
 
 ---
 
+### 2026-06-02 — fix: curate_gate `_fetch_issue_body` Windows GBK 解码崩溃（NO_PROPOSAL）
+
+- 触发:P-0090 例程 advise-only 实测后,本地对真实 issue 跑 `curate_gate.py` 核验闸门——
+  #22(mechanism)正确返回 `eligible:false`,但 #24(feedback,body 含非 ASCII 花引号 0x94)
+  在 `_fetch_issue_body` 崩:子进程 `text=True` 在 Windows 按 **GBK** 解码 gh 输出 →
+  `UnicodeDecodeError` → body=None → `_extract_fence(None)` TypeError。远程 agent(Linux/UTF-8)
+  不触发,但 Windows hub 本地跑、或任何非 ASCII body 候选都会崩。
+- 修复(窄、清晰复现 → NO_PROPOSAL):`_fetch_issue_body` 改 `encoding="utf-8", errors="replace"`
+  (gh 本就输出 UTF-8);`evaluate` 加 body 防御(非 str/空 → `eligible:false`,不崩)。
+  测试 +1(case 14 空 body),13 → **14**。版本 0.21.2 → **0.21.3**。
+- 涉及:`maintainer/curate_gate.py`、`governance_core/tools/test_curate_gate.py`、pyproject+__init__。
+- 验证:#22/#24 现均 rc=0 干净 verdict(拒 mechanism / 拒 feedback);curate_gate 14/14、
+  pytest 16、doctor exit 0。
+- 未决(非本阶段):P-0090 远程例程 MANUAL run 显示**绿勾成功**但 GitHub 侧零写入(0 评论/标签)——
+  疑 session 内 `gh` 未认证到 issues:write(clone 访问 ≠ issue 写权限),待看 run transcript 定位。
+
+
 ### 2026-06-02 — P-0090 P-0082 Phase 2：调度式 C-hybrid 策展例程 + 确定性 auto-promote gate + kill-switch
 
 - 改动：建 P-0082 Phase 2(最重信任面——调度式例程可自主 commit+version-bump)。Phase 1(代码):
