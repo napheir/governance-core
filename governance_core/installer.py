@@ -309,6 +309,23 @@ def _render_clauses(project_root: Path, config: dict[str, Any],
     return written
 
 
+def _content_sha256(path: Path) -> str:
+    """SHA-256 of a file's content with line endings normalized to LF.
+
+    Install-managed files are text; a consumer on core.autocrlf=true checks
+    them out as CRLF while the package materializes LF, so a raw-byte hash
+    reports spurious drift on every file. Normalizing CRLF/CR -> LF before
+    hashing makes drift detection line-ending-insensitive: a file that differs
+    only by EOL is not a local edit. Genuine content edits still change the hash.
+
+    Both the manifest baseline (_write_installed_manifest) and the drift-check
+    (_capture_drift) MUST use this same helper -- an asymmetry would reintroduce
+    the mismatch. Promoted from candidate gc #27 (P-0094).
+    """
+    data = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(data).hexdigest()
+
+
 def _write_installed_manifest(project_root: Path,
                               installed: list[tuple[Path, str]]) -> None:
     """Write .governance/installed_files.json (P-0065 Phase 2).
@@ -326,8 +343,7 @@ def _write_installed_manifest(project_root: Path,
             continue
         files.append({
             "path": dest_path.relative_to(project_root).as_posix(),
-            "baseline_sha256": hashlib.sha256(
-                dest_path.read_bytes()).hexdigest(),
+            "baseline_sha256": _content_sha256(dest_path),
             "source_version": __version__,
             "category": category,
         })
@@ -372,7 +388,7 @@ def _capture_drift(project_root: Path, consumer_id: str,
         path = project_root / entry["path"]
         if not path.exists():
             continue
-        current = hashlib.sha256(path.read_bytes()).hexdigest()
+        current = _content_sha256(path)
         if current == entry["baseline_sha256"]:
             continue
         drifted.append(entry["path"])

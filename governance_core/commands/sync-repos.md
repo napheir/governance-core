@@ -92,6 +92,33 @@ git stash pop  # 仅在 Step 1 有 stash 时执行
 - `governance_core/discovery/tracker.py` 中包含 `populate_from_git`（tracker fix）
 - `.claude/settings.local.json` 中包含 `session-context` 和 `constitution-reminder`（hooks）
 
+## 同步后：对齐 gc-managed 层 manifest（gc #26 / P-0095）
+
+`/sync-repos` 用 **git merge** 同步内容。对 **gc-managed 自治层**（`governance-core
+upgrade` 安装的 hook / gc tool / gc command / clause 源 + `.governance/installed_files.json`
+manifest）存在一个边界，须在 merge 后处理：
+
+- **文件内容：git merge 能正确携带。** 这些文件在多 clone 消费者里是 git-tracked 的，
+  merge 把 master 的新版本内容并入各 clone。`check_scope.py` 的 `MERGE_HEAD` 豁免 +
+  Step 4 的 `--no-verify` 正是为此设计——所以 git merge 是 gc-managed 文件内容到达
+  clone 的**合法且正确**通道（不会"销毁本地 drift"：merge 走的是三方合并/冲突，不是
+  无声覆盖）。
+- **manifest 不随 git 走。** `installed_files.json`（及含签名 auth_code 的 `config.json`）
+  是 **gitignored** 的，只由 `governance-core upgrade` 写。merge 后 clone 的文件已是新版，
+  但 manifest 仍停在旧 baseline / 旧 version。
+
+**后果与对策**：这不破坏 clone 的功能（hook 跑的是新文件、包是新版本），但会让该 clone
+**下一次 `governance-core upgrade` 把 merge 进来的 gc-managed 文件误判为 drift**（噪音，
+**非数据丢失**——没有东西被销毁）。因此：若本次 merge 携带了 gc-managed 文件，对每个
+受影响 clone 补跑一次
+
+```bash
+governance-core upgrade --project-root <clone>
+```
+
+即可对齐 manifest 并捕获真正的 drift。纯 business 层（STATE / `knowledge/**` / 业务
+代码/配置）无此问题——它们没有 manifest。
+
 ## 输出格式
 
 ```

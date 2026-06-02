@@ -93,6 +93,24 @@
       "decision": "promoted",
       "note": "P-0093: upgrade_review.py drift pre-pass (upgrade --dry-run classified NONE / GREEN / YELLOW / RED, never applies; protected_drift.json triggers RED) + update-reminder verdict wiring (best-effort, 25s timeout). classify() aligned to its documented contract; docstring genericized; mechanism otherwise verbatim. v0.23.0; full suite 25/25 + dogfood + wheel isolation OK. Issue #22.",
       "reviewed_at": "2026-06-02T07:44:30Z"
+    },
+    {
+      "id": "cand-trade-agent-20260602-eol-normalize-manifest-baseline-drift-ch",
+      "origin": "trade-agent",
+      "kind": "mechanism",
+      "title": "EOL-normalize manifest baseline + drift-check hashes (kill CRLF false drift on Windows)",
+      "decision": "promoted",
+      "note": "P-0094: EOL-normalize manifest hashing folded into governance_core/installer.py (_content_sha256 used at _write_installed_manifest baseline + _capture_drift current); new test_installer_drift_eol.py (6 cases). v0.24.0; full suite (25 script + 22 pytest) green; dogfood clean re-baseline + dry-run 0 drift on CRLF working tree; wheel isolation OK. Issue #27.",
+      "reviewed_at": "2026-06-02T12:26:27Z"
+    },
+    {
+      "id": "cand-trade-agent-20260602-distinguish-gc-managed-layer-upgrade-fro",
+      "origin": "trade-agent",
+      "kind": "mechanism",
+      "title": "Distinguish gc-managed-layer (upgrade) from business-layer (sync) in wrap-up/sync skills",
+      "decision": "promoted",
+      "note": "P-0095: promoted the CORRECTED kernel only. Submitter retracted the body's central claim in a follow-up comment (sync-repos IS the correct git-merge channel via MERGE_HEAD exemption + --no-verify; it does NOT destroy drift). Shipped a manifest-realignment note in commands/sync-repos.md + wrap-up.md Step 5b: after a /sync-repos merge that carried gc-managed files, run governance-core upgrade --project-root <clone> to realign the gitignored installed_files.json manifest, else next upgrade misclassifies merged files as drift (noise, not data loss). Did NOT ship the retracted false claims. v0.24.0; suite green + dogfood + wheel isolation OK. Issue #26.",
+      "reviewed_at": "2026-06-02T12:26:38Z"
     }
   ]
 }
