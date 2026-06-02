@@ -388,6 +388,12 @@ def _emit_injection(registry: "SkillRegistry") -> None:
     guides = registry.manifest_for_injection(["guide"])
     if not learned and not guides:
         return
+    # Record path-A surfacing (best-effort; must never break injection output).
+    try:
+        names = [e["name"] for e in learned] + [e["name"] for e in guides]
+        registry._get_tracker().record_surfaced(names)
+    except Exception:  # noqa: BLE001 - tracking is a diagnostic, not critical
+        pass
     lines = [
         "[Skills (L0)] Auto-discovered learned + guide skills "
         "(body lazy via Skill tool):"
@@ -406,6 +412,54 @@ def _emit_injection(registry: "SkillRegistry") -> None:
         "  Full manifest: python -m governance_core.discovery.registry --format table"
     )
     _sys.stdout.write("\n".join(lines) + "\n")
+
+
+def _emit_funnel(registry: "SkillRegistry") -> None:
+    """Print the Surfaced->Triggered->Loaded usage funnel for learned+guide skills.
+
+    use_count alone scores 0 for skills designed to act from the SessionStart
+    summary (path A) or the router-injected head (path B) without ever loading
+    the body, so it cannot tell "applied via summary" from "dead weight". The
+    funnel adds the two missing layers and classifies each skill:
+
+      - retire candidate: surfaced > 0 but never triggered or loaded
+      - slim candidate:   triggered > 0 but never loaded (head suffices)
+      - star skill:       loaded repeatedly
+
+    Lives on the registry CLI (not the tracker) because the registry knows the
+    full learned+guide universe, so it can show 0/0/0 rows for skills the
+    tracker never recorded -- and avoids a registry<-tracker circular import.
+    """
+    import sys as _sys
+    tracker = registry._get_tracker()
+    universe = (registry.manifest_for_injection(["learned"])
+                + registry.manifest_for_injection(["guide"]))
+    rows = []
+    for e in universe:
+        row = tracker.funnel_row(e["name"])
+        surf, trig, load = (row["surfaced_count"], row["triggered_count"],
+                            row["use_count"])
+        last = row["last_triggered"] or row["last_used"] or "-"
+        rows.append((e["name"], e["source_type"], surf, trig, load, last))
+    # retire candidates (surfaced, never triggered/loaded) sort to the top,
+    # then by engagement (triggered+loaded) desc, then surfaced desc.
+    rows.sort(key=lambda r: (
+        0 if (r[2] > 0 and r[3] == 0 and r[4] == 0) else 1,
+        -(r[3] + r[4]), -r[2]))
+    hdr = (f"{'skill':<40} {'type':<8} {'surf':>5} {'trig':>5} "
+           f"{'load':>5}  last")
+    _sys.stdout.write(hdr + "\n" + "-" * len(hdr) + "\n")
+    for name, st, surf, trig, load, last in rows:
+        _sys.stdout.write(f"{name:<40} {st:<8} {surf:>5} {trig:>5} "
+                          f"{load:>5}  {last}\n")
+    retire = [r for r in rows if r[2] > 0 and r[3] == 0 and r[4] == 0]
+    slim = [r for r in rows if r[3] > 0 and r[4] == 0]
+    _sys.stdout.write(
+        f"\nretire candidates (surfaced, never triggered/loaded): "
+        f"{len(retire)}\n")
+    _sys.stdout.write(
+        f"slim candidates   (triggered, never loaded):          "
+        f"{len(slim)}\n")
 
 
 def main() -> None:
@@ -436,6 +490,11 @@ def main() -> None:
         action="store_true",
         help="Emit SessionStart injection text (Tier A learned + Tier B guides)",
     )
+    parser.add_argument(
+        "--funnel",
+        action="store_true",
+        help="Show the Surfaced->Triggered->Loaded skill-usage funnel",
+    )
     args = parser.parse_args()
 
     registry = SkillRegistry()
@@ -443,6 +502,10 @@ def main() -> None:
 
     if args.inject:
         _emit_injection(registry)
+        return
+
+    if args.funnel:
+        _emit_funnel(registry)
         return
 
     if args.load:

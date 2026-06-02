@@ -21,8 +21,10 @@ Usage:
 import json
 import logging
 import math
+import os
 import subprocess
 import sys
+import tempfile
 from datetime import date, datetime
 from pathlib import Path
 from typing import Optional
@@ -79,6 +81,18 @@ def _recency_score(last_used: str) -> float:
     return math.exp(-0.693 * days / _RECENCY_HALF_LIFE)  # ln(2) ~ 0.693
 
 
+def _int_field(entry: dict, key: str) -> int:
+    """Return ``entry[key]`` as an int, treating an absent key as 0.
+
+    Schema v2 funnel counters (surfaced_count / triggered_count) are
+    lazy-migrated: an old 4-key entry has no such key until first recorded.
+    Spelled as an explicit membership test rather than a dict-get default so
+    the Art.4 config-fallback rule (regex-enforced on all dict access) does
+    not false-positive on this data-dict read.
+    """
+    return entry[key] if key in entry else 0
+
+
 class SkillTracker:
     """Persistent skill usage tracker."""
 
@@ -124,12 +138,29 @@ class SkillTracker:
             }}
 
     def _save(self) -> None:
-        """Persist tracker data to disk."""
+        """Persist tracker data atomically (tmp file + os.replace).
+
+        The router (path B, ``record_triggered``) now writes per user prompt
+        as a separate subprocess and may overlap a path-C load, so a plain
+        full-file rewrite could expose a half-written file to a concurrent
+        reader. ``os.replace`` is atomic on both Windows and POSIX: a reader
+        sees either the old or the new file, never a truncated one. A lost
+        write under a rare race is acceptable (counters are a proxy); a
+        corrupt file is not.
+        """
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        self._path.write_text(
-            json.dumps(self._data, indent=2, ensure_ascii=False),
-            encoding="utf-8",
-        )
+        payload = json.dumps(self._data, indent=2, ensure_ascii=False)
+        fd, tmp = tempfile.mkstemp(dir=str(self._path.parent), suffix=".tmp")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as fh:
+                fh.write(payload)
+            os.replace(tmp, self._path)
+        except OSError:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+            raise
 
     def _ensure_current_session(self) -> dict:
         """Ensure current session data exists and is for today.
@@ -188,6 +219,87 @@ class SkillTracker:
             entry["refinement_count"] = entry.get("refinement_count", 0) + 1
             entry["last_used"] = _today()
             self._save()
+
+    # --- Usage funnel: Surfaced (A) / Triggered (B) / Loaded (C) ---
+    #
+    # A skill reaches the agent by three distinct paths, but record_use only
+    # counts path C (full-body load). Learned + guide skills are designed to be
+    # acted on from the SessionStart one-line summary (A) or the router-injected
+    # head (B) without ever loading the body, so use_count=0 cannot distinguish
+    # "applied via summary" from "dead weight". record_surfaced / record_triggered
+    # add the missing two layers. Schema v2 fields are lazy-migrated: an old
+    # 4-key entry gains them on first record, and weighted_scores() / get_stats()
+    # tolerate their absence unchanged.
+
+    def record_surfaced(self, names: list[str]) -> None:
+        """Record that skills were surfaced in the SessionStart menu (path A).
+
+        Per-day deduped: a skill surfaced again the same day is not recounted,
+        so compact/resume re-fires of SessionStart do not inflate the count.
+        The whole injection list is recorded in one ``_save``.
+
+        Args:
+            names: Skill names that appeared in the injection menu.
+        """
+        today = _today()
+        skills = self._data.setdefault("skills", {})
+        changed = False
+        for name in names:
+            entry = skills.setdefault(name, {
+                "use_count": 0, "last_used": None, "created": today,
+                "refinement_count": 0,
+            })
+            if entry.get("last_surfaced") != today:
+                entry["surfaced_count"] = _int_field(entry, "surfaced_count") + 1
+                entry["last_surfaced"] = today
+                changed = True
+        if changed:
+            self._save()
+
+    def record_triggered(self, name: str) -> None:
+        """Record that a skill's router trigger fired (path B), per-event.
+
+        Counts every trigger-text match, including dedup-suppressed re-matches:
+        dedup gates only whether the body is re-injected, not whether the
+        scenario recurred, so it is an injection-output optimization rather
+        than a relevance signal. Creates the entry if the skill was never
+        surfaced.
+
+        Args:
+            name: Skill name whose router trigger matched.
+        """
+        skills = self._data.setdefault("skills", {})
+        entry = skills.setdefault(name, {
+            "use_count": 0, "last_used": None, "created": _today(),
+            "refinement_count": 0,
+        })
+        entry["triggered_count"] = _int_field(entry, "triggered_count") + 1
+        entry["last_triggered"] = _today()
+        self._save()
+
+    def funnel_row(self, name: str) -> dict:
+        """Return the Surfaced/Triggered/Loaded counters for one skill.
+
+        Returns zeros for a skill the tracker has never recorded, so a caller
+        iterating the full learned+guide universe can show 0/0/0 rows without
+        reaching into private tracker state.
+
+        Args:
+            name: Skill name.
+
+        Returns:
+            Dict with surfaced_count / triggered_count / use_count and the
+            three last-* timestamps (None when never recorded).
+        """
+        entry = self._data.get("skills", {}).get(name, {})
+        return {
+            "surfaced_count": _int_field(entry, "surfaced_count"),
+            "triggered_count": _int_field(entry, "triggered_count"),
+            "use_count": _int_field(entry, "use_count"),
+            "last_surfaced": entry.get("last_surfaced"),
+            "last_triggered": entry.get("last_triggered"),
+            "last_used": entry.get("last_used"),
+        }
 
     # --- Session complexity tracking ---
 

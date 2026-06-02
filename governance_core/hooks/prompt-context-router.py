@@ -77,19 +77,54 @@ def _save_seen(session_id: str, seen: set) -> None:
         pass
 
 
-def _match_routes(prompt: str, routes: list, seen: set, dedup: bool) -> list:
-    """Return matching routes (case-insensitive substring on triggers)."""
+def _match_routes(prompt: str, routes: list, seen: set, dedup: bool,
+                  on_trigger=None) -> list:
+    """Return injection candidates; fire on_trigger(name) for every text match.
+
+    Trigger-text match and dedup are separate concerns:
+      - text match -> relevance signal -> on_trigger(name)  (fired always)
+      - dedup/seen -> injection-output gate -> excluded from returned hits
+
+    The old form skipped a `seen` route before even testing its triggers, so a
+    dedup-suppressed re-match was never counted. Testing the text first lets the
+    funnel record every recurrence of a scenario (path B), while dedup still
+    keeps the body from being re-injected.
+    """
     p = prompt.lower()
     hits = []
     for route in routes:
         name = route.get("name", "")
-        if dedup and name in seen:
+        matched = any(t.lower() in p for t in route.get("triggers", []))
+        if not matched:
             continue
-        for t in route.get("triggers", []):
-            if t.lower() in p:
-                hits.append(route)
-                break
+        if on_trigger is not None:
+            on_trigger(name)            # relevance: count every match
+        if dedup and name in seen:
+            continue                    # output gate: don't re-inject
+        hits.append(route)
     return hits
+
+
+def _make_trigger_recorder():
+    """Return a best-effort on_trigger callback, or None if tracker absent.
+
+    The router's contract is "silent no-op on any error, never critical path"
+    (module docstring), so a missing/broken tracker must never break injection:
+    the import and every record call are wrapped, failures are swallowed.
+    """
+    try:
+        from governance_core.discovery.tracker import SkillTracker
+        tracker = SkillTracker()
+    except Exception:
+        return None
+
+    def _on(name: str) -> None:
+        try:
+            tracker.record_triggered(name)
+        except Exception:
+            pass
+
+    return _on
 
 
 def _inject_route(repo_root: str, route: dict, line_budget: int) -> tuple:
@@ -145,7 +180,9 @@ def main() -> None:
     session_id = data.get("session_id", "")
     seen = _load_seen(session_id) if dedup else set()
 
-    candidates = _match_routes(prompt, routes, seen, dedup)[:cap_per_turn]
+    recorder = _make_trigger_recorder()
+    candidates = _match_routes(prompt, routes, seen, dedup,
+                               on_trigger=recorder)[:cap_per_turn]
     if not candidates:
         sys.exit(0)
 

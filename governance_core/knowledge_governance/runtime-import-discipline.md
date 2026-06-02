@@ -56,6 +56,7 @@ This is why every per-tool-call guard (`command-guard`, `scope-guard`,
 | `sensitive-data-guard` | yes (`sensitive_scan`) | guards + **fails open** | OK ✅ |
 | `candidate-reminder` / `renewal-reminder` / `update-reminder` | yes | guards + fails open (SessionStart, advisory) | OK ✅ |
 | `skill-usage-tracker` | yes (`discovery.tracker`) | guards + fails open (PostToolUse) | OK ✅ |
+| `prompt-context-router` | yes (`discovery.tracker`, P-0092) | guards + fails open (UserPromptSubmit, advisory) | OK ✅ |
 | `auth-guard` | **no** (vendored `_gc_auth`, P-0082) | fails closed, PreToolUse `*` | self-contained ✅ |
 
 `auth-guard` must fail closed (no valid package ⇒ no capabilities is the

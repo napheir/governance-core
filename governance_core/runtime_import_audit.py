@@ -38,6 +38,11 @@ FAIL_OPEN_GC_IMPORTERS: frozenset[str] = frozenset({
     "renewal-reminder.py",
     "update-reminder.py",
     "skill-usage-tracker.py",
+    # P-0092 (gc #25): the funnel's path-B counter imports discovery.tracker
+    # inside _make_trigger_recorder(); the import is guarded (returns None on
+    # failure) and the hook already fails open (silent sys.exit(0) on any
+    # error), so a broken package degrades it -- never freezes a prompt.
+    "prompt-context-router.py",
 })
 
 # Fail-CLOSED governance_core importers grandfathered pending a

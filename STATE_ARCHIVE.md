@@ -6,6 +6,33 @@
 
 ---
 
+### 2026-06-02 — P-0089 #23 walk-back：intake 只验内嵌 candidate.json + 撤消费者 envelope 发布
+
+- 改动：与 user 讨论 + core 的 Phase 2 handoff 后,采纳 #23 架构决策(接近 C)——
+  **消费者绝不该有 hub 写权限**,P-0088 的 option b(消费者 `uplink` 发布 envelope)
+  从根上破坏 consumer/hub 信任分离,对非 owner 消费者更不可能。walk back:
+  - **撤 option b**:`governance_core/candidates/uplink.py` 删 `publish_envelope` +
+    调用 + 仅为它而加的 `import logging/shutil`/`log`(核实无他用)→ uplink 回到
+    纯 issue 传输,除创建 issue 外不写 hub。删 `test_candidate_uplink_publish.py`。
+  - **intake 改 candidate.json-only**:`maintainer/candidate_intake.py` 删
+    `fetch_envelope`;`main()` 用 body 解析的 candidate.json 调**现成的**
+    `envelope.validate_metadata`(schema/kind/layer/source_paths,无 payload-on-disk);
+    secret 复扫 + digest 去重等**需真 payload 的检查移到 promote-time**(归 Phase 2
+    curate_gate)。surface 命中 + net-new 是元数据级,保留。`compute_eligibility`
+    简化为 `(metadata_valid, net_new, surface_hit, kind, layer)`。仍绝不 promote。
+  - workflow yml 注释去掉"fetch published envelope";版本 0.21.0 → **0.21.1**(同日修正)。
+- 涉及:uplink.py、candidate_intake.py、test_candidate_intake.py(重写 25 例)、
+  删 test_candidate_uplink_publish.py、candidate-intake.yml、pyproject+__init__。
+- 关键决策:`envelope.py` **已有** `validate_metadata`(dict)/`validate_envelope`(dir+payload)
+  现成拆分 → #23 的"拆 validate_candidate"自动满足。`KINDS` 无 "doc"(T0_KINDS 含 doc
+  但 doc 会先 fail metadata —— 既有不一致,留待后续,非本次范围)。净效果:外部+私有
+  消费者都能用,彻底移除"消费者写 hub"。
+- 测试:intake 25/25、pytest 16 passed、candidate 家族全绿、doctor exit 0、
+  wheel 隔离干净(顶层仅 `governance_core*`,publish_envelope 已从 wheel 移除)。
+- 后续:P-0082 Phase 2(调度式 curate_gate + kill-switch)另起 proposal——**最重信任面**
+  (远程例程持久握 gc 写 creds 自主 commit),下轮审慎走。
+
+
 ### 2026-05-29 — P-0082 self-contain auth-guard（vendor auth 子包，关 #3）
 
 - 改动：**Phase A** —— `governance_core/auth/` 内部绝对导入改**相对**

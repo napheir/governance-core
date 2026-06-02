@@ -16,6 +16,7 @@ import datetime
 import hashlib
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import urllib.request
@@ -29,6 +30,10 @@ _FETCH_TIMEOUT_SECONDS = 6
 # Update availability changes slowly -- one PyPI query per this window is
 # plenty, and keeps session start off the network the rest of the time.
 _CHECK_TTL = datetime.timedelta(hours=12)
+# Cap the optional drift pre-pass: a dry-run copies trees to temp + diffs, so
+# bound it so a slow run never delays session start (falls back to no verdict).
+_REVIEW_TIMEOUT_SECONDS = 25
+_VERDICTS = ("NONE", "GREEN", "YELLOW", "RED")
 
 
 def _latest_on_pypi(cache_path: Path) -> str | None:
@@ -60,6 +65,45 @@ def _latest_on_pypi(cache_path: Path) -> str | None:
     except Exception:  # noqa: BLE001 - cache is best-effort
         pass
     return latest
+
+
+def _drift_verdict(root: Path) -> str | None:
+    """Best-effort: run the upgrade-review tool, return its verdict or None.
+
+    Spawns ``tools/upgrade_review.py`` (read-only dry-run + mechanical drift
+    classification). Only called once a newer version is already known to be
+    available, so the dry-run cost is paid rarely. A missing tool, a timeout,
+    or any error -> None: the caller falls back to the plain banner. Never
+    raises -- a SessionStart hook must never break a session start.
+    """
+    tool = root / "tools" / "upgrade_review.py"
+    if not tool.is_file():
+        return None
+    try:
+        r = subprocess.run(
+            [sys.executable, str(tool)],
+            capture_output=True, text=True, encoding="utf-8",
+            errors="replace", timeout=_REVIEW_TIMEOUT_SECONDS, cwd=str(root))
+    except Exception:  # noqa: BLE001 - timeout / OS error -> no verdict line
+        return None
+    lines = (r.stdout or "").strip().splitlines()
+    last = lines[-1].strip() if lines else ""
+    return last if last in _VERDICTS else None
+
+
+def _verdict_line(verdict: str | None) -> str:
+    """Map an upgrade-review verdict to a banner suffix line (or empty)."""
+    if verdict == "GREEN":
+        return "  drift review: GREEN -- no local drift; safe to /upgrade.\n"
+    if verdict == "YELLOW":
+        return ("  drift review: YELLOW -- local edits would be reverted or a "
+                "minor line crossed; check audit/upgrade_review/ before "
+                "/upgrade.\n")
+    if verdict == "RED":
+        return ("  drift review: RED -- upgrade would revert a protected local "
+                "fix (or cross a minor line with drift); review carefully "
+                "before /upgrade.\n")
+    return ""  # NONE / None -> no extra line
 
 
 def main() -> None:
@@ -104,11 +148,13 @@ def main() -> None:
     if not version_util.is_newer(latest, installed):
         sys.exit(0)
 
-    sys.stdout.write(
+    msg = (
         f"[governance-core] update available: {latest} "
         f"(this project is on {installed}).\n"
         "  Update: pip install -U governance-core, then run /upgrade "
         "(preview -> review -> apply).\n")
+    msg += _verdict_line(_drift_verdict(root))
+    sys.stdout.write(msg)
     sys.exit(0)
 
 

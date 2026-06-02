@@ -72,11 +72,15 @@ def _version_cases() -> list[bool]:
 
 
 def _make_repo(consumer_id: str, manifest_version: str | None,
-               cached_latest: str | None) -> tuple[Path, Path]:
+               cached_latest: str | None,
+               review_verdict: str | None = None) -> tuple[Path, Path]:
     """Build a throwaway repo with the hook + config (+ manifest + cache).
 
     `manifest_version` None omits installed_files.json; `cached_latest`
-    None omits the pre-seeded PyPI cache.
+    None omits the pre-seeded PyPI cache. `review_verdict`, when set, drops a
+    stub `tools/upgrade_review.py` that just prints that verdict -- so the
+    update-reminder drift-pre-pass wiring can be tested deterministically
+    without running a real dry-run.
     """
     tmp = Path(tempfile.mkdtemp(prefix="gc_update_reminder_"))
     hook = tmp / ".claude" / "hooks" / "update-reminder.py"
@@ -98,6 +102,13 @@ def _make_repo(consumer_id: str, manifest_version: str | None,
             "%Y-%m-%dT%H:%M:%SZ")
         (Path(tempfile.gettempdir()) / f"gc_update_{tag}.json").write_text(
             json.dumps({"checked_at": now, "latest": cached_latest}),
+            encoding="utf-8")
+    if review_verdict is not None:
+        stub = tmp / "tools" / "upgrade_review.py"
+        stub.parent.mkdir(parents=True)
+        stub.write_text(
+            "import sys\n"
+            f"sys.stdout.write({review_verdict!r} + '\\n')\n",
             encoding="utf-8")
     return tmp, hook
 
@@ -155,6 +166,28 @@ def _hook_cases() -> list[bool]:
     try:
         results.append(_case("no manifest -> silent",
                               lambda: _run_hook(hook).strip() == ""))
+    finally:
+        _cleanup(tmp)
+
+    # 5. update available + drift pre-pass present -> verdict line appended
+    tmp, hook = _make_repo("acme", "0.4.0", "9.9.9", review_verdict="YELLOW")
+    try:
+        txt = _run_hook(hook)
+        results.append(_case(
+            "update + upgrade-review stub -> verdict line in banner",
+            lambda: "update available: 9.9.9" in txt
+            and "drift review: YELLOW" in txt))
+    finally:
+        _cleanup(tmp)
+
+    # 6. update available + no drift pre-pass tool -> plain banner, no verdict
+    tmp, hook = _make_repo("acme", "0.4.0", "9.9.9")
+    try:
+        txt = _run_hook(hook)
+        results.append(_case(
+            "update + no tool -> banner without a drift-review line",
+            lambda: "update available: 9.9.9" in txt
+            and "drift review:" not in txt))
     finally:
         _cleanup(tmp)
 
