@@ -17,6 +17,29 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-02 — P-0090 P-0082 Phase 2：调度式 C-hybrid 策展例程 + 确定性 auto-promote gate + kill-switch
+
+- 改动：建 P-0082 Phase 2(最重信任面——调度式例程可自主 commit+version-bump)。Phase 1(代码):
+  - **`maintainer/curate_gate.py`** —— 唯一放行 auto-promote 的确定性闸门。对 auto-eligible issue:
+    **从 body 重建 envelope**(net-new 候选 payload 内嵌 body)→ 全套检查(`validate_envelope` 全检 /
+    origin 未撤销 / `scan_envelope` 无密钥 / 非 rejected / kind=skill / layer / net-new / 无 surface /
+    skill-theme)→ **隔离 trial-apply(放 net-new 到 target + pytest + unlink)**。返回 GateResult。
+    重建 **fail-closed**(drift/diff form 或含 ``` 的 payload → 不 eligible)。LLM 永不能 override False。
+  - **`maintainer/auto_curate_enabled`** kill-switch,出厂 `{"enabled": false}`(advise-only)。
+  - **`maintainer/curate_routine.md`** —— C-hybrid spec + 自包含例程 prompt。
+  - 复用 `candidate_intake` 的 surface/net-new(Art.8);Art.4 配置直接索引(constitutional-review 拦过
+    `.get(k,default)` → 改直索引)。版本 0.21.1 → 0.21.2(仅新 test 进 wheel)。
+  - Phase 2(无 commit):`/schedule` RemoteTrigger 每日远程例程(见下次执行)。
+- 涉及:maintainer/{curate_gate.py,auto_curate_enabled,curate_routine.md}、
+  governance_core/tools/test_curate_gate.py(13 例)、pyproject+__init__。
+- 关键决策/护栏:**四层纵深**(kill-switch 默认关 + gate 全过 + T0-only + push-creds);doc-gap
+  (KINDS 无 doc → AUTO_KINDS={skill});trial-apply 跑在 live checkout(editable install 解析到此)
+  但 net-new ⇒ 仅 unlink 清理无残留;**GitHub 远程通道未连**(本机 push≠云端 agent 凭据)→ 例程建后
+  dormant,需 /web-setup + 开 kill-switch 两步才真跑。
+- 测试:curate_gate 13/13(全 fail-closed 分支 + happy eligible + reconstruct round-trip)、
+  **真实 trial_apply 冒烟绿且无残留**、pytest 16、intake 25、boundary 25、doctor exit 0、
+  wheel 隔离干净(顶层仅 `governance_core*`,maintainer/ 未泄漏)。
+
 ### 2026-06-02 — P-0089 #23 walk-back：intake 只验内嵌 candidate.json + 撤消费者 envelope 发布
 
 - 改动：与 user 讨论 + core 的 Phase 2 handoff 后,采纳 #23 架构决策(接近 C)——

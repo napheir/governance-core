@@ -1,0 +1,4 @@
+{
+  "_doc": "Kill-switch for the P-0082 Phase 2 scheduled curation routine (P-0090). When enabled is false (or this file is absent/unreadable), the routine runs in ADVISE-ONLY mode: it never auto-promotes, only comments + labels `advised`. Flip enabled to true to allow the deterministic gate (curate_gate.py) to auto-promote T0 candidates. Shipped disabled by default -- enabling it is a deliberate operator action.",
+  "enabled": false
+}
