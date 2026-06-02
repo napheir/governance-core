@@ -17,6 +17,19 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-02 — gitignore 卫生 + 云端 curation routine 暂停
+
+- **gitignore（A）**：三个 untracked 目录此前未被忽略、仅靠"只显式 `git add`"纪律挡着 ——
+  `artifacts/`（Art.10 红线）、`.claude/cache/`（运行时缓存）、`governance_core/.claude/`
+  （某次 hook/classify 把 repo-root 误解析成 `governance_core/` 写进包源的 classify-log
+  缓存杂物）。`.gitignore` 补三条 root-anchored 规则，check-ignore 三者全命中。
+- **清理（B）**：删除误写进包源的 `governance_core/.claude/`（纯清理，不进 git）。
+- **云端 routine 状态**（claude.ai，非仓库）：`gc-curation-routine`
+  （`trig_01UjyaQUt3fpdNGDiDqU3Smh`）已 **enabled→false 暂停**（用户决定先手动验证几轮、
+  看自动处理是否合理再重开）；其 inline prompt 已**同步到 P-0096**（needs-human/feedback
+  分支 + 一条 hard rule 强制先读评论）；kill-switch `auto_curate_enabled` 仍 false。
+  重开两道开关分离：触发器 enabled（跑不跑）与 kill-switch（advise-only vs auto-promote）。
+
 ### 2026-06-02 — P-0096 curation 评审强制读 issue 评论（堵 #26 暴露的缺口）+ 发布 0.24.0
 
 - **发布**：v0.24.0（P-0094/P-0095）经 GitHub Release → CI Trusted Publisher 发到正式
@@ -53,22 +66,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   re-baseline → 二次 `upgrade --dry-run` 在 CRLF 工作树报 **0 drift**；`doctor` exit 0；
   wheel 顶层仅 `governance_core*`、含新测试、无 `maintainer/` 泄漏。版本 0.23.0 → **0.24.0**。
   关闭 GitHub #27、#26（附 curation 结果 + 致谢 + #26 特别致谢自更正）。
-
-### 2026-06-02 — P-0092 / P-0093 收编两个 candidate（gc #25 funnel + #22 upgrade-review）
-
-- **P-0092（gc #25）skill-usage funnel**：`tracker.py` 原子 `_save`（tmp+`os.replace`）+
-  `record_surfaced`（按天去重）/`record_triggered`（按事件，计 dedup 抑制的重复）/`funnel_row`；
-  `prompt-context-router.py` 的 `_match_routes` 在 dedup **前**记录命中（best-effort
-  `_make_trigger_recorder`，guard import + fail-open，登记 `FAIL_OPEN_GC_IMPORTERS`）；
-  `registry.py` 新增 `--funnel` 报告（retire/slim/star）。新增 `tools/test_skill_funnel.py`（12）。
-- **P-0093（gc #22）upgrade-review**：新增 `tools/upgrade_review.py`（`upgrade --dry-run`→
-  NONE/GREEN/YELLOW/RED→写 `audit/upgrade_review/` 报告，**绝不 apply**；`protected_drift.json`→RED）；
-  接入 `update-reminder.py`（检测到新版本时 best-effort 跑 + 附 verdict 行，25s 超时回退纯 banner）。
-  修正 payload `classify()` 对齐其文档化契约（cross-minor+drift→RED）。新增 `test_upgrade_review.py`（13）
-  + `test_update_reminder.py` 2 wiring 用例。
-- 验证：全套 `tools/test_*.py` **25/25**；`doctor` exit 0（router 归类 fail-open）；wheel 顶层仅
-  `governance_core*`、9 文件在内、无 `maintainer/` 泄漏；`upgrade_review.py` 在 hub dogfood 跑通。
-  版本 0.22.0 → **0.23.0**。关闭 GitHub #25、#22（附 curation 结果 + 致谢）。
 
 ### 2026-06-01 — P-0088 P-0082 Phase 1 gc 侧：候选 intake CI + uplink 发布 envelope（+ #21 de-drift）
 

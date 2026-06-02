@@ -6,6 +6,23 @@
 
 ---
 
+### 2026-06-02 — P-0092 / P-0093 收编两个 candidate（gc #25 funnel + #22 upgrade-review）
+
+- **P-0092（gc #25）skill-usage funnel**：`tracker.py` 原子 `_save`（tmp+`os.replace`）+
+  `record_surfaced`（按天去重）/`record_triggered`（按事件，计 dedup 抑制的重复）/`funnel_row`；
+  `prompt-context-router.py` 的 `_match_routes` 在 dedup **前**记录命中（best-effort
+  `_make_trigger_recorder`，guard import + fail-open，登记 `FAIL_OPEN_GC_IMPORTERS`）；
+  `registry.py` 新增 `--funnel` 报告（retire/slim/star）。新增 `tools/test_skill_funnel.py`（12）。
+- **P-0093（gc #22）upgrade-review**：新增 `tools/upgrade_review.py`（`upgrade --dry-run`→
+  NONE/GREEN/YELLOW/RED→写 `audit/upgrade_review/` 报告，**绝不 apply**；`protected_drift.json`→RED）；
+  接入 `update-reminder.py`（检测到新版本时 best-effort 跑 + 附 verdict 行，25s 超时回退纯 banner）。
+  修正 payload `classify()` 对齐其文档化契约（cross-minor+drift→RED）。新增 `test_upgrade_review.py`（13）
+  + `test_update_reminder.py` 2 wiring 用例。
+- 验证：全套 `tools/test_*.py` **25/25**；`doctor` exit 0（router 归类 fail-open）；wheel 顶层仅
+  `governance_core*`、9 文件在内、无 `maintainer/` 泄漏；`upgrade_review.py` 在 hub dogfood 跑通。
+  版本 0.22.0 → **0.23.0**。关闭 GitHub #25、#22（附 curation 结果 + 致谢）。
+
+
 ### 2026-06-02 — P-0091 释放知识渲染工具到 business 归属（gc #24，完整释放）
 
 - 改动：gc 从 trade-agent 抽取时把消费者的知识**渲染**工具卷进了治理包 → gc 控制了
