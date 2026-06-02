@@ -34,6 +34,10 @@ htmlcov/
 .local/
 *.log
 
+# Output artifacts (constitution Art.10): build outputs, reports, scratch
+# files (e.g. commit-message drafts, materialized envelopes) -- never committed.
+/artifacts/
+
 # ---------------------------------------------------------------------------
 # governance-core self-hosting (P-0066): the autonomy layer.
 #
@@ -57,6 +61,13 @@ htmlcov/
 /.claude/skills/learned/.usage.json
 /.claude/commands/
 /.claude/agents/
+# .claude/cache/: hook + tool runtime cache (classify log, prompt-router state,
+# boundary-override audit) -- per-session runtime state, never committed.
+/.claude/cache/
+# Stray .claude/ written INTO the package source when a hook/tool misresolves
+# repo-root to governance_core/ (e.g. a classify-log cache leak). Never an
+# authored asset -- ignore so it can never be committed into the package.
+/governance_core/.claude/
 /contracts/
 /agent_rules/
 /tools/
