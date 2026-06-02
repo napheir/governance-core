@@ -157,6 +157,16 @@ def _prune_exempt_cases() -> list[bool]:
         results.append(_case(
             "_prune_stale: exempt agent design-system-owner.md survives",
             lambda: (tmp / ".claude/agents/design-system-owner.md").exists()))
+        # gc #24 (P-0091): the released knowledge-rendering tools survive prune.
+        results.append(_case(
+            "_prune_stale: exempt build_knowledge_dashboard.py survives (gc #24)",
+            lambda: (tmp / "tools/build_knowledge_dashboard.py").exists()))
+        results.append(_case(
+            "_prune_stale: exempt build_autogen_blocks.py survives (gc #24)",
+            lambda: (tmp / "tools/build_autogen_blocks.py").exists()))
+        results.append(_case(
+            "_prune_stale: exempt dashboard.md survives (gc #24)",
+            lambda: (tmp / ".claude/commands/dashboard.md").exists()))
         results.append(_case(
             "_prune_stale: non-exempt control path pruned",
             lambda: not (tmp / control).exists() and control in pruned))

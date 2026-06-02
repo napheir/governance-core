@@ -147,21 +147,29 @@ supersedes: experiments/archive/EXP-prev.md     # 仅当替代前代时
 - `artifacts/.../REPORT.md`
 ```
 
-### Step 5: 重建 Dashboard
+### Step 5: 重建 Dashboard（项目自备 renderer 时；可选）
 
-知识文件变更后，重新生成统一 dashboard（Phase 1 已迁移到 core，tools/build_knowledge_dashboard.py 现在是所有 clone 的权威版本）：
+> **gc #24 (P-0091)**：知识**渲染**工具已释放到 business/consumer 归属——gc
+> 不再 ship knowledge renderer（gc 拥有治理内容 / 契约 / validator / taxonomy，
+> 不拥有"项目如何渲染自己的知识"）。本步对 gc 治理工作流是**可选**的。
+
+知识文件变更后，**若本项目拥有知识 renderer**（`tools/build_knowledge_dashboard.py`
+存在，business-owned），重新生成统一 dashboard：
 
 ```bash
 python tools/build_knowledge_dashboard.py
 ```
 
-或使用统一入口：`/dashboard` slash command（等价；见 `.claude/commands/dashboard.md`）。
+或用项目自备的 `/dashboard` 入口（若已采纳）。
 
-**输出**: `shared_state/knowledge/dashboard.html`（浏览器打开即用；含客户端搜索 + owner/status/tag 过滤）
+- **无 renderer**（释放后从未采纳的项目）→ **跳过本步**，在检查清单注明
+  "跳过（项目未采纳 dashboard renderer，gc #24）"。gc 治理工作流不强依赖 dashboard。
 
-**触发判断**: 仅当 Step 2 判定值得记录且 Step 3 有实际文件写入时执行。纯 "[跳过] 本次为重构" 类不需要重建。
+**输出**（若执行）: `shared_state/knowledge/dashboard.html`（浏览器打开即用；含客户端搜索 + owner/status/tag 过滤）
 
-**验证**: 命令成功的 stdout 必须含一行 `[OK] wrote <abs path>\shared_state\knowledge\dashboard.html (N categories, M entries)` 作为执行证据。**path 必须含 `shared_state`** —— 否则误跑了 legacy `knowledge/models/build_dashboard.py`（写到 `artifacts/rules/knowledge/`，不是 cross-clone canonical），需重跑 `tools/build_knowledge_dashboard.py`。
+**触发判断**: 仅当项目有 renderer、且 Step 2 判定值得记录、且 Step 3 有实际文件写入时执行。纯 "[跳过] 本次为重构" 类不需要重建。
+
+**验证**（若执行）: 命令成功的 stdout 必须含一行 `[OK] wrote <abs path>\shared_state\knowledge\dashboard.html (N categories, M entries)` 作为执行证据。**path 必须含 `shared_state`**。
 
 ### Step 6: 契约审计（强制）
 

@@ -3,8 +3,9 @@
 **Version**: 1.0.0
 **Status**: active
 **Owner**: core
-**Consumers**: `tools/build_knowledge_dashboard.py` (top-level parsing),
-`tools/audit_knowledge.py` (structural checks)
+**Consumers**: the project's knowledge renderer (e.g.
+`build_knowledge_dashboard.py`, business-owned per gc #24) (top-level parsing),
+`tools/audit_knowledge.py` (structural checks — gc-owned validator)
 
 Defines the format of `knowledge/INDEX.md` (top) and `knowledge/<cat>/INDEX.md`
 (per-category) files so downstream tools can navigate the federated knowledge

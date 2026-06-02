@@ -107,7 +107,8 @@ _FALLBACK_ALWAYS_COPY_FILES = [
     # Shared knowledge-federation tools (run per-clone against local knowledge/)
     "tools/audit_knowledge.py",
     "tools/diff_classify.py",
-    "tools/build_knowledge_dashboard.py",
+    # gc #24 (P-0091): build_knowledge_dashboard.py released to business
+    # ownership -- gc no longer distributes a knowledge renderer.
     "tools/build_skill_index.py",
     "tools/skill_catalog.py",
     "tools/migrate_knowledge_frontmatter.py",
@@ -117,7 +118,7 @@ _FALLBACK_ALWAYS_COPY_FILES = [
     "tools/backfill_proposal_status.py",
     "tools/proposal_lib.py",
     "tools/infer_carrier_class.py",
-    "tools/build_autogen_blocks.py",
+    # gc #24 (P-0091): build_autogen_blocks.py released to business ownership.
     "tools/audit_html_profile.py",
     "contracts/proposal_frontmatter_schema.md",
     "config/proposals_config.json",

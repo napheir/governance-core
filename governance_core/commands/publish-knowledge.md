@@ -136,10 +136,13 @@ git commit -m "docs(knowledge): collect <agent> net-new entries via /publish-kno
 git push origin master
 ```
 
-4.8 重建 dashboard：
+4.8 重建 dashboard（项目自备 renderer 时；可选 —— gc #24/P-0091 已把 renderer
+释放到 business 归属，gc 不再 ship）：
 
 ```bash
+# 若项目拥有 renderer（tools/build_knowledge_dashboard.py 存在，business-owned）：
 python tools/build_knowledge_dashboard.py
+# 否则跳过——gc 治理流程不强依赖 dashboard。
 ```
 
 ## 不做

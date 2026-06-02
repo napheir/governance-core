@@ -4,7 +4,9 @@
 **Status**: active
 **Owner**: core
 **Consumers**: all agents (read via `/learn`, write via `experiment-manager`)
-**Tools**: `tools/audit_knowledge.py` (validation), `tools/build_knowledge_dashboard.py` (rendering)
+**Tools**: `tools/audit_knowledge.py` (validation — gc-owned validator). The
+project's knowledge renderer (e.g. `build_knowledge_dashboard.py`, business-owned
+per gc #24) also reads these fields for presentation.
 
 Every file under `knowledge/**` (except `INDEX.md` and `_TEMPLATE.md`) must begin
 with a YAML frontmatter block conforming to this schema. This contract is the

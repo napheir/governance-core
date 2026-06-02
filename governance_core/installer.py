@@ -110,6 +110,13 @@ STALE_PRUNE_EXEMPT = {
     "knowledge/design/component-catalog.md",
     "knowledge/design/design-principles.md",
     ".claude/agents/design-system-owner.md",
+    # gc #24 (P-0091): the knowledge-RENDERING tools are the consumer's, not
+    # gc's (gc owns governance content / contracts / validators / taxonomy, not
+    # how a project renders its knowledge). Released from install-management; a
+    # consumer that already has them keeps them as business-owned carve-out.
+    "tools/build_knowledge_dashboard.py",
+    "tools/build_autogen_blocks.py",
+    ".claude/commands/dashboard.md",
 }
 
 # Mixed clauses (P-0063 方案 A): generic frame + project-specific business

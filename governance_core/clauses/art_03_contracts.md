@@ -22,7 +22,7 @@ phase_2_action: ready-to-use
 | `<your-feature-schema>.json` | 项目特征/数据列定义（示例） | `<producer-agent>` | `<consumer-agent-1>, <consumer-agent-2>` |
 | `<your-signal-contract>.md` | 项目信号/事件格式（示例） | `<producer-agent>` | `<consumer-agent>` |
 | `knowledge_frontmatter_schema.md` | `knowledge/**/*.md` frontmatter 必填字段与枚举（含 owner） | core | all agents（写/读 knowledge 的都受约束） |
-| `knowledge_index_schema.md` | `knowledge/**/INDEX.md` 结构 | core | `tools/build_knowledge_dashboard.py`, `tools/audit_knowledge.py`, all agents |
+| `knowledge_index_schema.md` | `knowledge/**/INDEX.md` 结构 | core | 项目 knowledge renderer（如 `build_knowledge_dashboard.py`，business-owned，gc #24）, `tools/audit_knowledge.py`, all agents |
 
 ### 3.2 契约变更流程
 

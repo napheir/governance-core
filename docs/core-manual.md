@@ -315,7 +315,13 @@ install-managed paths are eligible, so business / authored files and the
 capture, so a stale file that was locally edited is first captured as a
 candidate. `governance-core upgrade --no-prune` keeps stale files.
 
-### Released-to-business: STALE_PRUNE_EXEMPT (P-0075)
+### Released-to-business: STALE_PRUNE_EXEMPT (P-0075, gc #24)
+
+> Release cohorts so far: **P-0075** (0.7.0 — design residue: component-catalog
+> / design-principles / design-system-owner), **gc #24 / P-0091** (knowledge
+> RENDERING tools released to consumer ownership: `build_knowledge_dashboard.py`
+> / `build_autogen_blocks.py` / `.claude/commands/dashboard.md` — gc owns the
+> knowledge contracts/validators/taxonomy, not how a project renders).
 
 When the package source drops a file that downstream consumers may already
 be relying on as business content, naive prune would silently delete it
