@@ -111,6 +111,24 @@
       "decision": "promoted",
       "note": "P-0095: promoted the CORRECTED kernel only. Submitter retracted the body's central claim in a follow-up comment (sync-repos IS the correct git-merge channel via MERGE_HEAD exemption + --no-verify; it does NOT destroy drift). Shipped a manifest-realignment note in commands/sync-repos.md + wrap-up.md Step 5b: after a /sync-repos merge that carried gc-managed files, run governance-core upgrade --project-root <clone> to realign the gitignored installed_files.json manifest, else next upgrade misclassifies merged files as drift (noise, not data loss). Did NOT ship the retracted false claims. v0.24.0; suite green + dogfood + wheel isolation OK. Issue #26.",
       "reviewed_at": "2026-06-02T12:26:38Z"
+    },
+    {
+      "id": "cand-trade-agent-20260603-repo-deletion-hardening-deny-all-command",
+      "origin": "trade-agent",
+      "kind": "mechanism",
+      "title": "Repo-deletion hardening: deny all command-line GitHub repo-removal vectors + token-scope verifier",
+      "decision": "promoted",
+      "note": "P-0097: repo-deletion hardening (two layers). 11 deny patterns (4 gh-CLI: repo delete/archive, release delete, secret delete/remove; 7 raw-API/GraphQL/curl/PowerShell/transfer/scope-grant, repo-root anchored so sub-resource DELETEs stay allowed) added to shared.deny_commands_regex.txt (pure-add; real-hook regression 42/42; probe 12/12 block + 12/12 allow). New check_github_token_scope.py wired (advisory, best-effort) into governance-core doctor. De-trade-ified trade-side proposal refs to gc P-0097. v0.25.0; full suite green (42 guard + 28 pytest + 25 script); wheel isolation OK. Issue #85.",
+      "reviewed_at": "2026-06-03T03:18:52Z"
+    },
+    {
+      "id": "cand-trade-agent-20260603-deny-destructive-github-cli-remote-ops-i",
+      "origin": "trade-agent",
+      "kind": "mechanism",
+      "title": "Deny destructive GitHub-CLI remote ops in command-guard deny list",
+      "decision": "promoted",
+      "note": "Superseded by #85 (strict superset: #85's deny-list contains all four of #84's GitHub-CLI patterns verbatim). #84's contribution -- the four GitHub-CLI removal denials (repository remove/archive, release removal, secret removal) -- landed via #85 in P-0097 / 0.25.0; NOT separately applied (would duplicate). Thanks for the first-mover catch. Issue #84.",
+      "reviewed_at": "2026-06-03T03:19:30Z"
     }
   ]
 }

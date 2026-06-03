@@ -61,6 +61,14 @@ DESTRUCTIVE = [
     ("> important.db", 2, "redirect-truncate .db"),
     (": > .env", 2, "no-op > .env"),
     ("dd if=/dev/zero of=/dev/sda", 2, "disk-level dd"),
+    # GitHub repo-removal vectors (P-0097, gc #85)
+    ("gh repo delete foo/bar --yes", 2, "gh repo delete"),
+    ("gh repo archive foo/bar", 2, "gh repo archive"),
+    ("gh release delete v1 --yes", 2, "gh release delete"),
+    ("gh secret delete MYSECRET", 2, "gh secret delete"),
+    ("gh api -X DELETE repos/o/r", 2, "gh api DELETE repo-root"),
+    ("gh api repos/o/r/transfer -f new_owner=x", 2, "gh api repo transfer"),
+    ("curl -X DELETE https://api.github.com/repos/o/r", 2, "curl DELETE repo"),
 ]
 
 ROUTINE = [
@@ -79,6 +87,11 @@ ROUTINE = [
     # sec.6 known limitations. Workaround for legitimate doc-writing:
     # use Edit tool (not Bash echo) to add SQL examples to notes.
     ("git log --all --graph", 0, "git log"),
+    # Hub gh usage must stay allowed (P-0097, gc #85)
+    ("gh release create v1 --notes-file x.md", 0, "gh release create allowed"),
+    ("gh issue close 27 --reason completed", 0, "gh issue close allowed"),
+    ("gh issue delete 99 --yes", 0, "gh issue delete allowed (sweep cleanup)"),
+    ("gh api repos/o/r/labels/foo -X DELETE", 0, "gh api sub-resource DELETE allowed"),
 ]
 
 

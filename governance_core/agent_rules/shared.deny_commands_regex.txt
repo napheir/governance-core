@@ -28,6 +28,27 @@
 \bgit\s+gc\b.*--prune=now
 \bgit\s+update-ref\s+-d\b
 
+# GitHub CLI destructive remote operations (irreversible; NOT caught by the
+# git-focused patterns above). `gh repo delete <repo> --yes` deletes the whole
+# repository with no confirmation. gh issue delete is intentionally NOT denied
+# here -- relatively safe and used for candidate-sweep cleanup. (P-0097, gc #85)
+\bgh\s+repo\s+delete\b
+\bgh\s+repo\s+archive\b
+\bgh\s+release\s+delete\b
+\bgh\s+secret\s+(delete|remove)\b
+
+# Repo deletion via raw API / GraphQL / curl / transfer / scope-grant.
+# Precision-tuned to the repo ROOT path /repos/{owner}/{repo} + terminal boundary
+# so sub-resource DELETEs (labels, comments, refs, runs) stay allowed. Validated
+# probe: 13 block / 12 allow, 0 false-neg, 0 false-pos. (P-0097, gc #85)
+(?i)\bgh\s+api\b.*(?:-X|--method)\s+delete\b.*\brepos/[^/\s'"]+/[^/\s'"]+/?(?:["'\s?]|$)
+(?i)\bgh\s+api\b.*\brepos/[^/\s'"]+/[^/\s'"]+/?["'\s].*(?:-X|--method)\s+delete\b
+(?i)\bgh\s+api\b.*deleteRepository\b
+(?i)\bgh\s+api\b.*\brepos/[^/\s'"]+/[^/\s'"]+/transfer\b
+(?i)\bcurl\b.*\bdelete\b.*api\.github\.com/repos/[^/\s'"]+/[^/\s'"]+/?(?:["'\s?]|$)
+(?i)\b(?:Invoke-RestMethod|Invoke-WebRequest|irm|iwr)\b.*\bdelete\b.*api\.github\.com/repos/[^/\s'"]+/[^/\s'"]+/?(?:["'\s?]|$)
+(?i)\bgh\s+auth\s+refresh\b.*\bdelete_repo\b
+
 # Case-insensitive SQL destruction (covers lowercase + title-case)
 (?i)\b(drop|truncate)\s+(table|database|schema)\b
 (?i)\bdelete\s+from\s+\w+\s*(;|--|$)

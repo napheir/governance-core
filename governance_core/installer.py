@@ -1045,6 +1045,26 @@ def doctor(project_root: Path) -> int:
                       "current terms (required in this version)")
         return 8
     _report_auth_lifecycle(auth_payload, project_root)
+    # P-0097 (gc #85): repo-deletion root-cause check. Best-effort + ADVISORY:
+    # loud-warn if the active gh token carries the delete_repo OAuth scope --
+    # without which GitHub rejects every deletion regardless of how issued. Does
+    # NOT change doctor's exit code (an auth-environment concern, not an install
+    # defect; keeps dogfood/CI doctor exit-0 expectations).
+    _scope_tool = PKG_ROOT / "tools" / "check_github_token_scope.py"
+    if _scope_tool.exists():
+        try:
+            _sp = subprocess.run(
+                [sys.executable, str(_scope_tool)],
+                capture_output=True, encoding="utf-8", errors="replace",
+                timeout=30)
+            _msg = ((_sp.stdout or "") + (_sp.stderr or "")).strip()
+            if _sp.returncode == 1:
+                logger.warning("[doctor] %s", _msg or "active gh token has "
+                               "delete_repo scope -- repo deletion is POSSIBLE")
+            elif _msg:
+                logger.info("[doctor] %s", _msg)
+        except (OSError, subprocess.SubprocessError) as _exc:
+            logger.info("[doctor] token-scope check skipped: %s", _exc)
     logger.info("[doctor] OK: project=%s consumer_id=%r ritual_phrase=%r "
                 "agents=%d hooks=%d clauses=%d hooks_registered=%d",
                 cfg["project_name"], cfg["authorization"]["consumer_id"],
