@@ -717,3 +717,25 @@ already detects a newer version it runs the pre-pass best-effort (25s timeout)
 and appends the verdict to the banner, falling back to the plain banner on any
 error. The hub itself never runs it (the editable install early-exits). Apply
 always stays a human action via `/upgrade`.
+
+## 14. Repo-deletion hardening (P-0097, gc #85)
+
+Two layers guard against command-line GitHub repository removal:
+
+1. **command-guard deny-list** (`agent_rules/shared.deny_commands_regex.txt`) —
+   denies the gh-CLI removal subcommands (repo delete/archive, release delete,
+   secret delete/remove) and the raw REST/GraphQL/curl/PowerShell/transfer/
+   scope-grant vectors, anchored to the repo ROOT path so sub-resource API
+   deletes (labels/comments/refs/runs) stay allowed. `gh issue delete` is
+   deliberately allowed (candidate-sweep cleanup). Caveat: deny patterns match
+   the whole command string, so a commit message / `--note` / `echo` that merely
+   *mentions* a denied phrase is also blocked — reword, or pass text via a file
+   (`git commit -F`, `gh ... --body-file`) since the guard inspects the command,
+   not file contents.
+2. **`tools/check_github_token_scope.py`** — the root-cause control: repo
+   deletion via ANY token path needs the `delete_repo` OAuth scope, so a token
+   without it is rejected by GitHub regardless of how issued. Run it directly, or
+   read the `[doctor] [token-scope] ...` line that `governance-core doctor` now
+   emits (advisory — a `delete_repo` scope is loud-warned but does NOT fail
+   doctor; gh-unavailable → treated as safe). To get to a safe state, re-auth to
+   a scope set without `delete_repo`.

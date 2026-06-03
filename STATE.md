@@ -17,6 +17,28 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-03 — P-0097 收编 gc #85 repo-deletion 加固（#84 superseded）+ 0.25.0
+
+- **两层防御**（用户："我们需要做一些防御"）：
+  - **command-guard deny-list** +11 模式（纯增，verified diff）：gh-CLI 删除子命令
+    （repo delete/archive、release delete、secret delete/remove）+ 7 条 raw
+    API/GraphQL/curl/PowerShell/transfer/scope-grant，**锚定 repo ROOT 路径**故子资源
+    DELETE（labels/comments/refs/runs）仍放行；`gh issue delete` 有意放行（sweep 用）。
+  - **`tools/check_github_token_scope.py`**（net-new）：根因检查 `delete_repo` OAuth scope，
+    **advisory** 接进 `governance-core doctor`（出现就 loud-warn，**不改 doctor 退出码**；
+    gh 不可用→safe）。用户选 doctor 集成而非 session-start（scope 稳定、免每会话延迟）。
+- **#84 superseded by #85**（#85 deny-list 是 #84 的严格超集）：两者都记 `promoted`，
+  #84 note 注明经 #85 收编、未单独应用。两 issue 已关闭（#85 completed / #84 not-planned）。
+- **de-trade-ify**：候选里 trade 侧 `(P-0088)`/`(P-0089)` 引用改为 gc `P-0097`（否则会被
+  误读成 gc 自己的 P-0088/P-0089）。
+- **关键事实/坑**：(1) `gh`/`curl` 不在 allow-list → deny 真生效（real-hook 42/42 复核，
+  非仅 regex probe）；(2) hub 当前 token 无 `delete_repo`（gist/read:org/repo/workflow），
+  授权层已挡删库；(3) **dogfood 即时反噬**：deny 上线后 guard 拦了我自己含 "gh repo delete"
+  字面的 `--note` 命令 —— deny 匹配整条命令串，"提到"也拦（记 memory，用 -F/--body-file 绕）。
+- 验证：command-guard real-hook **42/42**、token-scope 单测 6/6、全套 28 pytest + 25 script
+  green；upgrade + doctor exit 0（doctor 出 token-scope 行）；wheel 顶层仅 `governance_core*`、
+  含新工具、无 `maintainer/` 泄漏。版本 0.24.1 → **0.25.0**（含此前 hold 的 0.24.1 doc 改动）。
+
 ### 2026-06-02 — gitignore 卫生 + 云端 curation routine 暂停
 
 - **gitignore（A）**：三个 untracked 目录此前未被忽略、仅靠"只显式 `git add`"纪律挡着 ——
@@ -254,79 +276,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   uplink-drift-diff 20 = 151/151 全绿。wheel 0.9.0 含 uplink/ledger/
   test_uplink_drift_diff；dogfood upgrade OK；doctor exit 0、hooks
   19/registered 18。
-
-### 2026-05-26 — P-0076 Phase 2 reject feedback registry
-
-- 改动：新建包源 `candidates/rejected_registry.json`（schema 1，含两条
-  backfill 条目对应 #4/#6 + #5/#7、`block_by_name: true` 标记 pre-0.8.0
-  sha 不可还原场景）。新建包源模块 `candidates/rejected.py`
-  （`load_rejected_registry` / `is_rejected` / `should_block` /
-  `format_advisory` 四个 API）。`cmd_sweep` 接 `is_rejected` 检查：
-  exact → 阻断 + stdout 打印结构化 SKIPPED advisory；name +
-  `block_by_name: true` → 阻断；name + `block_by_name: false` → stderr
-  warn + 仍 uplink（允许 hub 重评 rewrite）。`candidate-reminder.py`
-  hook 扩展：SessionStart 时 cross-check pending 与 registry，被拒
-  skill 在 banner 出 WARNING 行。新建 hub 工具
-  `maintainer/reject_candidate.py`（`--issue N --reason X --advice Y
-  [--also-close] [--dry-run]`），抓 issue body、复用 Phase 1 共享 parser
-  解析 payload、自动判 pre-0.8.0 rstrip 场景 → 写 registry +（可选）
-  关闭 issue 加 advisory comment。`pyproject.toml` package-data 加
-  `candidates/*.json` 让 registry 进 wheel。版本 0.7.0 → 0.8.0（按
-  P-0074/P-0075 模式一次性 bump 跨两 phase）。
-- 涉及：`governance_core/candidates/rejected.py`（新）+
-  `rejected_registry.json`（新）、`maintainer/reject_candidate.py`（新）、
-  `governance_core/tools/test_rejected_registry.py`（新，21 用例）、
-  `governance_core/tools/candidate.py`（接 `is_rejected`）、
-  `governance_core/hooks/candidate-reminder.py`（SessionStart 增 WARNING）、
-  `governance_core/__init__.py` + `pyproject.toml`（0.8.0、package-data
-  加 `candidates/*.json`）、`docs/core-manual.md`（§11 加 self-heal +
-  reject feedback 两段、新 §13 maintainer reject workflow）、`STATE.md`、
-  `shared_state/proposals/core/p-0076-*.md`。
-- 关键决策：registry schema 加 `block_by_name: bool` 字段（默认 false、
-  pre-0.8.0 backfill 设 true）让 maintainer 显式覆盖 name match 的"宽松"
-  默认；不引入"unreject"工作流（rewrite 用新名字、强制语义表态）；不自动
-  修改 consumer skill frontmatter（守 autonomy carve-out 不变量）；wheel
-  shipped registry，不走另立签名 feed（advisory 非 security critical、
-  wheel 签名已证来源）。
-- 测试：`test_rejected_registry` 21/21（is_rejected 6 + should_block 4 +
-  format_advisory 5 + malformed registry 2 + shipped registry smoke 4）；
-  全套回归 revocation 24 + renewal 13 + candidate-attribution 9 +
-  candidate-reminder 7 + update-reminder 9 + auth-guard 9 + auth-codec 11
-  + upgrade-dry-run 14 + candidate-recovery 14 + rejected-registry 21 =
-  131/131 全绿。wheel 0.8.0 build OK（`rejected.py` /
-  `rejected_registry.json` 进 wheel、`maintainer/` 不漏）。dogfood
-  `governance-core upgrade --project-root .` OK，hooks 19/18 registered、
-  doctor exit 0。`reject_candidate.py --dry-run --issue 4` 演练成功，
-  自动识别 pre-0.8.0、设 block_by_name=true、sha=null。P-0076 两 phase
-  全部实现完成。
-
-### 2026-05-26 — P-0076 Phase 1 sweep ledger 自愈
-
-- 改动：`governance_core/candidates/ledger.py` 加
-  `parse_payload_from_issue_body(body) -> (meta, {name: bytes})`（共享
-  parser，Phase 2 maintainer 工具也用）+ `discover_uplinked_from_hub(
-  origin, repo)`（`gh issue list --state all --search "[candidate]
-  (from <origin>)"`、逐 issue 解析 fenced block、rehash、返回
-  `[{digest, candidate_id, issue_url}]`、`gh`/网络/解析失败均 best-effort
-  退回空）。`uplink.py` 修 payload 段 **不 rstrip**（保留原文 bytes、让
-  hash round-trip 正确）。`candidate.py` `cmd_sweep` 在 collect 之后、
-  pending 选择之前接 recovery：ledger 空 + outbox 非空 + `gh` 可用即调，
-  把 recovery 结果写入 `_uplinked.json`。
-- 涉及：`governance_core/candidates/ledger.py`、
-  `governance_core/candidates/uplink.py`、
-  `governance_core/tools/candidate.py`、
-  `governance_core/tools/test_candidate_recovery.py`（新，14 用例）、
-  `STATE.md`、`shared_state/proposals/core/p-0076-*.md`。
-- 关键决策：保持 `payload_digest` 行为不变（按 `read_bytes()` 哈希）、
-  改 `build_issue` 让 issue body 不 rstrip → round-trip 一致；recovery
-  全程 fail-safe（FileNotFoundError / CalledProcessError /
-  JSONDecodeError 均 logger.info 后返空）；recovery 只在 ledger 真的
-  empty 时触发，正常 consumer 不付网络代价。
-- 修环境：发现 `pip show` 显示 0.7.0 但 Editable project location 丢失
-  ([[editable-install-clobber]] 信号)，`pip install -e .` 重装恢复。
-- 测试：`test_candidate_recovery` 14/14（parser 5 + discover 8 +
-  end-to-end round-trip 1）；回归 revocation 24 + renewal 13 +
-  candidate-attribution 9 + candidate-reminder 7 + update-reminder 9 +
-  auth-guard 9 + auth-codec 11 + upgrade-dry-run 14 = 96/96 全绿。
-  无版本 bump（按提案 Phase 1+2 单次 bump pattern，待 Phase 2 一起
-  0.7.0 → 0.8.0）。
