@@ -129,6 +129,15 @@
       "decision": "promoted",
       "note": "Superseded by #85 (strict superset: #85's deny-list contains all four of #84's GitHub-CLI patterns verbatim). #84's contribution -- the four GitHub-CLI removal denials (repository remove/archive, release removal, secret removal) -- landed via #85 in P-0097 / 0.25.0; NOT separately applied (would duplicate). Thanks for the first-mover catch. Issue #84.",
       "reviewed_at": "2026-06-03T03:19:30Z"
+    },
+    {
+      "id": "cand-trade-agent-20260612-competing-design-proposals-with-deferred",
+      "origin": "trade-agent",
+      "kind": "skill",
+      "title": "competing-design-proposals-with-deferred-adr",
+      "decision": "promoted",
+      "note": "P-0098; promoted as governance_core/skills/competing-design-proposals-with-deferred-adr.md (frontmatter reshaped learned->guide; one trade-domain Note line genericized de-trade-ify). Issue #89 canonical; #87 closed as duplicate (byte-identical payload).",
+      "reviewed_at": "2026-06-12T04:57:36Z"
     }
   ]
 }
