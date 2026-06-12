@@ -17,6 +17,26 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-12 — P-0099 修 consumer bug #90 sweep 重复 uplink + #91 sync_infra 删 tracked hook + 0.27.0
+
+- **#90 `candidate.py sweep` 重复 uplink**（即 #87/#89 的成因）：
+  - **RC1** `cmd_sweep` 抽出纯函数 `_dedup_pending_by_digest`，uplink 循环前按
+    digest 去重 `pending`（pre-scan ledger 快照下两个同 digest envelope 都过
+    `is_uplinked` → 都 uplink → 重复 issue）。
+  - **RC2** `collect.py collect_netnew_skills`：已存在同 digest envelope 时跳过
+    新建（`skill_digest` vs 现存 `payload_digest`；延迟 import ledger 避循环）。
+    改后 collect 对未变 skill 幂等，变更 skill（新 digest）仍 stage 为 update。
+- **#91 `sync_infra._remove_local_copy` 删 git-tracked 集中化 hook**：加
+  `_is_git_tracked`（`git ls-files --error-unmatch`，任何失败 fail-safe→False）；
+  tracked 的本地副本改为 `[KEEP]` 保留（settings 已指向 core 绝对路径、永不执行），
+  只删 untracked orphan（迁移本意）。settings 引用重写半边不动。
+- 测试：`test_candidate_sweep` +6（2 RC1 纯函数 + 4 RC2 collect 幂等/edited）；
+  新 `test_sync_infra_remove_local_copy.py` 4 例（tracked keep / orphan del /
+  dry-run / 非 repo fail-safe）。
+- 验证：pytest 32（28+4）green；24 个脚本式测试全绿（command-guard 42/42 等
+  无回归）；upgrade + doctor exit 0；wheel 顶层仅 `governance_core*`、含改动、
+  无 `maintainer/` 泄漏。版本 0.26.0 → **0.27.0**。关 #90/#91。
+
 ### 2026-06-12 — P-0098 收编 gc #89 skill competing-design-proposals-with-deferred-adr（去域化）+ 0.26.0
 
 - **curate #89**（trade-agent 候选 skill）→ 包源

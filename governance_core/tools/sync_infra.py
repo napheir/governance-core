@@ -23,6 +23,7 @@ import json
 import logging
 import re
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -451,8 +452,33 @@ def _ensure_dir(target: Path, dry_run: bool) -> str:
     return f"  [MKDIR] {target.name}/ -- created"
 
 
+def _is_git_tracked(repo_root: Path, rel_path: str) -> bool:
+    """Return True iff `rel_path` is tracked by git in `repo_root`.
+
+    `git ls-files --error-unmatch` exits 0 for a tracked path, non-zero
+    otherwise. Any failure (not a git repo, git absent) -> False: fail safe to
+    the prior "remove the orphan copy" behavior rather than preserving a file
+    we cannot prove is tracked.
+    """
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--error-unmatch", rel_path],
+            cwd=repo_root, capture_output=True, check=False)
+        return result.returncode == 0
+    except OSError:
+        return False
+
+
 def _remove_local_copy(agent_dir: Path, rel_path: str, dry_run: bool) -> str:
     """Remove a previously-copied file that is now centrally referenced.
+
+    A git-tracked local copy is NOT removed (#91): the 6 centralized hooks are
+    gc-managed and git-tracked in consumers, so git restores them on every
+    merge/checkout and unlinking them just produces perpetual
+    uncommitted-deletion churn. The `settings.local.json` reference already
+    points the hook at core's absolute path, so a tracked local copy is never
+    executed and is harmless to keep. Only a genuinely-orphan *untracked* copy
+    (the original one-time migration target) is unlinked.
 
     Args:
         agent_dir: Agent clone root.
@@ -465,6 +491,9 @@ def _remove_local_copy(agent_dir: Path, rel_path: str, dry_run: bool) -> str:
     target = agent_dir / rel_path
     if not target.exists():
         return ""  # nothing to remove
+    if _is_git_tracked(agent_dir, rel_path):
+        return (f"  [KEEP] {target.name} -- centralized via settings ref; "
+                f"local copy git-tracked, left in place (#91)")
     if dry_run:
         return f"  [DEL]  {target.name} -- would remove local copy (now centralized)"
     target.unlink()

@@ -196,9 +196,69 @@ def _sweep_cases() -> list[bool]:
     return results
 
 
+def _dedup_cases() -> list[bool]:
+    """P-0099 #90: within-run digest dedup (RC1) + collect idempotency (RC2).
+
+    Key-free: RC1 tests the pure `_dedup_pending_by_digest` helper, RC2 tests
+    `collect_netnew_skills` on a temp project (no signing key, no network).
+    """
+    results: list[bool] = []
+    pa, pb, pc = Path("a"), Path("b"), Path("c")
+
+    # RC1: two same-digest pending envelopes -> one kept, one skipped
+    kept, skipped = candidate._dedup_pending_by_digest(
+        [(pa, "dig1"), (pb, "dig1"), (pc, "dig2")])
+    results.append(_case(
+        "RC1: same-digest pending -> first kept, dup skipped (order kept)",
+        lambda: kept == [(pa, "dig1"), (pc, "dig2")]
+        and skipped == [(pb, "dig1")]))
+    results.append(_case(
+        "RC1: all-unique pending -> nothing skipped",
+        lambda: candidate._dedup_pending_by_digest(
+            [(pa, "d1"), (pb, "d2")]) == ([(pa, "d1"), (pb, "d2")], [])))
+
+    from governance_core.candidates import collect as _collect
+
+    # RC2: collect is idempotent for an unchanged candidate-common skill
+    tmp = Path(tempfile.mkdtemp(prefix="gc_collect_idem_"))
+    try:
+        _learned_skill(tmp, "useful-skill", "candidate-common")
+        first = _collect.collect_netnew_skills(tmp, "acme")
+        second = _collect.collect_netnew_skills(tmp, "acme")
+        env_dirs = list(
+            (tmp / ".governance" / "candidate-outbox").glob("cand-*"))
+        results.append(_case("RC2: first collect builds one envelope",
+                             lambda: len(first) == 1))
+        results.append(_case(
+            "RC2: second collect (unchanged skill) builds none",
+            lambda: second == []))
+        results.append(_case(
+            "RC2: outbox holds exactly one envelope dir",
+            lambda: len(env_dirs) == 1))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # RC2: an edited skill (new digest) IS still staged as an update
+    tmp = Path(tempfile.mkdtemp(prefix="gc_collect_change_"))
+    try:
+        _learned_skill(tmp, "useful-skill", "candidate-common")
+        _collect.collect_netnew_skills(tmp, "acme")
+        skill = tmp / ".claude" / "skills" / "learned" / "useful-skill.md"
+        skill.write_text(skill.read_text(encoding="utf-8") + "\nedited\n",
+                         encoding="utf-8")
+        changed = _collect.collect_netnew_skills(tmp, "acme")
+        results.append(_case(
+            "RC2: edited skill (new digest) -> staged as update",
+            lambda: len(changed) == 1))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    return results
+
+
 def main() -> int:
-    """Run the ledger + sweep groups; exit non-zero on any failure."""
-    results = _ledger_cases() + _sweep_cases()
+    """Run the ledger + dedup + sweep groups; exit non-zero on any failure."""
+    results = _ledger_cases() + _dedup_cases() + _sweep_cases()
     passed, total = sum(results), len(results)
     out(f"\n{passed}/{total} candidate-sweep cases passed")
     return 0 if passed == total else 1

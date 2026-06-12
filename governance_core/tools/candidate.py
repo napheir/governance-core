@@ -96,6 +96,30 @@ def _record_uplink(project_root: Path, envelope_dir: Path,
         pass  # the ledger is a dedup optimization; never fail uplink on it
 
 
+def _dedup_pending_by_digest(
+        pending: list[tuple[Path, str]]
+) -> tuple[list[tuple[Path, str]], list[tuple[Path, str]]]:
+    """Split `pending` into (kept, skipped): one envelope per unique digest.
+
+    `cmd_sweep` builds `pending` against a single pre-scan ledger snapshot, so
+    two envelopes carrying the SAME payload digest (e.g. a date-stamped collect
+    re-mint of an unchanged skill, or a leftover un-recorded envelope) both
+    pass `is_uplinked` and would both uplink -> duplicate hub issues (#90 RC1).
+    Keep the first envelope per digest; the rest are returned as `skipped`
+    (identical content, same run). Order-preserving.
+    """
+    kept: list[tuple[Path, str]] = []
+    skipped: list[tuple[Path, str]] = []
+    seen: set[str] = set()
+    for env, digest in pending:
+        if digest in seen:
+            skipped.append((env, digest))
+            continue
+        seen.add(digest)
+        kept.append((env, digest))
+    return kept, skipped
+
+
 def cmd_collect(args: argparse.Namespace) -> int:
     """Collect net-new candidate-common learned skills into the outbox."""
     root = Path(args.project_root).resolve()
@@ -280,6 +304,13 @@ def cmd_sweep(args: argparse.Namespace) -> int:
         sys.stderr.write("[candidate] sweep: NOTE -- " + advisory
                          + "\n  Uplinking the new content for hub "
                          + "re-evaluation.\n")
+
+    # P-0099 (#90 RC1): dedup `pending` by payload digest within this run.
+    pending, dup_skipped = _dedup_pending_by_digest(pending)
+    for env, _digest in dup_skipped:
+        sys.stdout.write(f"[candidate] sweep: skipping {env.name} -- same "
+                         f"payload as an earlier pending envelope this run "
+                         f"(within-run digest dedup)\n")
 
     if not pending:
         sys.stdout.write("[candidate] sweep: no pending candidates -- "
