@@ -81,6 +81,13 @@ scope (建议): 加 rules.allow.txt 一行 + Phase 0 走 /iterate-constitution
 2. 应用上述"必判 / 可判"条件表
 3. 不动文件，输出三值 + reason + 建议 scope（如 PROPOSAL_REQUIRED）或最小问题（如 NEEDS_CLARIFICATION）
 
+> **可选建议模块**（只读、不阻断）：起草前可跑
+> `python tools/proposal_suggest.py "<description>"` surface 三路机械召回 ——
+> ① 类似 / 相关 proposal、② 起草检查项 / 历史经验、③ likely scope owner
+> （按 `agent_rules/*.allow.txt`）。输出仅供参考、决策权在起草 agent；每节空集
+> 显式渲染 `（无）`。② 数据源为 `knowledge/governance/proposal-drafting-checklist.md`
+> （通用 seed，消费者自维护其条目）。
+
 ### `create --slug X --title "Y" [--agent Z]`
 
 调 `python tools/proposal_lib.py create --slug X --title "Y" [--agent Z]`：

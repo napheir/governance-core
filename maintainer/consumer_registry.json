@@ -138,6 +138,15 @@
       "decision": "promoted",
       "note": "P-0098; promoted as governance_core/skills/competing-design-proposals-with-deferred-adr.md (frontmatter reshaped learned->guide; one trade-domain Note line genericized de-trade-ify). Issue #89 canonical; #87 closed as duplicate (byte-identical payload).",
       "reviewed_at": "2026-06-12T04:57:36Z"
+    },
+    {
+      "id": "cand-trade-agent-20260612-proposal-suggest-keyword-recall-helper-f",
+      "origin": "trade-agent",
+      "kind": "mechanism",
+      "title": "proposal_suggest: keyword recall helper for the proposal classify gate (建议模块)",
+      "decision": "promoted",
+      "note": "P-0100: promoted genericized kernel in gc 0.28.0. Mechanism verbatim; thinned trade-domain _DOMAIN_ALIASES to domain-neutral structural aliases; added missing (2) data source seed knowledge/governance/proposal-drafting-checklist.md; wired read-only pointer into proposal.md classify. Not via candidate.py promote (would clobber genericization).",
+      "reviewed_at": "2026-06-15T02:02:25Z"
     }
   ]
 }
