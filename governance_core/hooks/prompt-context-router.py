@@ -154,8 +154,8 @@ def _inject_route(repo_root: str, route: dict, line_budget: int) -> tuple:
 
 def main() -> None:
     try:
-        data = json.loads(sys.stdin.read())
-    except (json.JSONDecodeError, EOFError):
+        data = json.loads(sys.stdin.buffer.read().decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, EOFError):
         sys.exit(0)
 
     prompt = data.get("prompt", "") or ""

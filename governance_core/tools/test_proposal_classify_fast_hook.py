@@ -109,6 +109,59 @@ def test_fail_open_on_bad_json():
     assert r.returncode == 0, "hook must fail-open on bad stdin"
 
 
+def _run_hook_bytes(payload_bytes: bytes, env_overrides: dict) -> int:
+    """Drive the hook with raw stdin bytes under an ASCII text-mode stdio.
+
+    PYTHONIOENCODING=ascii forces sys.stdin's TextIOWrapper to ASCII, so the
+    OLD locale-text-mode read (sys.stdin.read()) raises UnicodeDecodeError on
+    ANY non-ASCII byte -- deterministically, independent of this machine's
+    system code page (the hub box runs a UTF-8 code page and cannot reproduce
+    the consumer's GBK fail-open otherwise). The fix reads sys.stdin.buffer
+    (raw bytes, bypassing the text layer) and decodes UTF-8 explicitly, so it
+    is unaffected. Models issue #98's non-cp936 payload class portably.
+    """
+    env = {k: v for k, v in os.environ.items()
+           if k not in ("PYTHONIOENCODING", "PYTHONUTF8")}
+    env["PYTHONIOENCODING"] = "ascii"
+    env["PYTHONUTF8"] = "0"
+    env.update(env_overrides)
+    r = subprocess.run(
+        [sys.executable, str(HOOK)],
+        input=payload_bytes, capture_output=True, env=env, cwd=REPO,
+    )
+    return r.returncode
+
+
+def test_chinese_payload_reaches_gate_not_fail_open():
+    """Issue #98 regression: a high-sensitivity path with Chinese bytes in the
+    payload must reach the gate and BLOCK (exit 2), not mis-decode into the
+    fail-open backstop. Runs under an ASCII text-mode stdio that would break
+    the old sys.stdin.read() on any non-ASCII byte (see _run_hook_bytes)."""
+    payload = {
+        "tool_input": {"file_path": ".claude/commands/test_hook_utf8_gate.md"},
+        "_desc": "描述：包含中文的负载，复现 GBK fail-open。",
+    }
+    rc = _run_hook_bytes(
+        json.dumps(payload, ensure_ascii=False).encode("utf-8"),
+        {"CLAUDE_SESSION_ID": "test-session-utf8-gate"},
+    )
+    assert rc == 2, (
+        f"Chinese payload on high-sensitivity path must BLOCK (exit 2), not "
+        f"fail-open; got rc={rc}. UTF-8 byte read is the fix for issue #98."
+    )
+
+
+def test_invalid_utf8_bytes_fail_open_known():
+    """Genuinely non-UTF-8 stdin bytes hit the known fail-open branch (the
+    classify gate is a documented backstop layer), exit 0 -- not an uncaught
+    crash. Confirms UnicodeDecodeError is in the caught tuple."""
+    rc = _run_hook_bytes(
+        b'\xff\xfe\x00not valid utf-8',
+        {"CLAUDE_SESSION_ID": "test-session-bad-bytes"},
+    )
+    assert rc == 0, f"invalid-UTF-8 stdin must fail-open (exit 0), got rc={rc}"
+
+
 def main() -> int:
     tests = [
         test_harness_path_blocked_without_classify,
@@ -118,6 +171,8 @@ def main() -> int:
         test_no_path_payload_allowed,
         test_wall_time_under_150ms,
         test_fail_open_on_bad_json,
+        test_chinese_payload_reaches_gate_not_fail_open,
+        test_invalid_utf8_bytes_fail_open_known,
     ]
     passed = 0
     failed = []

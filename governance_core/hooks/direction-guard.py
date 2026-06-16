@@ -97,7 +97,7 @@ def main() -> None:
     """Check direction alignment on a throttled schedule."""
     # Parse PostToolUse event from stdin
     try:
-        event = json.loads(sys.stdin.read())
+        event = json.loads(sys.stdin.buffer.read().decode("utf-8"))
     except (json.JSONDecodeError, Exception):
         sys.exit(0)
 

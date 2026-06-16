@@ -15,8 +15,8 @@ import sys
 def main():
     """Output constitutional reminder on every user prompt."""
     try:
-        json.loads(sys.stdin.read())
-    except (json.JSONDecodeError, EOFError):
+        json.loads(sys.stdin.buffer.read().decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, EOFError):
         pass
 
     print(

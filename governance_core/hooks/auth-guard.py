@@ -182,7 +182,7 @@ def main() -> None:
     """Block the pending tool call unless governance-core is authorized."""
     # Consume the hook payload to keep the stdin protocol clean (unused).
     try:
-        json.load(sys.stdin)
+        json.loads(sys.stdin.buffer.read().decode("utf-8"))
     except Exception:  # noqa: BLE001
         pass
 

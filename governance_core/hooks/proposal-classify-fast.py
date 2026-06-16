@@ -137,9 +137,14 @@ def main() -> int:
         return 0
 
     try:
-        raw = sys.stdin.read()
+        # Read stdin as UTF-8 bytes, not locale text mode: on a Windows
+        # GBK/cp936 locale, sys.stdin.read() mis-decodes Chinese (or any
+        # non-cp936) payloads and raises, routing a *valid* payload into the
+        # fail-open branch below (issue #98: 313 logged "stdin parse failed"
+        # fail-opens). UTF-8 byte decode is locale-independent.
+        raw = sys.stdin.buffer.read().decode("utf-8")
         payload = json.loads(raw) if raw.strip() else {}
-    except (json.JSONDecodeError, OSError) as e:
+    except (json.JSONDecodeError, UnicodeDecodeError, OSError) as e:
         return _fail_open("stdin parse failed", e)
 
     try:

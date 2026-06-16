@@ -625,7 +625,7 @@ def _datasets_entry_allowed(rel_path: str, data: dict) -> bool:
 def main() -> None:
     """Block Edit/Write operations outside agent's declared scope."""
     try:
-        data = json.load(sys.stdin)
+        data = json.loads(sys.stdin.buffer.read().decode("utf-8"))
     except Exception:
         sys.exit(0)
 

@@ -252,7 +252,7 @@ def _route_hint(matched_path: str) -> str:
 
 def main() -> None:
     try:
-        data = json.load(sys.stdin)
+        data = json.loads(sys.stdin.buffer.read().decode("utf-8"))
     except Exception:
         sys.exit(0)
 

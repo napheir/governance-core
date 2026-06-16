@@ -194,7 +194,7 @@ def append_alert(repo_root: Path, command: str, signals: list[str]) -> None:
 def main() -> None:
     # Always exit 0 -- non-blocking audit hook.
     try:
-        hook_input = json.load(sys.stdin)
+        hook_input = json.loads(sys.stdin.buffer.read().decode("utf-8"))
     except Exception:
         sys.exit(0)
 

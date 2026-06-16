@@ -65,7 +65,7 @@ def load_patterns(filepath: str) -> list:
 def main():
     """Check Bash commands against deny/allow lists."""
     try:
-        hook_input = json.load(sys.stdin)
+        hook_input = json.loads(sys.stdin.buffer.read().decode("utf-8"))
     except Exception:
         sys.exit(0)
 

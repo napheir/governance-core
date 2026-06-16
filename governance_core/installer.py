@@ -638,6 +638,17 @@ def _write_settings_local_json(project_root: Path) -> None:
             ),
             "hooks": governance_block,
         }
+    # Issue #98: run hook subprocesses (and any harness-spawned Python) in
+    # UTF-8 mode so stdin/stdout do not fall back to the OS locale (GBK/cp936
+    # on Windows), which mis-decoded non-cp936 payloads and made gates fail
+    # open. Defense-in-depth atop each hook's own UTF-8 byte read. Set
+    # natively here so fresh installs ship the mitigation; merge-if-absent so
+    # a consumer's existing env keys are never clobbered. (Art.4: membership
+    # test, not a defaulted dict lookup.)
+    env = data["env"] if "env" in data else {}
+    if "PYTHONUTF8" not in env:
+        env["PYTHONUTF8"] = "1"
+    data["env"] = env
     settings_path.parent.mkdir(parents=True, exist_ok=True)
     settings_path.write_text(
         json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"

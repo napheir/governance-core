@@ -22,7 +22,7 @@ import sys
 def main() -> None:
     """Block the pending Edit/Write if its content carries a HIGH secret."""
     try:
-        hook_input = json.load(sys.stdin)
+        hook_input = json.loads(sys.stdin.buffer.read().decode("utf-8"))
     except Exception:
         sys.exit(0)
 

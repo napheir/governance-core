@@ -109,7 +109,7 @@ def _verdict_line(verdict: str | None) -> str:
 def main() -> None:
     """Print an update-available banner at session start, if applicable."""
     try:
-        json.loads(sys.stdin.read())
+        json.loads(sys.stdin.buffer.read().decode("utf-8"))
     except Exception:  # noqa: BLE001
         pass
 

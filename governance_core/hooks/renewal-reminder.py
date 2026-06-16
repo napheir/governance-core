@@ -25,7 +25,7 @@ sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8",
 def main() -> None:
     """Report consumer leases within the renewal window at session start."""
     try:
-        json.loads(sys.stdin.read())
+        json.loads(sys.stdin.buffer.read().decode("utf-8"))
     except Exception:  # noqa: BLE001
         pass
 

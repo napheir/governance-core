@@ -26,7 +26,7 @@ MIN_TURNS_BEFORE_FIRING = 20
 
 def main() -> int:
     try:
-        data = json.loads(sys.stdin.read())
+        data = json.loads(sys.stdin.buffer.read().decode("utf-8"))
     except Exception:
         return 0
     transcript_path = data.get("transcript_path", "")

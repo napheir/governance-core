@@ -499,8 +499,8 @@ def _check_proposals(root, role):
 def main():
     """Output session context on startup."""
     try:
-        json.loads(sys.stdin.read())
-    except (json.JSONDecodeError, EOFError):
+        json.loads(sys.stdin.buffer.read().decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, EOFError):
         pass
 
     root = _detect_repo_root()

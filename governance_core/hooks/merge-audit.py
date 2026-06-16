@@ -111,7 +111,7 @@ def count_changed_files() -> int:
 def main() -> None:
     """Detect merge commands and trigger audit."""
     try:
-        event = json.loads(sys.stdin.read())
+        event = json.loads(sys.stdin.buffer.read().decode("utf-8"))
     except (json.JSONDecodeError, Exception):
         sys.exit(0)
 

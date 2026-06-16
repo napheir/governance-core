@@ -45,7 +45,7 @@ def _record(name: str) -> None:
 
 def main() -> None:
     try:
-        data = json.load(sys.stdin)
+        data = json.loads(sys.stdin.buffer.read().decode("utf-8"))
     except (json.JSONDecodeError, ValueError, EOFError):
         sys.exit(0)
 

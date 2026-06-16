@@ -17,6 +17,39 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-16 — P-0101 修 #98 hook stdin GBK fail-open（19 hook UTF-8 字节读取）+ 0.29.0
+
+- **#98 根因**：所有读 stdin 的治理 hook 用 locale 文本模式（`json.load(sys.stdin)`
+  / `json.loads(sys.stdin.read())`）。Windows GBK/cp936 下含中文（非 cp936）的
+  payload 解码即 raise，被 `except` 吞掉 → hook **fail-open**（沉默放行）。消费者
+  trade-agent `proposal_classify_fast_errors.jsonl` 记 313 条 "stdin parse failed"
+  fail-open。最危的是 `proposal-classify-fast.py`（5 层 backstop gate）。
+- **主修复**：19 个 hook 的 stdin 读取改为 locale 无关的
+  `json.loads(sys.stdin.buffer.read().decode("utf-8"))`（buffer 绕过文本层，解码
+  与 OS locale 无关）。narrow-except 的 4 个（constitution-reminder /
+  constitutional-review / prompt-context-router / session-context）补
+  `UnicodeDecodeError`；broad-except 的 13 个 + skill-usage-tracker（ValueError
+  已涵盖）只改读取行。
+- **关键判断**：多个 gate（command/scope/edit-write/data-source-guard）**本就
+  `except Exception: sys.exit(0)` fail-open by design**；classify docstring 明示
+  fail-open backstop（"绝不因自身 bug 锁死仓库"）。#98 真因不是 fail-open 分支
+  存在，而是**合法中文 payload 被误路由进它**。故只修解码、**保留各 hook 既有
+  fail 姿态**（不擅自翻 fail-closed —— 那是另一个有锁死风险的独立硬化决定，标为
+  可选后续）。"no gate is loosened" 满足。
+- **纵深防御**：installer `_write_settings_local_json` 原生写 `env.PYTHONUTF8="1"`
+  （fresh 建 + merge-if-absent 不覆盖消费者既有 env），fresh 装即带缓解、不再仅靠
+  preserve 旧 env。Art.4 用 `"env" in data` 而非 defaulted lookup（注释也避字面
+  `.get(k,default)` 以免 constitutional-review 误命中）。
+- **测试**：classify hook +2 回归（中文 payload→gate block exit 2；非法 utf-8→known
+  fail-open exit 0），用 `PYTHONIOENCODING=ascii` **确定性**复现 —— hub 机器系统
+  代码页是 UTF-8、`PYTHONUTF8=0` 复现不出 GBK fail-open（同 hub-cannot-dogfood
+  类），ascii 文本模式对任何 >0x7f 字节必 raise、buffer 读绕过、跨平台稳定。新
+  `test_installer_settings_env.py` 3 例（fresh 有 / merge 保留 / 不覆盖已有）。
+- 验证：script 式 25/25（command-guard 等无回归）+ pytest 49 green；upgrade 后
+  settings `env={PYTHONUTF8:1}`、classify 9/9；command-guard 中文 evasion→block(2)
+  手验；wheel 顶层仅 `governance_core*`、含 19 hook 改动 + installer + 2 测试、
+  无 `maintainer/` 泄漏。版本 0.28.0 → **0.29.0**。关 #98。
+
 ### 2026-06-15 — P-0100 收编 candidate #96 proposal_suggest（泛化 kernel）+ 0.28.0
 
 - **curate #96**（trade-agent `mechanism` 候选）→ 包源，泛化 kernel 收编：

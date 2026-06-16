@@ -246,8 +246,8 @@ def regex_review(current: str, simulated: str) -> dict:
 def main():
     """Hook entry point."""
     try:
-        hook_input = json.loads(sys.stdin.read())
-    except (json.JSONDecodeError, EOFError):
+        hook_input = json.loads(sys.stdin.buffer.read().decode("utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError, EOFError):
         sys.exit(0)
 
     tool_name = hook_input.get("tool_name", "")
