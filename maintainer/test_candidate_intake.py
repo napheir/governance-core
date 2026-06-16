@@ -14,8 +14,8 @@ The intake never promotes, so there is no promote path to test. The payload
 checks (full structural / secret scan / dedup) run at promote-time (Phase 2),
 not here.
 
-Run from repo root (the autonomy-layer copy resolves maintainer/ at parent.parent):
-    python tools/test_candidate_intake.py
+Run from repo root (lives in maintainer/; parent.parent is the repo root):
+    python maintainer/test_candidate_intake.py
 """
 from __future__ import annotations
 

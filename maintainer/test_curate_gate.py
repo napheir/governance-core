@@ -8,8 +8,8 @@ envelope reconstruction is tested for real against `uplink.build_issue` output.
 Key safety invariant under test: every individual check fails CLOSED
 (eligible=False), and the happy path is eligible ONLY when all pass.
 
-Run from repo root:
-    python tools/test_curate_gate.py
+Run from repo root (lives in maintainer/; parent.parent is the repo root):
+    python maintainer/test_curate_gate.py
 """
 from __future__ import annotations
 

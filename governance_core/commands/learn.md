@@ -88,7 +88,10 @@ theme: universal
 **更新已有文件时**：
 1. Read 目标文件
 2. 在合适位置追加新内容（Timeline 表格追加行、正文追加段落）
-3. 更新 YAML frontmatter 的 `updated` 日期
+3. 更新载体的更新时间戳（**载体感知**）：**MD** → YAML frontmatter
+   `updated:`；**HTML profile** → `kc:updated` meta 的 content（且若 status
+   变了，同步 `kc:status`）。两种载体都必须 bump，否则 dashboard / staleness
+   审计会读到陈旧时间戳。
 
 **创建新文件时**：
 1. 使用标准模板（见下方）
@@ -110,6 +113,11 @@ theme: universal
 - [ ] 只写结论，不复制原始数据（链接到 artifacts/REPORT.md）
 - [ ] INDEX.md 已同步（如有新文件）
 - [ ] 每个文件 < 100 行
+
+> **HTML profile 载体**：上述 frontmatter 清单映射到 `kc:*` meta 集
+> （`kc:title` / `kc:owner` / `kc:status` / `kc:created` / `kc:updated` /
+> `kc:tags`），校验同样适用（含 `kc:updated >= kc:created`）。详见
+> `knowledge/governance/knowledge-html-profile.md`。
 
 **Decision-tracking 字段**（实验归档推生产时强制）：
 - 若此 entry 替代了前代生产 entry → 加 `supersedes: experiments/archive/<prev>.md`

@@ -17,6 +17,30 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-16 — P-0102 修 #97 移走 maintainer-only 测试 + #99 learn.md 载体感知时间戳 + 0.30.0
+
+- **#97 消费者 manifest 下发 maintainer-only 测试**：审计 `governance_core/tools/
+  test_*.py` 找到 **2** 个 import-时崩的（`sys.path.insert(maintainer)` + import
+  maintainer 模块）：`test_curate_gate.py`（`import curate_gate`）+
+  `test_candidate_intake.py`（`import candidate_intake`）。消费者无 `maintainer/`
+  → test collection 崩。修法：`git mv` 两者到 `maintainer/`（与被测代码同处、
+  `maintainer/` 本就不进 `COPY_CATEGORIES`/不打包）；`parent.parent` 对 tools/ 和
+  maintainer/ 都解析到 repo root，**零逻辑改动**，仅改各自 docstring 运行路径行。
+  `test_auth_guard` / `test_renewal` 只在注释/tmp_path fixture 提 maintainer、实际
+  只 import `governance_core`（已分发），消费者安全、**不动**（避免误移）。
+- **#99 learn.md 更新时间戳只认 MD**：Step 0 允许 HTML profile 载体（`kc:*` meta），
+  但 Step 3/4 只 bump YAML `updated:` → HTML-profile 文档可不 bump `kc:updated`、
+  陈旧时间戳被 dashboard/staleness 审计误读为 current。修法：Step 3 item 3 载体感知
+  （MD→`updated:` / HTML→`kc:updated`，status 变同步 `kc:status`）；Step 4 加
+  HTML-profile 的 `kc:*` 映射 note。kc:* 名核对 `knowledge-html-profile.md` 一致。
+- **合并依据**：两者皆消费者报的治理卫生 bug、互不相关但小，按 P-0099 先例合并
+  一个 proposal + 一次发布。
+- 验证：script 25/25（2 relocated 从 maintainer/ 跑 14+25 例）+ pytest 49 green；
+  upgrade prune **恰好** `tools/test_curate_gate` + `test_candidate_intake`、
+  manifest 152→150；wheel 顶层仅 `governance_core*`、**排除**两 relocated 测试、
+  无 `maintainer/` 泄漏；learn.md 载体文本入包；doctor exit 0。版本 0.29.0 →
+  **0.30.0**。关 #97/#99。
+
 ### 2026-06-16 — P-0101 修 #98 hook stdin GBK fail-open（19 hook UTF-8 字节读取）+ 0.29.0
 
 - **#98 根因**：所有读 stdin 的治理 hook 用 locale 文本模式（`json.load(sys.stdin)`
