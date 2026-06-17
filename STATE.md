@@ -17,6 +17,17 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-16 — P-0103 Phase 5 发布 0.31.0（close learned-skill loop A/B/C/D 全数上线）
+
+- **Phase 5**：bump 0.30.0 → **0.31.0**，发布 P-0103 全部四部分（A discover /
+  B consult 第十五条 / C coverage gate / D funnel）到 PyPI；关 #100；
+  complete + archive P-0103。
+- 闭环回顾：A（`emit_bounded_injection` 有界注入）+ B（宪法第十五条 技能咨询
+  纪律）+ C（audit Check 16 scenario coverage + extract-skill Step 6b）+ D
+  （live `record_surfaced` + `--funnel`）。gc ship 机制（schema + reader + clause
+  + gate），scenario 数据由各消费者自著（桥接设计）。
+- 实现 commit：1045b6c（A+D）/ b9088f3（B 宪法）/ d5e8943（C gate）。
+
 ### 2026-06-16 — P-0103 Phase 4（C register-enforce）scenario coverage gate（未发布）
 
 - **C（register-enforce）**：闭"作者忘了登记"的复发缺口。
