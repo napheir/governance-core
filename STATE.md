@@ -17,6 +17,26 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-16 — P-0103 Phase 4（C register-enforce）scenario coverage gate（未发布）
+
+- **C（register-enforce）**：闭"作者忘了登记"的复发缺口。
+  - `extract-skill.md` 加 **Step 6b "Surface the skill"**：tier 分类不够，skill
+    只在进入 SessionStart surface 时才被咨询；须 universal tier 或某 scenario
+    cluster 成员（引第十五条 + schema 文档）。Step 8 audit note 加 Check 16。
+  - `audit_knowledge.py` 加 **Check 16 scenario-surface coverage**：每 md-skill
+    必须 universal **或** ∈ ≥1 cluster，否则 FAIL（永不被 surface）；cluster
+    phantom 成员 FAIL。**gate 在 `_scenario_clusters.json` 存在时**（opt-in：未采用
+    scenario 的项目不受罚），与 Check 11 gating 同构。
+- **修正**：`_audit_scenario_coverage` 用 `SkillRegistry(project_root=root)`
+  （比 Check 11 的无-root 版更正确、且 `--root`/测试可隔离）。
+- 涉及：`governance_core/tools/audit_knowledge.py`（Check 16 + 函数 + docstring）
+  + `commands/extract-skill.md`（Step 6b + Step 8 note）+ 新
+  `tools/test_scenario_coverage_audit.py`（3 例 fixture）。
+- 验证：scenario 3/3 + pytest 58 + key script 6/6；upgrade manifest 152→154。
+  **预存问题（非本改动）**：hub 全 `audit_knowledge.py` 在缺 `knowledge/INDEX.md`
+  时崩（hub 的 knowledge/ 稀疏、不在常规测试套件里；待后续单独修）。未 bump 版本。
+- **剩余 P-0103**：Phase 5（bump 0.31.0 + 发布 + 关 #100 + complete/archive）。
+
 ### 2026-06-16 — P-0103 Phase 3（B consult）新增宪法 第十五条 技能咨询纪律（未发布）
 
 - **B（consult）**：经 `/iterate-constitution` 新增 **第十五条：技能咨询纪律** ——

@@ -22,6 +22,7 @@ Checks run (severity in brackets):
  13. carrier_class enum valid                    [warn — transitional v1.2.0]
  14. carrier_class matches expected path         [warn — transitional v1.2.0]
  15. current-state has autogen placeholder       [warn — transitional v1.2.0]
+ 16. Skill scenario-surface coverage             [fail — P-0103, gated on clusters]
 
 Checks 12-15 enforce P-0053 / schema v1.2.0's transitional `carrier_class`
 field per `contracts/knowledge_frontmatter_schema.md` §2.5 + §8.2 — they
@@ -429,6 +430,86 @@ def _audit_skill_tiers(root: Path, tiers_path: Path) -> tuple[int, int]:
     return failed, warned
 
 
+def _audit_scenario_coverage(root: Path, clusters_path: Path,
+                             tiers_path: Path) -> tuple[int, int]:
+    """Audit scenario-surface coverage (P-0103 part C, gc #100).
+
+    Once a project authors ``knowledge/skills/_scenario_clusters.json``, every
+    md-skill must ENTER the SessionStart surface -- be in the ``universal``
+    tier (``_tiers.json``) OR a member of >=1 scenario cluster -- otherwise it
+    can never be consulted, the very gap that left ~50 skills at use_count=0.
+
+      16a. Coverage (FAIL) -- every md-skill is universal or clustered.
+      16b. Phantom  (FAIL) -- every cluster member resolves to a real md-skill.
+
+    Library modules (source_type='module') are excluded, mirroring Check 11.
+    Gated on ``_scenario_clusters.json`` existence by the caller, so a project
+    that has not adopted scenario clusters is never penalized.
+    """
+    failed = 0
+    warned = 0
+    try:
+        from governance_core.discovery.registry import SkillRegistry
+    except Exception as exc:
+        logger.warning("  WARN: skill registry import failed: %s", exc)
+        return 0, 1
+    try:
+        clusters_data = json.loads(clusters_path.read_text(encoding="utf-8"))
+    except Exception as exc:
+        logger.warning("  FAIL: cannot parse _scenario_clusters.json: %s", exc)
+        return 1, 0
+
+    def _field(d, key, default):
+        # Membership test, not a defaulted dict lookup (Art.4): data file.
+        return d[key] if isinstance(d, dict) and key in d else default
+
+    # Scan the AUDITED project's skills (project_root=root), so this works
+    # under --root and is isolatable in tests -- unlike Check 11's registry.
+    registry = SkillRegistry(track_usage=False, project_root=root)
+    registry.scan()
+    md_skills = {
+        s["name"] for s in registry.manifest() if s["source_type"] != "module"
+    }
+
+    universal: set = set()
+    if tiers_path.is_file():
+        try:
+            td = json.loads(tiers_path.read_text(encoding="utf-8"))
+            universal = set(
+                _field(_field(_field(td, "tiers", {}), "universal", {}),
+                       "skills", [])
+            )
+        except (json.JSONDecodeError, OSError):
+            universal = set()
+
+    clustered: set = set()
+    for body in _field(clusters_data, "clusters", {}).values():
+        clustered.update(_field(body, "members", []))
+
+    surfaced = universal | clustered
+
+    # 16a. coverage
+    for name in sorted(md_skills - surfaced):
+        logger.warning(
+            "  FAIL: skill %r is neither universal nor in any scenario "
+            "cluster -- it will never be surfaced (add it to the universal "
+            "tier or a _scenario_clusters.json cluster)", name)
+        failed += 1
+
+    # 16b. phantom
+    for name in sorted(clustered - md_skills):
+        logger.warning(
+            "  FAIL: _scenario_clusters.json member %r not found in skill "
+            "registry (phantom)", name)
+        failed += 1
+
+    if failed == 0:
+        logger.info(
+            "  [OK] %d md-skills all surfaced (universal or clustered)",
+            len(md_skills))
+    return failed, warned
+
+
 # -------------- main audit --------------
 
 def main(root: Path | None = None) -> int:
@@ -628,6 +709,15 @@ def main(root: Path | None = None) -> int:
         tier_failed, tier_warned = _audit_skill_tiers(root, tiers_path)
         failed += tier_failed
         warnings += tier_warned
+
+    # --- Check 16: skill scenario-surface coverage (P-0103 C, gc #100) ---
+    clusters_path = root / "knowledge" / "skills" / "_scenario_clusters.json"
+    if clusters_path.is_file():
+        logger.info("\n=== Check 16: Skill scenario-surface coverage ===")
+        sc_failed, sc_warned = _audit_scenario_coverage(
+            root, clusters_path, tiers_path)
+        failed += sc_failed
+        warnings += sc_warned
 
     # --- Checks 12-15: carrier_class transitional (warn-only, P-0053 Phase 2) ---
     # Schema v1.2.0 introduced `carrier_class` as a transitional required

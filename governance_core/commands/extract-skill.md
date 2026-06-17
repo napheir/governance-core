@@ -56,6 +56,16 @@ After completing a complex, multi-step workflow, use this command to capture it 
 
    Edit `knowledge/skills/_tiers.json` and append the skill name to the chosen tier's `skills` array (keep array sorted alphabetically).
 
+6b. **Surface the skill** (P-0103, gc #100): a tier classification is not
+   enough — a skill is only ever **consulted** if it enters the SessionStart
+   surface (第十五条 技能咨询纪律). Ensure the new skill is either in the
+   **`universal`** tier (surfaced every session) OR a member of a **scenario
+   cluster** in `knowledge/skills/_scenario_clusters.json` (a `cluster ->
+   members` map; schema in `knowledge/governance/skill-scenario-clusters.md`).
+   A `project` / `branch` skill that sits in no cluster is never surfaced and
+   stays dead weight — `audit_knowledge.py` Check 16 FAILs on it once any
+   scenario clusters are authored.
+
 7. **Rebuild the skill index**: Run the builder so `knowledge/skills/INDEX.md` reflects the new skill:
    ```bash
    python tools/build_skill_index.py
@@ -65,6 +75,7 @@ After completing a complex, multi-step workflow, use this command to capture it 
    ```bash
    python tools/audit_knowledge.py
    # Check 11 must report: [OK] N md-skills classified across 3 tier(s); INDEX.md up to date
+   # Check 16 (if scenario clusters authored): [OK] N md-skills all surfaced (universal or clustered)
    ```
 
 9. **Report to user**: Show the skill name, location, chosen tier, layer, and a summary of what was captured.
