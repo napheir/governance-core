@@ -306,6 +306,21 @@ def _parse_link_value(raw: str) -> list[str]:
 
 # -------------- skill tier bijection --------------
 
+def _detect_non_hub(root: Path) -> bool:
+    """Default-strict non-hub detection for audit relaxations (gc #101 / P-0104).
+
+    Returns True only when the config for ``root`` positively identifies a
+    downstream consumer clone. Any ambiguity (config absent / unreadable / no
+    consumer_id, or the hub itself) returns False, so the strict FAIL behavior
+    is the default and a relaxation can never silently weaken the hub.
+    """
+    try:
+        from governance_core.config import is_non_hub_clone
+        return is_non_hub_clone(root)
+    except Exception:
+        return False
+
+
 def _audit_skill_tiers(root: Path, tiers_path: Path) -> tuple[int, int]:
     """Audit knowledge/skills/_tiers.json against the live registry.
 
@@ -338,12 +353,23 @@ def _audit_skill_tiers(root: Path, tiers_path: Path) -> tuple[int, int]:
         logger.warning("  FAIL: cannot parse _tiers.json: %s", exc)
         return 1, 0
 
-    registry = SkillRegistry(track_usage=False)
+    # project_root=root so --root and isolated test fixtures scan the audited
+    # clone's skills (consistent with Check 16); at the hub this coincides with
+    # the git-toplevel default.
+    registry = SkillRegistry(track_usage=False, project_root=root)
     registry.scan()
+    manifest = registry.manifest()
     md_skills = {
-        s["name"] for s in registry.manifest()
+        s["name"] for s in manifest
         if s["source_type"] != "module"
     }
+    # Learned skills (source_type='learned') are the only ones a non-hub clone
+    # can produce locally; _tiers.json is hub-owned, so a freshly-extracted
+    # learned skill is legitimately catalog-pending in a consumer (gc #101).
+    learned_skills = {
+        s["name"] for s in manifest if s["source_type"] == "learned"
+    }
+    non_hub = _detect_non_hub(root)
 
     tier_to_skills: dict[str, set[str]] = {}
     for tier_id, tier_body in tiers_data.get("tiers", {}).items():
@@ -360,8 +386,17 @@ def _audit_skill_tiers(root: Path, tiers_path: Path) -> tuple[int, int]:
 
     # 11a. registry → tiers
     unclassified = md_skills - classified
-    if unclassified:
-        for name in sorted(unclassified):
+    for name in sorted(unclassified):
+        if non_hub and name in learned_skills:
+            # Non-hub clone: _tiers.json is hub-owned / out of this clone's
+            # scope, so a just-extracted learned skill is legitimately pending
+            # the hub's cataloging sweep (gc #101 / P-0104). WARN, don't FAIL.
+            logger.warning(
+                "  WARN: learned skill %r not yet in _tiers.json — pending "
+                "hub catalog (non-hub clone)", name
+            )
+            warned += 1
+        else:
             logger.warning(
                 "  FAIL: skill %r not classified in _tiers.json", name
             )
@@ -467,9 +502,14 @@ def _audit_scenario_coverage(root: Path, clusters_path: Path,
     # under --root and is isolatable in tests -- unlike Check 11's registry.
     registry = SkillRegistry(track_usage=False, project_root=root)
     registry.scan()
+    manifest = registry.manifest()
     md_skills = {
-        s["name"] for s in registry.manifest() if s["source_type"] != "module"
+        s["name"] for s in manifest if s["source_type"] != "module"
     }
+    learned_skills = {
+        s["name"] for s in manifest if s["source_type"] == "learned"
+    }
+    non_hub = _detect_non_hub(root)
 
     universal: set = set()
     if tiers_path.is_file():
@@ -490,11 +530,20 @@ def _audit_scenario_coverage(root: Path, clusters_path: Path,
 
     # 16a. coverage
     for name in sorted(md_skills - surfaced):
-        logger.warning(
-            "  FAIL: skill %r is neither universal nor in any scenario "
-            "cluster -- it will never be surfaced (add it to the universal "
-            "tier or a _scenario_clusters.json cluster)", name)
-        failed += 1
+        if non_hub and name in learned_skills:
+            # Non-hub clone: surfacing catalog (universal tier / clusters) is
+            # hub-owned, so a freshly-extracted learned skill is legitimately
+            # pending the hub's cataloging sweep (gc #101 / P-0104).
+            logger.warning(
+                "  WARN: learned skill %r not yet surfaced — pending hub "
+                "catalog (non-hub clone)", name)
+            warned += 1
+        else:
+            logger.warning(
+                "  FAIL: skill %r is neither universal nor in any scenario "
+                "cluster -- it will never be surfaced (add it to the universal "
+                "tier or a _scenario_clusters.json cluster)", name)
+            failed += 1
 
     # 16b. phantom
     for name in sorted(clustered - md_skills):

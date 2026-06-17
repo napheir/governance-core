@@ -17,6 +17,29 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-17 — P-0104 实现：extract-skill business-path + audit Check 11/16 非 hub pending 容忍（gc #101，发布 0.32.0）
+
+- **来源**：消费者 trade-agent 提的 gc 能力请求 issue #101（**非**结构化 candidate
+  envelope，故 `candidate.py review` 扫不到 —— 走 /proposal 当能力新增，而非
+  candidate promote）。follow-on of #100 / P-0103。
+- **Part B（代码）**：`config.py` 加 hub 判定原语 —— `HUB_CONSUMER_ID` 常量 +
+  `GovernanceConfig.consumer_id` 字段 + `is_hub` 属性 + `is_non_hub_clone()`
+  （default-strict：config 缺失 / 无 consumer_id / hub 一律 strict，membership
+  test 无 `.get` 兜底）。`audit_knowledge.py` Check 11a + 16a 对非 hub clone 的
+  `source_type==learned` 且 registry-only skill 记 WARN（pending hub catalog）
+  而非 FAIL；Check 11 registry 对齐 `project_root=root`（与 Check 16 一致、可隔离
+  测试）。hub 行为不变。
+- **Part A（skill）**：`commands/extract-skill.md` 加非 hub 分支（建 skill 文件 +
+  入自有 `_scenario_clusters.json`，跳过 hub-owned 步骤 6/7/8；audit WARN 不回滚），
+  hub 路径原样保留。
+- **测试**：新增 `governance_core/tools/test_pending_catalog_tolerance.py`（6 例：
+  hub / 非 hub / 缺 config / learned-only narrowness × Check 11a + 16a）。
+- **验证**：版本 0.31.0→**0.32.0**；upgrade + doctor exit 0；全测 64 pytest + 21
+  script = **85 passed**；wheel 隔离（top-level 仅 `governance_core*` + dist-info，
+  maintainer 未泄漏，4 改动文件齐全）。
+- **Non-goal**：hub-side cataloging sweep 归消费者 trade-agent **P-0114 WS-1**。
+- 实现 commit：本阶段 feat（Implements: P-0104）；关 #101；complete + archive P-0104。
+
 ### 2026-06-16 — P-0103 Phase 5 发布 0.31.0（close learned-skill loop A/B/C/D 全数上线）
 
 - **Phase 5**：bump 0.30.0 → **0.31.0**，发布 P-0103 全部四部分（A discover /
@@ -64,93 +87,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   （constitution/total.md 高敏路径，经 P-0103 治理）。
 - **剩余 P-0103**：Phase 4（C extract-skill scenario 分类 + bijection gate）、
   Phase 5（dogfood + 发布 + 关 #100）。
-
-### 2026-06-16 — P-0103 Phase 1+2（A discover + D measure）close learned-skill loop（未发布）
-
-- **#100 根因**（已 live 印证）：`session-context._emit_skill_injection` 自
-  prefix_cost C3（2026-05-07 批准）起只发 counts-only（本 session banner 即
-  `0 learned + 16 guides discovered`），agent 看不到 skill 名 → 5 clone 0/~50
-  learned skill 被用；`record_surfaced` 存在但不在 live path。
-- **A（discover）**：新 `registry.emit_bounded_injection(registry)` —— 读
-  consumer 自著的 `knowledge/skills/_tiers.json`（universal tier）+ 新
-  `_scenario_clusters.json`，发 **bounded** `name+desc`（universal ≤10）+ 紧凑
-  `cluster→members` MAP（body 懒加载），调 `record_surfaced`；无 index 返 None。
-  `_emit_skill_injection` 先试它、空则**回退 counts-only**（hub 0-skill 即此路）。
-- **D（measure）**：`record_surfaced` 现已在 live path（随 A）；`--funnel` CLI
-  早已存在 → D 实质随 A 完成。修 `_get_tracker` 绑 registry 的 `_root`（surfaced
-  落到被注入项目，default 行为不变、project_root 时正确 + 测试可隔离）。
-- **桥接设计修正**（用户认可）：gc **不 ship** `_scenario_clusters.json`（无
-  `knowledge/skills/` copy category，会 clobber 消费者自著）；只 ship **schema
-  文档 + reader**，json 消费者自著、gitignored，hub 回退 counts-only。同
-  candidate-pipeline「消费者自著数据、hub 只 ship 机制」同构。
-- **涉及**：新 `governance_core/knowledge_governance/skill-scenario-clusters.md`
-  （schema 契约）+ `discovery/registry.py`（reader + tracker 绑定）+
-  `hooks/session-context.py`（改接 + try/except 回退）+ `runtime_import_audit.py`
-  （登记 session-context 为 fail-open gc importer，过 Art 纪律审计）+ 新
-  `tools/test_skill_injection_bounded.py`（6 例 fixture）。
-- 验证：bounded 6/6 + pytest 55 + script 25/25（含 runtime-import 14/14 修复）；
-  live hook 双路验证（hub→counts-only rc0；authored index→bounded 菜单 rc0）；
-  upgrade manifest 152、doctor 略。**未 bump 版本**（release 在 Phase 5）。
-- **剩余 P-0103**：Phase 3（B consult clause via /iterate-constitution，用户选宪法
-  载体）、Phase 4（C extract-skill scenario 分类 + bijection gate）、Phase 5
-  （dogfood + 发布 + 关 #100）。
-
-### 2026-06-16 — P-0102 修 #97 移走 maintainer-only 测试 + #99 learn.md 载体感知时间戳 + 0.30.0
-
-- **#97 消费者 manifest 下发 maintainer-only 测试**：审计 `governance_core/tools/
-  test_*.py` 找到 **2** 个 import-时崩的（`sys.path.insert(maintainer)` + import
-  maintainer 模块）：`test_curate_gate.py`（`import curate_gate`）+
-  `test_candidate_intake.py`（`import candidate_intake`）。消费者无 `maintainer/`
-  → test collection 崩。修法：`git mv` 两者到 `maintainer/`（与被测代码同处、
-  `maintainer/` 本就不进 `COPY_CATEGORIES`/不打包）；`parent.parent` 对 tools/ 和
-  maintainer/ 都解析到 repo root，**零逻辑改动**，仅改各自 docstring 运行路径行。
-  `test_auth_guard` / `test_renewal` 只在注释/tmp_path fixture 提 maintainer、实际
-  只 import `governance_core`（已分发），消费者安全、**不动**（避免误移）。
-- **#99 learn.md 更新时间戳只认 MD**：Step 0 允许 HTML profile 载体（`kc:*` meta），
-  但 Step 3/4 只 bump YAML `updated:` → HTML-profile 文档可不 bump `kc:updated`、
-  陈旧时间戳被 dashboard/staleness 审计误读为 current。修法：Step 3 item 3 载体感知
-  （MD→`updated:` / HTML→`kc:updated`，status 变同步 `kc:status`）；Step 4 加
-  HTML-profile 的 `kc:*` 映射 note。kc:* 名核对 `knowledge-html-profile.md` 一致。
-- **合并依据**：两者皆消费者报的治理卫生 bug、互不相关但小，按 P-0099 先例合并
-  一个 proposal + 一次发布。
-- 验证：script 25/25（2 relocated 从 maintainer/ 跑 14+25 例）+ pytest 49 green；
-  upgrade prune **恰好** `tools/test_curate_gate` + `test_candidate_intake`、
-  manifest 152→150；wheel 顶层仅 `governance_core*`、**排除**两 relocated 测试、
-  无 `maintainer/` 泄漏；learn.md 载体文本入包；doctor exit 0。版本 0.29.0 →
-  **0.30.0**。关 #97/#99。
-
-### 2026-06-16 — P-0101 修 #98 hook stdin GBK fail-open（19 hook UTF-8 字节读取）+ 0.29.0
-
-- **#98 根因**：所有读 stdin 的治理 hook 用 locale 文本模式（`json.load(sys.stdin)`
-  / `json.loads(sys.stdin.read())`）。Windows GBK/cp936 下含中文（非 cp936）的
-  payload 解码即 raise，被 `except` 吞掉 → hook **fail-open**（沉默放行）。消费者
-  trade-agent `proposal_classify_fast_errors.jsonl` 记 313 条 "stdin parse failed"
-  fail-open。最危的是 `proposal-classify-fast.py`（5 层 backstop gate）。
-- **主修复**：19 个 hook 的 stdin 读取改为 locale 无关的
-  `json.loads(sys.stdin.buffer.read().decode("utf-8"))`（buffer 绕过文本层，解码
-  与 OS locale 无关）。narrow-except 的 4 个（constitution-reminder /
-  constitutional-review / prompt-context-router / session-context）补
-  `UnicodeDecodeError`；broad-except 的 13 个 + skill-usage-tracker（ValueError
-  已涵盖）只改读取行。
-- **关键判断**：多个 gate（command/scope/edit-write/data-source-guard）**本就
-  `except Exception: sys.exit(0)` fail-open by design**；classify docstring 明示
-  fail-open backstop（"绝不因自身 bug 锁死仓库"）。#98 真因不是 fail-open 分支
-  存在，而是**合法中文 payload 被误路由进它**。故只修解码、**保留各 hook 既有
-  fail 姿态**（不擅自翻 fail-closed —— 那是另一个有锁死风险的独立硬化决定，标为
-  可选后续）。"no gate is loosened" 满足。
-- **纵深防御**：installer `_write_settings_local_json` 原生写 `env.PYTHONUTF8="1"`
-  （fresh 建 + merge-if-absent 不覆盖消费者既有 env），fresh 装即带缓解、不再仅靠
-  preserve 旧 env。Art.4 用 `"env" in data` 而非 defaulted lookup（注释也避字面
-  `.get(k,default)` 以免 constitutional-review 误命中）。
-- **测试**：classify hook +2 回归（中文 payload→gate block exit 2；非法 utf-8→known
-  fail-open exit 0），用 `PYTHONIOENCODING=ascii` **确定性**复现 —— hub 机器系统
-  代码页是 UTF-8、`PYTHONUTF8=0` 复现不出 GBK fail-open（同 hub-cannot-dogfood
-  类），ascii 文本模式对任何 >0x7f 字节必 raise、buffer 读绕过、跨平台稳定。新
-  `test_installer_settings_env.py` 3 例（fresh 有 / merge 保留 / 不覆盖已有）。
-- 验证：script 式 25/25（command-guard 等无回归）+ pytest 49 green；upgrade 后
-  settings `env={PYTHONUTF8:1}`、classify 9/9；command-guard 中文 evasion→block(2)
-  手验；wheel 顶层仅 `governance_core*`、含 19 hook 改动 + installer + 2 测试、
-  无 `maintainer/` 泄漏。版本 0.28.0 → **0.29.0**。关 #98。
 
 ### 2026-06-15 — P-0100 收编 candidate #96 proposal_suggest（泛化 kernel）+ 0.28.0
 

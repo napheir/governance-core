@@ -20,6 +20,12 @@ from typing import Any
 
 CONFIG_FILENAME = ".governance/config.json"
 
+# Canonical consumer_id of the convergence hub (P-0065 / P-0066). A clone whose
+# authorization.consumer_id equals this is the hub itself (self-hosting
+# governance-core); any other id is a downstream consumer / business clone.
+# Used to gate hub-only governance behavior (e.g. strict skill-catalog audit).
+HUB_CONSUMER_ID = "governance-core"
+
 
 @dataclass(frozen=True)
 class AgentSpec:
@@ -40,6 +46,22 @@ class GovernanceConfig:
     agents: tuple[AgentSpec, ...]
     upstream_branch: str
     raw: dict[str, Any]
+    # authorization.consumer_id from .governance/config.json, or None when the
+    # config carries no authorization block / consumer_id. Defaulted last so
+    # positional construction of the prior fields is unaffected.
+    consumer_id: str | None = None
+
+    @property
+    def is_hub(self) -> bool:
+        """True iff this clone is the convergence hub (self-hosting governance-core).
+
+        A clone whose authorization.consumer_id is HUB_CONSUMER_ID is the hub.
+        Note: an absent consumer_id yields False here. Callers needing
+        default-strict semantics (never silently relax a hub guarantee) must
+        gate on a *positively identified* non-hub clone via
+        :func:`is_non_hub_clone`, not on ``not is_hub``.
+        """
+        return self.consumer_id == HUB_CONSUMER_ID
 
 
 def load_config(project_root: str | Path | None = None) -> GovernanceConfig:
@@ -61,6 +83,14 @@ def load_config(project_root: str | Path | None = None) -> GovernanceConfig:
         AgentSpec(name=a["name"], branch=a["branch"], clone_dir=a["clone_dir"])
         for a in raw["agents"]
     )
+    # Membership tests, not defaulted lookups (Art.4): authorization /
+    # consumer_id are optional in the config schema, so absence -> None.
+    auth = raw["authorization"] if "authorization" in raw else None
+    consumer_id = (
+        auth["consumer_id"]
+        if isinstance(auth, dict) and "consumer_id" in auth
+        else None
+    )
     return GovernanceConfig(
         project_name=raw["project_name"],
         install_root=Path(raw["install_root"]),
@@ -72,7 +102,26 @@ def load_config(project_root: str | Path | None = None) -> GovernanceConfig:
         agents=agents,
         upstream_branch=raw.get("upstream_branch", "origin/master"),
         raw=raw,
+        consumer_id=consumer_id,
     )
+
+
+def is_non_hub_clone(project_root: str | Path | None = None) -> bool:
+    """True only when config loads AND positively identifies a non-hub clone.
+
+    Default-strict: any ambiguity — config missing / unreadable, no
+    authorization block, or an absent consumer_id — returns False (treat as the
+    hub, i.e. apply strict behavior). This is the gate audit relaxations must
+    use so they can never silently weaken the hub's own guarantees: a relaxation
+    happens only when we are *sure* we are a downstream consumer clone.
+
+    project_root defaults to env var GOVERNANCE_CORE_PROJECT_ROOT or cwd.
+    """
+    try:
+        cfg = load_config(project_root)
+    except Exception:
+        return False
+    return cfg.consumer_id is not None and not cfg.is_hub
 
 
 # Proposal-pipeline storage layout — derived by convention from
