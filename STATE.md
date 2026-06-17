@@ -17,6 +17,23 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-16 — P-0103 Phase 3（B consult）新增宪法 第十五条 技能咨询纪律（未发布）
+
+- **B（consult）**：经 `/iterate-constitution` 新增 **第十五条：技能咨询纪律** ——
+  任务开始前必须先咨询 SessionStart 注入的 universal skills / scenario clusters，
+  命中场景时**加载相关 skill/cluster 而非重新推导**。闭合 discover→**consult**→
+  apply 的中段（A discover 已在 Phase 1 落地）。
+- **载体**（用户选"走宪法"）：`constitution/total.md` 加第十五条（填 art_15 空槽，
+  位于 14 wrap-up 与 16 memory 间）+ 新 clause 源
+  `governance_core/clauses/art_15_skill_consultation_discipline.md`（**域中立**，
+  下发所有消费者；未泄 gc 内部 proposal id）。
+- 验证：regen CLAUDE.md 第十五条就位（247 行 / 13150 chars << 上限）；
+  audit_sub_constitutions OK（无子宪法改动）；check_constitution_change clean；
+  upgrade 渲染 `.governance/clauses` 10→11（art_15 生成）。classify gate 已记录
+  （constitution/total.md 高敏路径，经 P-0103 治理）。
+- **剩余 P-0103**：Phase 4（C extract-skill scenario 分类 + bijection gate）、
+  Phase 5（dogfood + 发布 + 关 #100）。
+
 ### 2026-06-16 — P-0103 Phase 1+2（A discover + D measure）close learned-skill loop（未发布）
 
 - **#100 根因**（已 live 印证）：`session-context._emit_skill_injection` 自
