@@ -43,6 +43,12 @@ FAIL_OPEN_GC_IMPORTERS: frozenset[str] = frozenset({
     # failure) and the hook already fails open (silent sys.exit(0) on any
     # error), so a broken package degrades it -- never freezes a prompt.
     "prompt-context-router.py",
+    # P-0103 (gc #100): the SessionStart bounded skill menu imports
+    # discovery.registry inside _emit_skill_injection(); the import is guarded
+    # (try/except -> falls back to the counts-only summary) and the hook fails
+    # open (silent sys.exit(0)), so a broken package degrades discovery to
+    # counts only -- never breaks SessionStart.
+    "session-context.py",
 })
 
 # Fail-CLOSED governance_core importers grandfathered pending a

@@ -100,7 +100,15 @@ class SkillRegistry:
         """
         if self._tracker is None:
             from governance_core.discovery.tracker import SkillTracker
-            self._tracker = SkillTracker()
+            # Bind the tracker to THIS registry's root so the usage funnel
+            # (record_surfaced/use) lands at the project being scanned, not
+            # wherever resolve_project_root(__file__) happens to point. For the
+            # default registry (no project_root) this is identical to before;
+            # for an explicit project_root (hook/consumer/tests) it is correct.
+            self._tracker = SkillTracker(
+                tracker_path=self._root / ".claude" / "skills"
+                / "learned" / ".usage.json"
+            )
         return self._tracker
 
     def scan(self) -> int:
@@ -412,6 +420,110 @@ def _emit_injection(registry: "SkillRegistry") -> None:
         "  Full manifest: python -m governance_core.discovery.registry --format table"
     )
     _sys.stdout.write("\n".join(lines) + "\n")
+
+
+# Bounded universal-tier injection limit (re-balances prefix_cost C3 without
+# re-introducing the full manifest dump). Scenario-cluster bodies stay lazy.
+_UNIVERSAL_INJECTION_LIMIT = 10
+
+
+def emit_bounded_injection(registry: "SkillRegistry") -> Optional[str]:
+    """Return a bounded SessionStart skill menu, or None if no scenario index.
+
+    Issue #100 / P-0103 part A. Re-balances prefix_cost_optimization.md C3
+    (counts-only) with a BOUNDED names menu so an agent can actually consult
+    learned skills:
+
+      - universal-tier skills (``knowledge/skills/_tiers.json`` ->
+        ``tiers.universal.skills``) as ``name + 1-line desc``, capped at
+        ``_UNIVERSAL_INJECTION_LIMIT``;
+      - a compact scenario-cluster map (``knowledge/skills/_scenario_clusters.json``)
+        ``cluster -> member names``; cluster BODIES stay lazy (Skill tool).
+
+    Records path-A surfacing via the usage funnel (``record_surfaced``).
+    Returns ``None`` when neither index is authored (e.g. a hub with 0 learned
+    skills) so the caller falls back to the counts-only summary. Membership is
+    consumer-authored (gitignored ``knowledge/skills/``); gc ships only this
+    reader + the schema doc (``knowledge/governance/skill-scenario-clusters.md``).
+    """
+    skills_dir = registry._root / "knowledge" / "skills"
+    tiers_path = skills_dir / "_tiers.json"
+    clusters_path = skills_dir / "_scenario_clusters.json"
+    if not tiers_path.exists() and not clusters_path.exists():
+        return None
+
+    def _load(path: Path) -> dict:
+        try:
+            return json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError, UnicodeDecodeError):
+            return {}
+
+    def _field(d, key, default):
+        # Membership test, not a defaulted dict lookup (Art.4): this parses a
+        # consumer-authored data file, not config, but the guard is textual.
+        return d[key] if isinstance(d, dict) and key in d else default
+
+    universal: list = []
+    if tiers_path.exists():
+        tiers = _load(tiers_path)
+        universal = list(
+            _field(_field(_field(tiers, "tiers", {}), "universal", {}),
+                   "skills", [])
+        )
+    clusters: dict = {}
+    if clusters_path.exists():
+        clusters = _field(_load(clusters_path), "clusters", {})
+
+    if not universal and not clusters:
+        return None
+
+    by_name = {
+        e["name"]: (e["description"] or "")
+        for e in registry.manifest_for_injection(["learned", "guide"])
+    }
+
+    surfaced: list = []
+    lines = [
+        "[Skills (L0)] Consult before re-deriving "
+        "(bodies lazy via Skill tool):"
+    ]
+    if universal:
+        lines.append("  Universal (every session):")
+        for name in universal[:_UNIVERSAL_INJECTION_LIMIT]:
+            desc = (by_name[name] if name in by_name else "")[:80] \
+                or "(no description)"
+            lines.append(f"    {name:<36}  {desc}")
+            surfaced.append(name)
+        extra = len(universal) - _UNIVERSAL_INJECTION_LIMIT
+        if extra > 0:
+            lines.append(
+                f"    (+{extra} more universal -- registry --format table)"
+            )
+    if clusters:
+        lines.append(
+            "  Scenario clusters (load the matching one on entry):"
+        )
+        for cid, body in clusters.items():
+            members = _field(body, "members", [])
+            cdesc = _field(body, "description", "")
+            head = f"    {cid} ({len(members)})"
+            if cdesc:
+                head += f" -- {cdesc[:60]}"
+            lines.append(head)
+            if members:
+                lines.append(f"      {', '.join(members)}")
+            surfaced.extend(members)
+    lines.append(
+        "  Full manifest: python -m governance_core.discovery.registry "
+        "--format table"
+    )
+
+    # Record path-A surfacing (best-effort; never break injection output).
+    try:
+        registry._get_tracker().record_surfaced(sorted(set(surfaced)))
+    except Exception:  # noqa: BLE001 - tracking is diagnostic, not critical
+        pass
+    return "\n".join(lines)
 
 
 def _emit_funnel(registry: "SkillRegistry") -> None:

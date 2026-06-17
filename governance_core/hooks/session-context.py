@@ -365,21 +365,35 @@ def _check_restart_required() -> str:
 
 
 def _emit_skill_injection(root) -> str:
-    """Emit lazy skill-counts summary (counts-only, ~3 lines).
+    """Emit the SessionStart skill menu (bounded names) or a counts-only summary.
 
-    Per proposals/prefix_cost_optimization.md C3 (approved 2026-05-07):
-    Replaces full Tier A+B manifest dump (~55 lines / ~6.7KB / ~1650 tokens
-    of SessionStart prompt prefix) with a counts-only summary. Skills are
-    still discoverable via the Skill tool's lazy listing; the routing
-    index handles auto-injection of governance docs.
+    P-0103 part A (issue #100): when a consumer has authored a scenario index
+    (``knowledge/skills/_tiers.json`` / ``_scenario_clusters.json``), emit a
+    BOUNDED menu -- universal-tier ``name + desc`` (capped) + a compact
+    ``cluster -> members`` map, bodies lazy -- so the agent can actually
+    consult learned skills, and record path-A surfacing. This re-balances
+    prefix_cost_optimization.md C3 (approved 2026-05-07; the full ~1650-token
+    Tier A+B dump) without re-introducing it: names + a compact map only.
 
-    Counts are computed via direct file scan (non-recursive glob over
-    .claude/skills/*.md for guides + .claude/skills/learned/*.md for
-    learned). No subprocess; no TTL cache needed (constant-time op).
+    Fallback: when no scenario index is authored (e.g. a hub with 0 learned
+    skills), or anything goes wrong, emit the C3 counts-only summary computed
+    via direct glob (constant-time, no import). SessionStart must never break.
     """
     skills_dir = Path(root) / ".claude" / "skills"
     if not skills_dir.is_dir():
         return ""
+    # P-0103 A: bounded names menu when a scenario index is authored.
+    try:
+        from governance_core.discovery.registry import (
+            SkillRegistry, emit_bounded_injection,
+        )
+        _reg = SkillRegistry(project_root=Path(root))
+        _reg.scan()
+        _menu = emit_bounded_injection(_reg)
+        if _menu:
+            return _menu
+    except Exception:  # noqa: BLE001 - never break SessionStart; fall back
+        pass
     try:
         guides = sum(1 for p in skills_dir.glob("*.md") if p.is_file())
         learned = 0
