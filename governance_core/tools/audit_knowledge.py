@@ -509,6 +509,9 @@ def _audit_scenario_coverage(root: Path, clusters_path: Path,
     learned_skills = {
         s["name"] for s in manifest if s["source_type"] == "learned"
     }
+    command_skills = {
+        s["name"] for s in manifest if s["source_type"] == "command"
+    }
     non_hub = _detect_non_hub(root)
 
     universal: set = set()
@@ -530,6 +533,14 @@ def _audit_scenario_coverage(root: Path, clusters_path: Path,
 
     # 16a. coverage
     for name in sorted(md_skills - surfaced):
+        if name in command_skills:
+            # Slash commands are always listed in the harness Skill-tool menu
+            # and invoked by name, so their discoverability never depends on
+            # SessionStart cluster surfacing -- the use_count=0 gap (P-0113)
+            # this gate closes is about consult-only learned/guide skills.
+            # Exempt commands from FAIL (gc #102 / P-0105); this is additive to
+            # the #101 non-hub-learned WARN carve-out below, not a replacement.
+            continue
         if non_hub and name in learned_skills:
             # Non-hub clone: surfacing catalog (universal tier / clusters) is
             # hub-owned, so a freshly-extracted learned skill is legitimately

@@ -147,6 +147,15 @@
       "decision": "promoted",
       "note": "P-0100: promoted genericized kernel in gc 0.28.0. Mechanism verbatim; thinned trade-domain _DOMAIN_ALIASES to domain-neutral structural aliases; added missing (2) data source seed knowledge/governance/proposal-drafting-checklist.md; wired read-only pointer into proposal.md classify. Not via candidate.py promote (would clobber genericization).",
       "reviewed_at": "2026-06-15T02:02:25Z"
+    },
+    {
+      "id": "cand-trade-agent-20260618-check16-exempt-command-from-coverage-fail",
+      "origin": "trade-agent",
+      "kind": "mechanism",
+      "title": "Check 16 (16a) exempt source_type=command from coverage FAIL",
+      "decision": "promoted",
+      "note": "Promoted via P-0105 (gc #102). Additive command carve-out in _audit_scenario_coverage 16a, composes with #101 non-hub-learned WARN. Ships v0.33.0.",
+      "reviewed_at": "2026-06-18T02:17:29Z"
     }
   ]
 }
