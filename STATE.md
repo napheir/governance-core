@@ -17,6 +17,32 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-18 — P-0105 实现：Check 16 (16a) 豁免 slash command 覆盖 FAIL（gc #102，发布 0.33.0）
+
+- **来源**：消费者 trade-agent 的 gc 能力 candidate，以 **plain issue #102**（无
+  `candidate` label、无 envelope）提交 —— `candidate.py review` 扫不到（命中记忆
+  candidate-review-misses-unlabeled-issues：查 `gh issue list` 捞 unlabeled）。
+  经 `/curate-candidate` 评估为可促进通用精简，走 `/proposal`。follow-on of
+  #101 / P-0104（同一 16a FAIL/WARN 面，additive）。
+- **改动**：`audit_knowledge.py` `_audit_scenario_coverage` 加 `command_skills`
+  集，16a 循环在 #101 non-hub/learned WARN 分支**之前** `continue` 跳过
+  `source_type==command` —— 两 carve-out **可组合**（非替换）。理由：slash command
+  始终在 harness Skill-tool 菜单按名可调，可发现性不依赖 SessionStart cluster
+  surfacing（P-0113 缺口只针对 consult-only learned/guide）。guide/learned 仍受
+  覆盖；16b phantom 不动。
+- **范围决策**：**不**扩张到 Check 11（`_audit_skill_tiers`）—— 它有 `unclassified`
+  兜底桶（11c 仅 WARN），command 可入桶不 FAIL；Check 16 无此兜底才过度 FAIL，
+  故 candidate 精确只 scope 16，超范围会越出已批 proposal。
+- **测试**：新增 `governance_core/tools/test_command_coverage_exempt.py`（4 例：
+  command 豁免 / 非 hub learned 仍 WARN / guide 仍 FAIL / 16b phantom 不变）。
+- **验证**：0.32.0→**0.33.0**；新+回归 13 passed（4 新 + 9 旧）；8 个源布局
+  false-fail 经 `tools/` 路径确认通过（记忆 gc-test-suite-run-from-autonomy-layer）；
+  upgrade + doctor exit 0；wheel 隔离（top-level 仅 `governance_core*` + dist-info、
+  maintainer 未泄漏、新文件齐全）。
+- **收尾**：commit `9875ebf`（Implements: P-0105 / Closes #102）；ledger 记 promoted
+  （`maintainer/consumer_registry.json`，按记忆 curate-promote-clobbers... 用
+  `registry.record_candidate` 直记而非 promote）；gc #102 已评论 + 关闭。
+
 ### 2026-06-17 — P-0104 实现：extract-skill business-path + audit Check 11/16 非 hub pending 容忍（gc #101，发布 0.32.0）
 
 - **来源**：消费者 trade-agent 提的 gc 能力请求 issue #101（**非**结构化 candidate
