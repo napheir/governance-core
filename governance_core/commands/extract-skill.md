@@ -119,8 +119,7 @@ later sweep.
 ## Notes
 
 - Skills are stored in `.claude/skills/learned/` (auto-discovered by SkillRegistry)
-- Use `--overwrite` flag if refining an existing skill
-- For incremental refinement, use `refine_skill()` from `governance_core.discovery.extractor`
+- Use `--overwrite` flag if refining an existing skill (re-extract over the prior version)
 - Follow kebab-case naming convention
 - Reference: `knowledge/research/hermes_agent.md` (Section 2, Mechanism A)
 - Tier decision is informed by `knowledge/skills/INDEX.md` examples — browse with `python tools/skill_catalog.py` to see what each tier currently contains

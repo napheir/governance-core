@@ -120,7 +120,6 @@ class SkillTracker:
                         "tasks_completed": 0,
                         "files_modified": 0,
                         "skills_used": [],
-                        "steps_taken": [],
                     },
                     "last_extraction": None,
                     "extractions_total": 0,
@@ -132,8 +131,7 @@ class SkillTracker:
             logger.warning("Tracker file corrupt, reinitializing: %s", e)
             return {"skills": {}, "sessions": {
                 "current": {"date": _today(), "tasks_completed": 0,
-                            "files_modified": 0, "skills_used": [],
-                            "steps_taken": []},
+                            "files_modified": 0, "skills_used": []},
                 "last_extraction": None, "extractions_total": 0,
             }}
 
@@ -177,7 +175,6 @@ class SkillTracker:
                 "tasks_completed": 0,
                 "files_modified": 0,
                 "skills_used": [],
-                "steps_taken": [],
             }
             sessions["current"] = current
         return current
@@ -206,19 +203,6 @@ class SkillTracker:
 
         self._save()
         logger.info("Skill use recorded: %s (total: %d)", name, entry["use_count"])
-
-    def record_refinement(self, name: str) -> None:
-        """Record that a skill was refined.
-
-        Args:
-            name: Skill name.
-        """
-        skills = self._data.setdefault("skills", {})
-        entry = skills.get(name)
-        if entry:
-            entry["refinement_count"] = entry.get("refinement_count", 0) + 1
-            entry["last_used"] = _today()
-            self._save()
 
     # --- Usage funnel: Surfaced (A) / Triggered (B) / Loaded (C) ---
     #
@@ -313,22 +297,6 @@ class SkillTracker:
         session["tasks_completed"] = session.get("tasks_completed", 0) + 1
         self._save()
 
-    def record_step(self, step_description: str) -> None:
-        """Record an execution step in the current session.
-
-        Used for auto-refinement: captures actual steps taken while
-        following a skill, so they can be diff'd against the skill document.
-
-        Args:
-            step_description: What was done (e.g., "Ran pytest tests/daily/").
-        """
-        session = self._ensure_current_session()
-        session.setdefault("steps_taken", []).append({
-            "step": step_description,
-            "timestamp": datetime.now().isoformat(timespec="seconds"),
-        })
-        self._save()
-
     def record_files_modified(self, count: int) -> None:
         """Record number of files modified in this session.
 
@@ -418,7 +386,6 @@ class SkillTracker:
         session = self._ensure_current_session()
         score = session.get("tasks_completed", 0)
         score += session.get("files_modified", 0) // 5
-        score += len(session.get("steps_taken", [])) // 10
         if session.get("skills_used"):
             score += 2
         return score
@@ -462,15 +429,6 @@ class SkillTracker:
         session = self._ensure_current_session()
         return list(session.get("skills_used", []))
 
-    def steps_taken_this_session(self) -> list[dict]:
-        """Return steps recorded in this session.
-
-        Returns:
-            List of step dicts with 'step' and 'timestamp'.
-        """
-        session = self._ensure_current_session()
-        return list(session.get("steps_taken", []))
-
     # --- Weighted scoring ---
 
     def weighted_scores(self) -> dict[str, float]:
@@ -510,7 +468,6 @@ class SkillTracker:
             "tasks_completed": session.get("tasks_completed", 0),
             "files_modified": session.get("files_modified", 0),
             "skills_used_today": session.get("skills_used", []),
-            "steps_taken_today": len(session.get("steps_taken", [])),
             "session_complexity": self.session_complexity(),
             "extraction_threshold": _EXTRACTION_THRESHOLD,
             "should_extract": self.should_extract(),
@@ -581,7 +538,6 @@ def main() -> None:
     print(f"  Session date:        {stats['session_date']}")
     print(f"  Tasks completed:     {stats['tasks_completed']}")
     print(f"  Files modified:      {stats['files_modified']}")
-    print(f"  Steps taken:         {stats['steps_taken_today']}")
     print(f"  Skills used today:   {stats['skills_used_today']}")
     print(f"  Session complexity:  {stats['session_complexity']} / {stats['extraction_threshold']}")
     print(f"  Should extract:      {stats['should_extract']}")

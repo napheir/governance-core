@@ -156,6 +156,15 @@
       "decision": "promoted",
       "note": "Promoted via P-0105 (gc #102). Additive command carve-out in _audit_scenario_coverage 16a, composes with #101 non-hub-learned WARN. Ships v0.33.0.",
       "reviewed_at": "2026-06-18T02:17:29Z"
+    },
+    {
+      "id": "cand-trade-agent-20260618-retire-dead-auto-refine",
+      "origin": "trade-agent",
+      "kind": "mechanism",
+      "title": "Retire dead Hermes auto-refine path (record_step zero producers)",
+      "decision": "promoted",
+      "note": "Adopted contributor option (a): retired the structurally-dead auto-refine subsystem via P-0106 (gc #103). Intent re-homed in P-0107 (v2 LLM-reflection design). Ships v0.34.0.",
+      "reviewed_at": "2026-06-18T09:57:20Z"
     }
   ]
 }

@@ -17,6 +17,35 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-18 — P-0106 实现：retire 死掉的 Hermes auto-refine 路径（gc #103，发布 0.34.0）
+
+- **来源**：trade-agent consumer 以 plain issue **#103** 报 dead-code（P-0117）。
+  批准前按要求做了全簇调用图核查：`record_step` 全仓库零 producer →
+  `steps_taken` 恒空 → `diff_and_refine` 恒 None → wrap-up Step 4b `--auto-refine`
+  恒 no-op（且 `--name/--steps` required，wrap-up 那条命令其实会 argparse 报错退出）。
+  确认 hooks/tests/`__init__` 导出均无引用、`extract_skill` 等 live 路径独立。
+- **关键决策**：用户问「是否该修使其生效而非删」。读下游后判定整链 naive（≥50%
+  词袋判定、append-only 写、格式脆弱），即便接 producer 也会往 skill 文档写噪声。
+  → 选 **retire 现有 naive 实现 + 另起 v2 设计 proposal P-0107**（LLM 反思 @
+  wrap-up + `/update-skill` 门控），初衷被保留而非丢弃。
+- **改动（6 文件）**：`discovery/extractor.py` 删 `diff_and_refine`/`refine_skill`/
+  `_extract_workflow_steps`/`_find_novel_steps`/`--auto-refine` CLI；
+  `discovery/tracker.py` 删 `record_step`/`steps_taken_this_session`/
+  `record_refinement` + `steps_taken` 字段管线（含 `session_complexity` 恒 0 的项、
+  get_stats 字段/print）；`commands/wrap-up.md` 删 Step 4b 并 renumber 4c→4b/4d→4c +
+  清单去「Skill 已精炼」；`commands/extract-skill.md` 删 `refine_skill()` 指针；
+  `commands/update-skill.md` 改 stale 理由（保留 learned/*.json 不触发规则）。
+  保留 live：`extract_skill` + A/B/C 漏斗（`record_use/surfaced/triggered`）。
+- **范围克制**：`weighted_scores` 的 `refinement_count` 项保留（live 评分，P-0107 Q5
+  再议是否重接）；不碰 A/B/C 漏斗。
+- **测试**：新增 `governance_core/tools/test_auto_refine_retired.py`（6 例:死符号
+  消失/CLI 拒 --auto-refine/extract_skill 仍工作/complexity 恒等于 tasks+files//5+2
+  无 steps 项/get_stats 无 steps_taken_today）；`test_skill_funnel` 12/12 回归绿。
+- **验证**：0.33.0→**0.34.0**；pytest 66 passed（8 个既有源布局 false-fail 经 tools/
+  确认 21 passed）；包源零残留引用 + 模块干净导入；upgrade+doctor exit 0（安装层
+  wrap-up 无 auto-refine）；wheel 隔离（top-level 仅 `governance_core*`、maintainer
+  未泄漏、改动文件齐全）。ledger 记 promoted（采纳 option a）。
+
 ### 2026-06-18 — P-0105 实现：Check 16 (16a) 豁免 slash command 覆盖 FAIL（gc #102，发布 0.33.0）
 
 - **来源**：消费者 trade-agent 的 gc 能力 candidate，以 **plain issue #102**（无

@@ -16,7 +16,7 @@ owner: core
 - `.claude/hooks/*.py`（harness hook 脚本）
 - `tools/sync_infra.py` 的 `COPY_COMMANDS` / `COPY_AGENTS` / `CENTRAL_HOOKS` 清单
 
-**不触发**：`.claude/skills/learned/*.json`（per-agent session state，由 extractor auto-refine 处理，不与宪法耦合）。
+**不触发**：`.claude/skills/learned/*.json`（per-agent runtime tracker state，由 SkillTracker 运行时维护，不与宪法耦合）。
 
 ## Step 1：识别本阶段改过的 skill 文件
 
