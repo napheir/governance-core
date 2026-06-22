@@ -165,6 +165,15 @@
       "decision": "promoted",
       "note": "Adopted contributor option (a): retired the structurally-dead auto-refine subsystem via P-0106 (gc #103). Intent re-homed in P-0107 (v2 LLM-reflection design). Ships v0.34.0.",
       "reviewed_at": "2026-06-18T09:57:20Z"
+    },
+    {
+      "id": "cand-trade-agent-20260622-audit-subsystem-health-before-proposing-",
+      "origin": "trade-agent",
+      "kind": "skill",
+      "title": "audit-subsystem-health-before-proposing-change",
+      "decision": "promoted",
+      "note": "P-0109: genericized (de-trade-ified Notes) + landed governance_core/skills/, theme=universal, commit 757b120, v0.36.0",
+      "reviewed_at": "2026-06-22T05:54:19Z"
     }
   ]
 }
