@@ -66,6 +66,11 @@ This repo runs its own proposal pipeline:
   `proposals/_archive/<YYYY>/` (committed — the durable governance record).
 - The `/proposal` skill (`.claude/commands/proposal.md`) wraps the state
   machine; `tools/proposal_lib.py` is the CLI it calls.
+- P-0108 plan-mode rigor (v0.35.0): `transition --to approved` now hard-BLOCKs
+  when the `## Current State (read, not assumed)` section is absent / placeholder
+  / has no `file:line` ref (escape hatch `--allow-empty-current-state`);
+  `proposal_lib.py reconcile --id P-NNNN --commit H` lists as-built coverage gaps
+  (run at `complete` step-0). Details in the skill — this is just a pointer.
 
 ## 5. Constitution changes
 
