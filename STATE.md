@@ -17,6 +17,24 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-22 — P-0109 实现：promote audit-subsystem-health skill（gc #105，发布 0.36.0）
+
+- **来源**：consumer trade-agent 以正规 candidate 信封（gc #105，kind/skill，
+  auto-eligible）提供 learned skill `audit-subsystem-health-before-proposing-change`。
+  策展判定通用治理方法论，用户选 promote。
+- **改动**：新增 `governance_core/skills/audit-subsystem-health-before-proposing-change.md`
+  —— 泛化 Notes（去掉 P-0117 / auto-refine / gc #103 trade 域示例，改通用 worked
+  example；Workflow 机制 verbatim），frontmatter 转 gc guide schema `theme: universal`，
+  加 `## Discovery`（router-skip 决策）。版本 0.35.0→0.36.0。
+- **scope 判定**：gc 全部 15 个 guide 都是 universal-tier、无 `INDEX.routing.json`/cluster
+  基建 → 第 16 个 universal guide，SessionStart name+description surfacing，无需 routing/
+  cluster 改动。与 P-0108 checklist dim-4 互补（draft-time nudge vs 可咨询 workflow）。
+- **dogfood**：P-0109 由新 scaffold 生成（带 Current State + Alternatives 两段），approve
+  时被 P-0108 研究门校验 —— 因 Current State 填了 file:line 而放行（门生效闭环）。
+- **测试**：registry 发现新 skill（17 skills/31 total，guide tier）；全量 91 pytest +
+  21 脚本式 = 0 失败；upgrade+doctor exit 0；wheel 0.36.0 隔离干净、skill 入包、无
+  maintainer 泄漏。
+
 ### 2026-06-22 — P-0108 实现：把 Plan-mode 工程 rigor 嫁接到 proposal 管线（gc #104，发布 0.35.0）
 
 - **来源**：trade-agent consumer 以 plain issue **#104**（P-0118）报"pipeline 在治理
