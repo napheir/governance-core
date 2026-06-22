@@ -29,6 +29,9 @@ Validates:
             (cross-branch via `git ls-tree origin/*`) (P-0057 Phase 3 C2)
   Check 12: archive frontmatter `agent` field MUST match the commit author
             (`git log -1 --format=%ae`) — WARN only (P-0057 Phase 3 C3)
+  Check 13: in-flight non-terminal proposals created on/after the cutover
+            carry an adequate Current State section (shares the transition
+            --to approved predicate) — WARN only (P-0108)
 
 Schema: contracts/proposal_frontmatter_schema.md v1.1.0
 
@@ -66,6 +69,12 @@ REQUIRED_BY_STATUS = {
     "superseded": {"superseded_by"},
     "rejected": {"rejected_at", "rejection_reason"},
 }
+
+# Check 13 (P-0108): in-flight non-terminal proposals created on/after this
+# cutover must carry an adequate Current State section. Pre-cutover proposals
+# are grandfathered so the 135 pre-G1 proposals don't flood the audit.
+CURRENT_STATE_CUTOVER = "2026-06-22"
+_CURRENT_STATE_CHECKED_STATUSES = {"pending", "approved", "in-progress"}
 
 _FRONTMATTER_OPEN = re.compile(r"\A---\s*\n")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -442,6 +451,41 @@ def _check_archive_author_match(archive: list, repo_root: Path) -> list:
     return warnings
 
 
+def _check_current_state_adequacy(in_flight: list, repo_root: Path) -> list:
+    """Check 13 (P-0108): WARN-only — in-flight non-terminal proposals created
+    on/after CURRENT_STATE_CUTOVER must have an adequate Current State section.
+
+    Shares the `current_state_adequacy` predicate with the `transition --to
+    approved` BLOCK so WARN and BLOCK never disagree. Archive + legacy + draft
+    + pre-cutover proposals are exempt (grandfathered) so the 135 pre-G1
+    proposals don't flood the audit. Fails open (no WARN) if the predicate
+    can't be imported -- this is an advisory check, never a hard gate here.
+    """
+    warnings = []
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from proposal_lib import current_state_adequacy, parse_proposal
+    except Exception:
+        return warnings  # predicate unavailable -> fail open (WARN-only check)
+    for path in in_flight:
+        try:
+            fm, body = parse_proposal(path)
+        except Exception:
+            continue
+        if fm.get("status") not in _CURRENT_STATE_CHECKED_STATUSES:
+            continue
+        created = fm.get("created", "")
+        if not _DATE_RE.match(created) or created < CURRENT_STATE_CUTOVER:
+            continue  # pre-cutover grandfathered
+        ok, reason = current_state_adequacy(body)
+        if not ok:
+            warnings.append(
+                f"Check 13 WARN: {path.name} ({fm.get('status')}) "
+                f"Current State inadequate — {reason}"
+            )
+    return warnings
+
+
 def _collect_files(repo_root: Path) -> dict:
     """Return {region: [path, ...]} for the 3 scan regions.
 
@@ -556,6 +600,9 @@ def main() -> int:
 
     # Check 12: archive author heuristic (WARN only, P-0057 Phase 3 C3)
     warnings = _check_archive_author_match(regions["archive"], repo_root)
+    # Check 13: Current State adequacy (WARN only, P-0108) — shares the
+    # transition --to approved predicate; grandfathers pre-cutover proposals.
+    warnings += _check_current_state_adequacy(regions["in-flight"], repo_root)
     for w in warnings:
         sys.stdout.write(f"WARN: {w}\n")
 

@@ -24,9 +24,10 @@ ledger snapshot）。Agent 不直接 Edit frontmatter / 不直接动 body 之外
 | `/proposal classify <description>` | 三值 gate：决定是否需要 proposal | （只读） |
 | `/proposal create --slug X --title "Y" [--agent Z]` | 起草新 proposal，自动分配 P-NNNN | (新文件) → draft |
 | `/proposal submit <id>` | 请 user 评审 | draft → pending |
-| `/proposal approve <id>` | user 已明确批准 | pending → approved |
+| `/proposal approve <id>` | user 已明确批准（P-0108 研究门：Current State 须达标，否则 BLOCK） | pending → approved |
 | `/proposal start <id>` | 实施开始（可选；短任务可跳过） | approved → in-progress |
-| `/proposal complete <id> [--commit <hash>]` | 实施完成 + 自动归档 | (approved\|in-progress) → implemented → archive |
+| `/proposal complete <id> [--commit <hash>]` | reconcile + 实施完成 + 自动归档 | (approved\|in-progress) → implemented → archive |
+| `proposal_lib.py reconcile --id X --commit H` | as-built 覆盖差（advisory，complete step-0） | （只读） |
 | `/proposal reject <id> --reason "..."` | user 明确否决 | pending → rejected |
 | `/proposal supersede <id> --by <new-path>` | 被新方案替代 | (任意) → superseded |
 | `/proposal list [--include-terminal]` | 列出 in-flight + (可选) archive | （只读） |
@@ -66,8 +67,12 @@ ledger snapshot）。Agent 不直接 Edit frontmatter / 不直接动 body 之外
 ```
 [classify] PROPOSAL_REQUIRED
 reason: 触及 `agent_rules/` 写权限规则，是跨 agent 治理变更
+evidence: 已读 `agent_rules/rules.allow.txt:1-20`、`hooks/edit-write-guard.py:40`
 scope (建议): 加 rules.allow.txt 一行 + Phase 0 走 /iterate-constitution
 ```
+
+`evidence:` 行记录"判定前实读了哪些源"（file:line / 度量），是 P-0108 研究范式
+的 point-of-change 维度在 classify 出口的落点；空着 = 凭印象判定，应补读。
 
 判 `NEEDS_CLARIFICATION` 时附最小必要问题（1–2 条）。
 
@@ -93,14 +98,23 @@ scope (建议): 加 rules.allow.txt 一行 + Phase 0 走 /iterate-constitution
 调 `python tools/proposal_lib.py create --slug X --title "Y" [--agent Z]`：
 
 1. lib 内部 filelock 内扫所有 in-flight + archive + legacy 文件，求 max NNNN + 1
-2. 写 9 段 v2 scaffold 到 `shared_state/proposals/<agent>/p-NNNN-<slug>.md`
+2. 写 11 段 v2 scaffold 到 `shared_state/proposals/<agent>/p-NNNN-<slug>.md`
 3. frontmatter: `id` / `agent` / `status: draft` / `created` / `owner`
-4. body 9 段：Trigger / Scope / Non-Goals / Guardrails / Phases（含 Phase 0 governance bootstrap slot）/ Approval Criteria / Validation Plan / Rollback / Risks / State Log
+4. body 11 段：Trigger / **Current State (read, not assumed)** / Scope / Non-Goals /
+   **Alternatives & Rationale** / Guardrails / Phases（含 Phase 0 governance bootstrap
+   slot）/ Approval Criteria / Validation Plan / Rollback / Risks / State Log
 5. State Log 已有一行 `YYYY-MM-DD: draft created by <agent> agent (P-NNNN)`
 
 `--agent` 缺省时由 git 分支自动检测（master → core，feature/rules-* → rules，...）。
 
-Agent 收到 scaffold 路径后，**填充 9 段内容**（直接 Edit 文件 body 部分，不动 frontmatter）。
+Agent 收到 scaffold 路径后，**填充各段内容**（直接 Edit 文件 body 部分，不动 frontmatter）。
+
+> **P-0108 两个新段（研究 rigor）**：
+> - `## Current State (read, not assumed)` —— 实读 point-of-change 现状并 cite ≥1
+>   `file:line`；**approve 时硬门校验**（form：段在、非占位、有具体引用），不达标
+>   `approve` 被 lib BLOCK，须补研究或 `--allow-empty-current-state` 豁免。
+> - `## Alternatives & Rationale` —— proportionate：单一显然解写"单一显然解 + 理由"；
+>   设计抉择权衡 ≥2 方案 + 取舍。
 
 ### `submit <id>`
 
@@ -122,8 +136,13 @@ Agent 收到 scaffold 路径后，**填充 9 段内容**（直接 Edit 文件 bo
 
 ### `complete <id> [--commit <hash>]`
 
-**两步操作**：先 transition 到 implemented，再询问 user 是否归档。
+**三步操作**：先 as-built reconcile，再 transition 到 implemented，再询问 user 是否归档。
 
+0. **as-built reconcile**（P-0108 G3）：调
+   `python tools/proposal_lib.py reconcile --id P-NNNN --commit <hash>`
+   打印 `[in scope, NOT touched]` / `[touched, NOT in scope]` 两份覆盖差。
+   advisory（loose token match）：agent 审两份清单，把实质偏离（漏改的 scope 文件、
+   越界改的文件）记进 `## State Log`，再继续。
 1. 调 `python tools/proposal_lib.py transition --id P-NNNN --to implemented [--commit <hash>]`
    - `--commit` 缺省 → 用 `git log -1 --format=%h` 拿 HEAD short hash
    - lib 内 `git rev-parse --verify` 校验 hash 解析得通

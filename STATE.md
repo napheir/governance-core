@@ -17,6 +17,31 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-22 — P-0108 实现：把 Plan-mode 工程 rigor 嫁接到 proposal 管线（gc #104，发布 0.35.0）
+
+- **来源**：trade-agent consumer 以 plain issue **#104**（P-0118）报"pipeline 在治理
+  轴是 plan-mode 超集、工程 rigor 轴是子集"。策展判定：issue 正文 + **2 条评论**，
+  评论 2（`444f837a`）把 G1 从软 WARN 演进到 **level-D 硬门** —— 按 gc #26 precedent
+  采纳"corrected kernel"，用户确认 level-D 强度。
+- **三 graft 落 `governance_core/` 包源**：
+  - **G2**：`_v2_scaffold` 增 `## Current State (read, not assumed)` +
+    `## Alternatives & Rationale` 两段（11 段）。
+  - **G3**：`proposal_lib.reconcile()` + `_extract_scope_file_tokens` /
+    `_loose_file_match` / `_commit_changed_files` + `reconcile` CLI 子命令（as-built
+    覆盖差，advisory）；`commands/proposal.md` complete 加 step-0 reconcile。
+  - **G1 level-D**：`current_state_adequacy()` form-only 谓词 → `transition --to
+    approved` 硬 BLOCK + `--allow-empty-current-state` 豁免；`audit_proposals.py`
+    **Check 13**（WARN-only）复用同一谓词，grandfather pre-cutover（2026-06-22）+
+    archive/legacy/draft 豁免。
+  - 研究范式 5 维（2 always-form + 3 conditional-substance）落
+    `proposal-drafting-checklist.md`（`parse_checklist` 格式）。
+- **关键决策**：form-vs-substance split —— 机器只验"有没有"（段在/非占位/≥1 file:line），
+  人审"够不够"，拒了 LLM-judge 门。audit WARN 与 transition BLOCK 共用谓词永不打架。
+- **测试**：新 `test_proposal_rigor.py` 17 项；全量 **91 pytest + 21 脚本式 = 0 失败**；
+  CLI 烟测 reconcile + 门 BLOCK/override 通过；`audit_proposals` 0/43 failures 0 warnings
+  （135 旧提案 0 new FAIL）；wheel 隔离 top-level 纯 `governance_core*`、无 maintainer 泄漏、
+  新符号确实入包。dogfood：P-0108 本身以目标态起草（带两个新段）。
+
 ### 2026-06-18 — P-0106 实现：retire 死掉的 Hermes auto-refine 路径（gc #103，发布 0.34.0）
 
 - **来源**：trade-agent consumer 以 plain issue **#103** 报 dead-code（P-0117）。

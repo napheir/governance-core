@@ -2,7 +2,7 @@
 title: Proposal Drafting Checklist (seed)
 status: active
 created: 2026-06-15
-updated: 2026-06-15
+updated: 2026-06-22
 owner: core
 carrier_class: reference
 tags: [governance, proposal, drafting, checklist]
@@ -61,3 +61,48 @@ related:
 - **怎么做**: proposal 为每个 phase 写明交付物 + 验证 + 退出标准，并给出逐
   phase 的 rollback / recovery 步骤。
 - **来源**: seed
+
+### 起草前实读 point-of-change 现状
+
+- **触发**: 现状, current state, 实读, 假设, 改动点
+- **教训**: 不读"将要改动处今天的真实行为"就起草，方案常建立在过期假设上
+  （错的行号 / 已变的契约 / 想当然的调用点）。
+- **怎么做**: 在 `## Current State (read, not assumed)` 写清改动点处代码/配置
+  今天做什么，cite ≥1 `file:line`。这是 approve 硬门校验的 form 维度。
+- **来源**: P-0108 研究范式 dim-1（always / form）
+
+### 起草前判 ownership 与 scope 归属
+
+- **触发**: ownership, scope, gc-managed, 归属, 越界
+- **教训**: 不先判改动落在 in-scope / cross-scope / gc-managed，易越界改他方
+  文件，或在本地改了应回流 hub 的 gc 资产（被下次 upgrade 覆盖）。
+- **怎么做**: 起草时标注每个目标文件归属——本 scope 直接改；gc-managed 走 gc
+  issue；cross-scope 走跨 scope 流程。
+- **来源**: P-0108 研究范式 dim-2（always / form）
+
+### 加机制/命令/字段前查 prior art
+
+- **触发**: 新机制, 新命令, 新字段, prior art, 重复
+- **教训**: 加 mechanism / command / field 前不 grep 源码与 archive，易重复已有
+  能力或与既有契约冲突。
+- **怎么做**: grep 包源 + 翻 `proposals/_archive/` 确认 net-new；若已存在，改为
+  复用 / 扩展而非新增。
+- **来源**: P-0108 研究范式 dim-3（conditional / substance）
+
+### "X 坏了/没用/慢"必先用工具量
+
+- **触发**: 坏了, 没用, unused, 慢, 度量, 死代码
+- **教训**: 以"X broken / unused / slow"为触发却不量化，常把 recency artifact
+  （修复刚落、冷数据是旧的）误判成真失败。
+- **怎么做**: 跑该子系统自己的 instrument（funnel / audit / registry）取数，并
+  核对相关修复落地时间，用数字而非印象立论。
+- **来源**: P-0108 研究范式 dim-4（conditional / substance）
+
+### 跨 agent 改动读契约/fixture 实物
+
+- **触发**: 跨 agent, 契约, fixture, schema, 跨 clone
+- **教训**: 跨 agent 改动只读文档不读实物（schema / fixture / live config），易
+  据过期描述动手。
+- **怎么做**: 改动涉及跨 agent 契约时，直接读 schema / fixture / 真实配置确认
+  现状，再落方案。
+- **来源**: P-0108 研究范式 dim-5（conditional / substance）

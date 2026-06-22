@@ -475,6 +475,10 @@ def _v2_scaffold(proposal_id: str, title: str, agent: str) -> str:
 
 <User request and why proposal governance applies.>
 
+## Current State (read, not assumed)
+
+<Cite the files / line ranges / measured numbers you READ at the point of change -- not assumptions. At least one concrete file reference is required (e.g. `path/to/file.py:120`). This is a research floor enforced on approve; substance is the approver's call.>
+
 ## Scope
 
 <What will be changed.>
@@ -482,6 +486,10 @@ def _v2_scaffold(proposal_id: str, title: str, agent: str) -> str:
 ## Non-Goals
 
 <Explicitly out-of-scope items.>
+
+## Alternatives & Rationale
+
+<Proportionate: a single obvious approach states "single obvious approach + why"; a design choice weighs >=2 options with the trade-off and records why the chosen one won.>
 
 ## Guardrails
 
@@ -522,6 +530,145 @@ def _v2_scaffold(proposal_id: str, title: str, agent: str) -> str:
 - {today}: draft created by {agent} agent ({proposal_id})
 """
     return serialize_frontmatter(fm) + "\n" + body
+
+
+# ---------------------------------------------------------------------------
+# P-0108: Plan-mode rigor — section helpers, Current State adequacy gate,
+# as-built reconcile. These are FORM-only machine checks; whether research is
+# *adequate* in substance is the human approver's judgment (form-vs-substance
+# split). See knowledge/governance/proposal-drafting-checklist.md.
+# ---------------------------------------------------------------------------
+
+_CURRENT_STATE_HEADING = "## Current State"
+
+# A concrete file/line reference: a filename with a known extension, or a
+# `path:line` token. Shared by the adequacy gate and (loosely) reconcile.
+_FILE_REF_RE = re.compile(
+    r"[\w./\\-]+\.(?:py|md|json|jsonl|toml|txt|ya?ml|cfg|ini|sh|ps1|js|ts|tsx|html|css)\b"
+    r"|[\w./\\-]+:\d+"
+)
+
+
+def _extract_section(body: str, heading_prefix: str) -> str:
+    """Return the text under a `## Heading` line, up to the next `## ` or EOF.
+
+    Matches by prefix so `## Current State (read, not assumed)` is found via
+    `## Current State`. Returns '' if the heading is absent. H3 (`### `) lines
+    inside the section are preserved (only H2 boundaries close it).
+    """
+    out: list[str] = []
+    capturing = False
+    for line in body.splitlines():
+        if line.startswith("## "):
+            if capturing:
+                break
+            if line.strip().startswith(heading_prefix):
+                capturing = True
+            continue
+        if capturing:
+            out.append(line)
+    return "\n".join(out).strip()
+
+
+def current_state_adequacy(body: str) -> tuple[bool, str]:
+    """Form-only adequacy check for the `## Current State` section.
+
+    Returns (is_adequate, reason). Verifies the section is PRESENT, is not just
+    the scaffold placeholder, and cites >=1 concrete file/line reference. This
+    is the SHARED predicate used by both the `transition --to approved` BLOCK
+    and the audit WARN (Check 13) so the two can never disagree. It checks FORM
+    only — adequacy of substance is the human approver's call (P-0108).
+    """
+    if _CURRENT_STATE_HEADING not in body:
+        return False, "missing '## Current State (read, not assumed)' section"
+    content = _extract_section(body, _CURRENT_STATE_HEADING)
+    filled = re.sub(r"<[^>]*>", "", content).strip()  # drop scaffold placeholders
+    if not filled:
+        return False, "Current State is empty or still the scaffold placeholder"
+    if not _FILE_REF_RE.search(filled):
+        return False, ("Current State cites no concrete file/line reference "
+                       "(e.g. path/to/file.py:120)")
+    return True, "ok"
+
+
+def _extract_scope_file_tokens(body: str) -> list[str]:
+    """Loosely extract file-like tokens from the `## Scope` section.
+
+    Loose by design (advisory reconcile): any token that looks like a path with
+    a known extension. Backticks stripped; line-number suffix dropped;
+    de-duplicated; order-stable.
+    """
+    section = _extract_section(body, "## Scope")
+    seen: list[str] = []
+    for m in _FILE_REF_RE.finditer(section):
+        tok = m.group(0).strip("`")
+        if ":" in tok:  # keep the path, drop the :line form for scope tokens
+            tok = tok.split(":", 1)[0]
+        if tok and tok not in seen:
+            seen.append(tok)
+    return seen
+
+
+def _loose_file_match(token: str, path: str) -> bool:
+    """True if a loose scope token plausibly refers to a changed file path."""
+    t = token.replace("\\", "/").lower().strip("`")
+    p = path.replace("\\", "/").lower()
+    if not t:
+        return False
+    if t in p:
+        return True
+    return Path(t).name == Path(p).name
+
+
+def _commit_changed_files(commit_ish: str) -> list[str]:
+    """Repo-relative paths changed by a commit (or an `A..B` range).
+
+    text=True alone would decode child stdout as GBK on a Windows CN hub
+    (subprocess-text-decodes-gbk); pin encoding='utf-8'.
+    """
+    if ".." in commit_ish:
+        cmd = ["git", "diff", "--name-only", commit_ish]
+    else:
+        cmd = ["git", "diff-tree", "--no-commit-id", "--name-only", "-r", commit_ish]
+    result = subprocess.run(
+        cmd, capture_output=True, text=True, encoding="utf-8",
+        timeout=10, cwd=REPO_ROOT,
+    )
+    if result.returncode != 0:
+        raise ValueError(
+            f"git changed-files failed for {commit_ish!r}: {result.stderr.strip()}"
+        )
+    return [ln.strip() for ln in result.stdout.splitlines() if ln.strip()]
+
+
+def reconcile(proposal_id: str, commit_ish: str) -> dict:
+    """As-built coverage: `## Scope` file-tokens vs a commit's changed files.
+
+    Advisory (loose token match by design). Returns a dict with two coverage
+    lists: `in_scope_not_touched` (declared in Scope but unchanged) and
+    `touched_not_in_scope` (changed but not declared). Agent reviews; not
+    machine-enforced.
+    """
+    path = find_by_id(proposal_id)
+    if path is None:
+        raise FileNotFoundError(f"Proposal {proposal_id} not found")
+    _, body = parse_proposal(path)
+    scope_tokens = _extract_scope_file_tokens(body)
+    changed = _commit_changed_files(commit_ish)
+    in_scope_not_touched = [
+        tok for tok in scope_tokens
+        if not any(_loose_file_match(tok, c) for c in changed)
+    ]
+    touched_not_in_scope = [
+        c for c in changed
+        if not any(_loose_file_match(tok, c) for tok in scope_tokens)
+    ]
+    return {
+        "scope_tokens": scope_tokens,
+        "changed": changed,
+        "in_scope_not_touched": in_scope_not_touched,
+        "touched_not_in_scope": touched_not_in_scope,
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -582,6 +729,7 @@ def transition_proposal(
     rejection_reason: str = "",
     commit_hash: str = "",
     superseded_by: str = "",
+    allow_empty_current_state: bool = False,
 ) -> tuple[Path, str, str]:
     """Atomic state transition with State Log append.
 
@@ -615,6 +763,20 @@ def transition_proposal(
         fm["status"] = new_status
 
         if new_status == "approved":
+            # P-0108 G1 level-D: hard research gate. Block approve when the
+            # Current State section is absent / placeholder / has no concrete
+            # file reference. Same predicate as audit Check 13 (WARN). FORM
+            # only — the approver judges substance.
+            if not allow_empty_current_state:
+                ok, reason = current_state_adequacy(body)
+                if not ok:
+                    raise ValueError(
+                        f"Cannot approve {proposal_id}: research gate — {reason}. "
+                        f"Fill '## Current State (read, not assumed)' with what the "
+                        f"code/config does TODAY where you will change it (cite >=1 "
+                        f"file:line you READ), or pass --allow-empty-current-state "
+                        f"(justify in --note) for a legacy/greenfield case."
+                    )
             fm["approved_at"] = today
         elif new_status == "in-progress":
             fm["started_at"] = today
@@ -761,6 +923,7 @@ def _cmd_transition(args):
         rejection_reason=args.reason or "",
         commit_hash=args.commit or "",
         superseded_by=args.superseded_by or "",
+        allow_empty_current_state=args.allow_empty_current_state,
     )
     print(f"[OK] {args.id}: {prev} → {new}")
     print(f"     path: {path.relative_to(REPO_ROOT.parent)}")
@@ -850,6 +1013,26 @@ def _cmd_show(args):
     print(f"\nBody preview (first 30 lines):")
     for line in body.splitlines()[:30]:
         print(f"  {line}")
+    return 0
+
+
+def _cmd_reconcile(args):
+    result = reconcile(args.id, args.commit)
+    print(f"=== reconcile {args.id} @ {args.commit} ===")
+    print(f"scope tokens ({len(result['scope_tokens'])}): "
+          f"{', '.join(result['scope_tokens']) or '(none)'}")
+    print(f"changed files ({len(result['changed'])}): "
+          f"{', '.join(result['changed']) or '(none)'}")
+    print("\n[in scope, NOT touched]")
+    for t in result["in_scope_not_touched"]:
+        print(f"  - {t}")
+    if not result["in_scope_not_touched"]:
+        print("  (none)")
+    print("\n[touched, NOT in scope]")
+    for c in result["touched_not_in_scope"]:
+        print(f"  - {c}")
+    if not result["touched_not_in_scope"]:
+        print("  (none)")
     return 0
 
 
@@ -1018,6 +1201,9 @@ def main(argv=None) -> int:
     p.add_argument("--reason", default="", help="Rejection reason (required for --to rejected)")
     p.add_argument("--commit", default="", help="Commit hash (required for --to implemented; default HEAD)")
     p.add_argument("--superseded-by", default="", help="Replacement proposal path (required for --to superseded)")
+    p.add_argument("--allow-empty-current-state", action="store_true",
+                   help="Override the P-0108 research gate on --to approved "
+                        "(legacy/greenfield escape hatch; justify in --note)")
     p.set_defaults(func=_cmd_transition)
 
     p = sub.add_parser("archive", help="Move terminal proposal to _archive/<YYYY>/")
@@ -1044,6 +1230,13 @@ def main(argv=None) -> int:
     p = sub.add_parser("show", help="Show proposal frontmatter + body preview")
     p.add_argument("--id", required=True)
     p.set_defaults(func=_cmd_show)
+
+    p = sub.add_parser("reconcile",
+                       help="As-built coverage: Scope file-tokens vs a commit's "
+                            "changed files (P-0108, advisory)")
+    p.add_argument("--id", required=True, help="P-NNNN")
+    p.add_argument("--commit", required=True, help="Commit hash or A..B range")
+    p.set_defaults(func=_cmd_reconcile)
 
     p = sub.add_parser("classify",
                        help="Classify Edit/Write target as NO_PROPOSAL / PROPOSAL_REQUIRED / NEEDS_CLARIFICATION (P-0076)")
