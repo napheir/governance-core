@@ -174,6 +174,15 @@
       "decision": "promoted",
       "note": "P-0109: genericized (de-trade-ified Notes) + landed governance_core/skills/, theme=universal, commit 757b120, v0.36.0",
       "reviewed_at": "2026-06-22T05:54:19Z"
+    },
+    {
+      "id": "cand-trade-agent-20260622-quality-gate-checks-form-human-judges-su",
+      "origin": "trade-agent",
+      "kind": "skill",
+      "title": "quality-gate-checks-form-human-judges-substance",
+      "decision": "promoted",
+      "note": "P-0110: genericized (de-trade-ified Notes + dropped consumer-only xref) + landed governance_core/skills/, theme=universal, commit 6901556, v0.37.0",
+      "reviewed_at": "2026-06-22T07:05:37Z"
     }
   ]
 }
