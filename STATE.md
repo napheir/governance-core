@@ -17,6 +17,22 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-22 — P-0110 实现：promote quality-gate form-vs-substance skill（gc #106，v0.37.0）
+
+- **来源**：trade-agent candidate #106 `quality-gate-checks-form-human-judges-substance`
+  —— 把 P-0108 G1 的 **form-vs-substance** 思路泛化为任意质量门的设计原则（机器验
+  FORM/floor，人审 SUBSTANCE/ceiling，拒 LLM-judge）。net-new（gc skills 无同类；两个
+  knowledge 匹配是无关 hard-block 机制）。
+- **改动**：新增 `governance_core/skills/quality-gate-checks-form-human-judges-substance.md`
+  —— 泛化 Notes（去 P-0118 示例 + dangling consumer-skill xref；Workflow 机制 verbatim），
+  `theme: universal`，加 `## Discovery`。版本 0.36.0→0.37.0。**发布待用户确认**。
+- **同批处理 #107**：candidate id 与 #105 字节相同（已 promote P-0109）→ **dup 关闭**，
+  不重复 promote（ledger 已记该 id promoted）。
+- **dogfood**：P-0110 经新 scaffold + 研究门 approve（Current State 引用
+  `proposal_lib.py current_state_adequacy()` 等实读，放行）—— 这正是 #106 原则本身。
+- **测试**：registry 发现（18 skills/32 total，guide）；91 pytest + 21 脚本式 = 0 失败；
+  upgrade+doctor exit 0；wheel 0.37.0 隔离干净、skill 入包、无 maintainer 泄漏。
+
 ### 2026-06-22 — P-0109 实现：promote audit-subsystem-health skill（gc #105，发布 0.36.0）
 
 - **来源**：consumer trade-agent 以正规 candidate 信封（gc #105，kind/skill，
