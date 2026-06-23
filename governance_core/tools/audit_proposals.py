@@ -32,6 +32,9 @@ Validates:
   Check 13: in-flight non-terminal proposals created on/after the cutover
             carry an adequate Current State section (shares the transition
             --to approved predicate) — WARN only (P-0108)
+  Check 14: in-flight non-terminal COMPLEX proposals created on/after the
+            P-0124 cutover carry an adequate Design & Contract section
+            (shares the transition --to approved predicate) — WARN only (P-0124)
 
 Schema: contracts/proposal_frontmatter_schema.md v1.1.0
 
@@ -75,6 +78,11 @@ REQUIRED_BY_STATUS = {
 # are grandfathered so the 135 pre-G1 proposals don't flood the audit.
 CURRENT_STATE_CUTOVER = "2026-06-22"
 _CURRENT_STATE_CHECKED_STATUSES = {"pending", "approved", "in-progress"}
+
+# Check 14 (P-0124): the Design & Contract section only exists in the scaffold
+# as of P-0124, so grandfather everything created before its landing date —
+# older complex proposals never had the section and would flood the audit.
+DESIGN_CONTRACT_CUTOVER = "2026-06-23"
 
 _FRONTMATTER_OPEN = re.compile(r"\A---\s*\n")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -486,6 +494,46 @@ def _check_current_state_adequacy(in_flight: list, repo_root: Path) -> list:
     return warnings
 
 
+def _check_design_contract_adequacy(in_flight: list, repo_root: Path) -> list:
+    """Check 14 (P-0124): WARN-only — in-flight non-terminal COMPLEX proposals
+    created on/after DESIGN_CONTRACT_CUTOVER must have an adequate Design &
+    Contract section.
+
+    Shares BOTH predicates (`design_contract_adequacy` + `_is_complex_proposal`)
+    with the `transition --to approved` BLOCK so WARN and BLOCK never disagree.
+    Simple proposals, archive + legacy + draft + terminal + pre-cutover are
+    exempt. Fails open (no WARN) if the predicate can't be imported -- advisory
+    check, never a hard gate here.
+    """
+    warnings = []
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from proposal_lib import (
+            design_contract_adequacy, _is_complex_proposal, parse_proposal,
+        )
+    except Exception:
+        return warnings  # predicate unavailable -> fail open (WARN-only check)
+    for path in in_flight:
+        try:
+            fm, body = parse_proposal(path)
+        except Exception:
+            continue
+        if fm.get("status") not in _CURRENT_STATE_CHECKED_STATUSES:
+            continue
+        created = fm.get("created", "")
+        if not _DATE_RE.match(created) or created < DESIGN_CONTRACT_CUTOVER:
+            continue  # pre-cutover grandfathered
+        if not _is_complex_proposal(body):
+            continue  # simple proposals are exempt (gate doesn't fire either)
+        ok, reason = design_contract_adequacy(body)
+        if not ok:
+            warnings.append(
+                f"Check 14 WARN: {path.name} ({fm.get('status')}) "
+                f"Design & Contract inadequate — {reason}"
+            )
+    return warnings
+
+
 def _collect_files(repo_root: Path) -> dict:
     """Return {region: [path, ...]} for the 3 scan regions.
 
@@ -603,6 +651,9 @@ def main() -> int:
     # Check 13: Current State adequacy (WARN only, P-0108) — shares the
     # transition --to approved predicate; grandfathers pre-cutover proposals.
     warnings += _check_current_state_adequacy(regions["in-flight"], repo_root)
+    # Check 14: Design & Contract adequacy (WARN only, P-0124) — shares the
+    # transition --to approved predicate; complex + post-cutover only.
+    warnings += _check_design_contract_adequacy(regions["in-flight"], repo_root)
     for w in warnings:
         sys.stdout.write(f"WARN: {w}\n")
 

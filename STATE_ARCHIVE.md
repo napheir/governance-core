@@ -6,6 +6,31 @@
 
 ---
 
+### 2026-06-15 — P-0100 收编 candidate #96 proposal_suggest（泛化 kernel）+ 0.28.0
+
+- **curate #96**（trade-agent `mechanism` 候选）→ 包源，泛化 kernel 收编：
+  - 新 `governance_core/tools/proposal_suggest.py`：`/proposal classify` 只读建议
+    助手，三路纯关键词召回（① 类似 proposal、② 起草检查项、③ likely scope）。
+    **机制逐字保留**，仅 **瘦身 `_DOMAIN_ALIASES`**：删 trade 域词（信号/回测/
+    交易/下单/风控…）只留域中立结构别名（宪法/契约/钩子/工具/审计/测试）。
+  - 新 `governance_core/tools/test_proposal_suggest.py`：12 例；③ alias 用例改用
+    保留别名（工具→tools）维持覆盖，fixture 去 trade 词中性化。
+  - 新 `governance_core/knowledge_governance/proposal-drafting-checklist.md`：补
+    candidate **缺失的 ② 数据源 seed**（`source_paths` 漏带、但其集成测试断言其
+    存在）。通用治理起草经验 seed（4 条，域中立），消费者自维护其条目。
+  - `governance_core/commands/proposal.md` classify 节加只读指针。
+- **关键判断**：candidate 唯一实质缺陷是 ② 数据源文件没随载荷上传 → 补**通用
+  seed** 同时满足"测试要求文件在"+"消费者自维护内容"，矛盾消解（非放宽测试）。
+  `pyproject` glob 已覆盖二新文件，无需改 package-data。③ 在单 agent hub 退化为
+  `（无）`（Art.12，非缺陷，对多 clone 消费者仍 live）。
+- **记账**：`registry.record_candidate` 记 promoted（**不**用 `candidate.py promote`
+  —— 会拿原始 payload 覆盖泛化改动，沿用 P-0098 教训）。
+- 验证：pytest 44 green；proposal_suggest 12/12；proposal_classify×3 + import-audit
+  全绿；upgrade + doctor exit 0；烟测三节渲染（① live / ② 命中 seed / ③ 无）；
+  wheel 顶层仅 `governance_core*`、含 3 新文件、无 `maintainer/` 泄漏。版本
+  0.27.0 → **0.28.0**。关 #96。
+
+
 ### 2026-06-12 — P-0099 修 consumer bug #90 sweep 重复 uplink + #91 sync_infra 删 tracked hook + 0.27.0
 
 - **#90 `candidate.py sweep` 重复 uplink**（即 #87/#89 的成因）：

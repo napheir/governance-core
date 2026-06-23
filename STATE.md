@@ -17,6 +17,33 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-23 — P-0124 实现：proposal scaffold 加 Design & Contract 段 + 条件 approve 门（v0.38.0）
+
+- **动机**：scaffold 记 WHAT（Scope）却从不记 HOW-designed —— 无接口签名 / 字段流转契约 /
+  流程图，也无处放未决决策。复杂提案在没对齐实现细节时被 approve → 实现漂移（典型：Todo
+  Board 当静态页交付、漏建后端）。本提案加一个**比例化、按复杂度有条件 gate** 的设计段。
+- **包源改动（全部 `governance_core/`）**：
+  - `tools/proposal_lib.py`：`_v2_scaffold` 加 `## Design & Contract`（3 个 H3 子项
+    Interfaces·I/O·Realization / Field Dictionary / Flow）+ `## Open Questions`（轻量、不
+    gate）；`## Approval Criteria` 改 checklist。新增 form-only 谓词
+    `design_contract_adequacy()` + 复杂度触发 `_is_complex_proposal()`（≥2 非占位 Phase
+    **或** Scope 触及 `contracts/`）。`transition_proposal` 加 `allow_thin_spec` kwarg + 在
+    Current-State 门后插 design 门（仅复杂提案）；CLI 加 `--allow-thin-spec`。`create` 写完
+    scaffold 后**自动 emit** proposal_suggest 三路召回 ①②③（`_emit_create_recall`，
+    best-effort）。
+  - `tools/audit_proposals.py`：Check 14（WARN-only），与 approve 门**共享同一谓词**
+    （`design_contract_adequacy` + `_is_complex_proposal`），cutover 2026-06-23、仅复杂+post-cutover。
+  - `commands/proposal.md`：文档化设计段 / 条件门 / `--allow-thin-spec` / Open Questions /
+    Approval-checklist；"可选建议模块"→ classify 必跑 suggest、create 自动 emit。
+  - `knowledge_governance/proposal-drafting-checklist.md`：加 2 条 seed（设计/契约维度、
+    realization 边界），来源 P-0124；`updated` 2026-06-23。
+- **关键决策**：design 门只判 FORM（占位被替换 / 三子项在），SUBSTANCE 由人审（沿用 P-0108
+  form-vs-substance）；Field Dictionary 空表骨架不算 filled。**Open Question（已决）**：本版
+  `_is_complex_proposal` 不对"跨 agent 单 phase"触发，dogfood 后再议。
+- **测试**：新增 `tools/test_proposal_design_contract.py`（19 例，覆盖 a–f + 谓词真值表）；
+  P-0108 rigor 回归 17/17；自治层全套 proposal 测试 design 19 / rigor 17 / suggest 12 /
+  classify_fast_hook 9 全绿；`audit_proposals --root .` 0/45 失败 0 警告。版本 0.37.0→0.38.0。
+
 ### 2026-06-22 — P-0110 实现：promote quality-gate form-vs-substance skill（gc #106，v0.37.0）
 
 - **来源**：trade-agent candidate #106 `quality-gate-checks-form-human-judges-substance`
@@ -201,27 +228,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   （constitution/total.md 高敏路径，经 P-0103 治理）。
 - **剩余 P-0103**：Phase 4（C extract-skill scenario 分类 + bijection gate）、
   Phase 5（dogfood + 发布 + 关 #100）。
-
-### 2026-06-15 — P-0100 收编 candidate #96 proposal_suggest（泛化 kernel）+ 0.28.0
-
-- **curate #96**（trade-agent `mechanism` 候选）→ 包源，泛化 kernel 收编：
-  - 新 `governance_core/tools/proposal_suggest.py`：`/proposal classify` 只读建议
-    助手，三路纯关键词召回（① 类似 proposal、② 起草检查项、③ likely scope）。
-    **机制逐字保留**，仅 **瘦身 `_DOMAIN_ALIASES`**：删 trade 域词（信号/回测/
-    交易/下单/风控…）只留域中立结构别名（宪法/契约/钩子/工具/审计/测试）。
-  - 新 `governance_core/tools/test_proposal_suggest.py`：12 例；③ alias 用例改用
-    保留别名（工具→tools）维持覆盖，fixture 去 trade 词中性化。
-  - 新 `governance_core/knowledge_governance/proposal-drafting-checklist.md`：补
-    candidate **缺失的 ② 数据源 seed**（`source_paths` 漏带、但其集成测试断言其
-    存在）。通用治理起草经验 seed（4 条，域中立），消费者自维护其条目。
-  - `governance_core/commands/proposal.md` classify 节加只读指针。
-- **关键判断**：candidate 唯一实质缺陷是 ② 数据源文件没随载荷上传 → 补**通用
-  seed** 同时满足"测试要求文件在"+"消费者自维护内容"，矛盾消解（非放宽测试）。
-  `pyproject` glob 已覆盖二新文件，无需改 package-data。③ 在单 agent hub 退化为
-  `（无）`（Art.12，非缺陷，对多 clone 消费者仍 live）。
-- **记账**：`registry.record_candidate` 记 promoted（**不**用 `candidate.py promote`
-  —— 会拿原始 payload 覆盖泛化改动，沿用 P-0098 教训）。
-- 验证：pytest 44 green；proposal_suggest 12/12；proposal_classify×3 + import-audit
-  全绿；upgrade + doctor exit 0；烟测三节渲染（① live / ② 命中 seed / ③ 无）；
-  wheel 顶层仅 `governance_core*`、含 3 新文件、无 `maintainer/` 泄漏。版本
-  0.27.0 → **0.28.0**。关 #96。

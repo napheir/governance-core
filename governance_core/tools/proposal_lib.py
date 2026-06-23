@@ -483,9 +483,43 @@ def _v2_scaffold(proposal_id: str, title: str, agent: str) -> str:
 
 <What will be changed.>
 
+## Design & Contract
+
+> Proportionate. Trivial change: one line "implementation self-evident; no interface
+> or data-flow change." Otherwise fill all three sub-parts; use "N/A — <reason>" for
+> any that genuinely doesn't apply — never leave a placeholder.
+
+### Interfaces, I/O & Realization
+<Each new/changed boundary (fn / CLI / file / endpoint): its signature, the INPUT it
+ consumes (record/file/params + which fields) and the OUTPUT it produces (record/file/
+ return + which fields). For every user-facing capability and every mutation, NAME the
+ component that actually performs it end-to-end (server / daemon / CLI / agent /
+ static-file). A capability with no named backing mechanism is a design error — build
+ it (name it) or declare it deferred in Non-Goals. No ambiguous middle.>
+
+### Field Dictionary
+<Every field that flows across a boundary. If persisted or cross-agent, NAME the
+ governing contracts/ file (existing or "new: contracts/X") — do not invent a parallel
+ vocabulary that drifts from contracts/.>
+
+| field | type | meaning | producer | consumer | constraints / allowed values |
+|-------|------|---------|----------|----------|------------------------------|
+
+### Flow
+<producer → transform → consumer → sink. Text arrows / ASCII / mermaid.>
+
 ## Non-Goals
 
 <Explicitly out-of-scope items.>
+
+## Open Questions
+
+> Known-undecided design points to resolve (or explicitly defer) BEFORE approval.
+> Lightweight — NOT gated; the approver decides each. Write "None" rather than leaving
+> the placeholder.
+
+- <question — plus the default/leaning if it stays unresolved, so silence resolves
+  predictably instead of being decided ad-hoc at implementation time>
 
 ## Alternatives & Rationale
 
@@ -511,7 +545,13 @@ def _v2_scaffold(proposal_id: str, title: str, agent: str) -> str:
 
 ## Approval Criteria
 
-<Concrete checks user can review before approval.>
+> Concrete checks to tick before approval — derive from the spec above, don't restate
+> goals. For a complex proposal include, as applicable:
+
+- [ ] Every Field Dictionary entry names its governing `contracts/` file (or is N/A)
+- [ ] Every user-facing capability / mutation has a named realizer (nothing implied-but-unbuilt)
+- [ ] All Open Questions are resolved or explicitly deferred
+- [ ] <proposal-specific checks>
 
 ## Validation Plan
 
@@ -672,6 +712,156 @@ def reconcile(proposal_id: str, commit_ish: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# P-0124: Design & Contract gate — a proportionate, complexity-gated design
+# spec section. Like the P-0108 Current State gate these are FORM-only machine
+# checks (placeholder-replaced / sub-parts present); whether the design is
+# *correct* is the human approver's call. `design_contract_adequacy` is the
+# shared predicate behind both the `transition --to approved` BLOCK (complex
+# proposals only) and audit Check 14 (WARN), so the two can never disagree.
+# ---------------------------------------------------------------------------
+
+_DESIGN_CONTRACT_HEADING = "## Design & Contract"
+_DESIGN_CONTRACT_SUBHEADINGS = (
+    "### Interfaces, I/O & Realization",
+    "### Field Dictionary",
+    "### Flow",
+)
+
+# A `### Phase` heading whose title is a `<...>` scaffold placeholder doesn't
+# count toward complexity; a bare `### Phase N` with no title doesn't either.
+_PHASE_HEADING_RE = re.compile(r"^###\s+Phase\b(.*)$")
+
+# Scaffold Field-Dictionary header cells (P-0124). A table row whose non-empty
+# cells are all drawn from this set is the empty scaffold skeleton, not data;
+# a markdown separator row (cells of only -/:) is likewise skeleton.
+_FIELD_DICT_HEADER_CELLS = {
+    "field", "type", "meaning", "producer", "consumer",
+    "constraints / allowed values", "constraints", "allowed values",
+}
+
+
+def _extract_h3(section_body: str, h3_prefix: str) -> Optional[str]:
+    """Text under a `### Heading` within a section, up to the next `### ` or EOF.
+
+    Operates on the body of an already-extracted `## ` section (see
+    _extract_section, which preserves H3 lines). Returns None if the sub-heading
+    is absent; '' if present but empty.
+    """
+    out: list[str] = []
+    capturing = False
+    found = False
+    for line in section_body.splitlines():
+        if line.startswith("### "):
+            if capturing:
+                break
+            if line.strip().startswith(h3_prefix):
+                capturing = True
+                found = True
+            continue
+        if capturing:
+            out.append(line)
+    if not found:
+        return None
+    return "\n".join(out).strip()
+
+
+def _is_scaffold_table_line(line: str) -> bool:
+    """True for an empty Field-Dictionary skeleton row (header or separator).
+
+    Lets `_subpart_filled` treat a bare scaffold table (header + `---` rule,
+    no data rows) as unfilled, while any real data row survives.
+    """
+    s = line.strip()
+    if not s.startswith("|"):
+        return False
+    cells = [c.strip().lower() for c in s.strip("|").split("|")]
+    # markdown separator row: every cell is dashes / colons
+    if cells and all(c and set(c) <= set("-: ") for c in cells):
+        return True
+    # header-template row: every non-empty cell is a known scaffold header cell
+    nonempty = [c for c in cells if c]
+    if nonempty and all(c in _FIELD_DICT_HEADER_CELLS for c in nonempty):
+        return True
+    return False
+
+
+def _subpart_filled(text: str) -> bool:
+    """Form-only: True if a Design & Contract sub-part has real content / N/A.
+
+    Strips `<...>` scaffold placeholders, blank lines, and the empty
+    Field-Dictionary table skeleton; anything remaining (prose, a data row, or
+    an explicit `N/A — <reason>` line) counts as filled.
+    """
+    stripped = re.sub(r"<[^>]*>", "", text)
+    for line in stripped.splitlines():
+        s = line.strip()
+        if not s:
+            continue
+        if _is_scaffold_table_line(s):
+            continue
+        return True
+    return False
+
+
+def design_contract_adequacy(body: str) -> tuple[bool, str]:
+    """Form-only adequacy check for the `## Design & Contract` section.
+
+    Returns (is_adequate, reason). Only meaningful for COMPLEX proposals — the
+    caller gates with _is_complex_proposal. Verifies the section is PRESENT and
+    each of its three H3 sub-parts (Interfaces·I/O·Realization / Field
+    Dictionary / Flow) is filled: after dropping `<...>` placeholders each
+    sub-part has real content OR an explicit `N/A — <reason>` line. FORM only —
+    whether the design is *correct* is the human approver's call. Mirrors
+    current_state_adequacy (P-0124).
+    """
+    if _DESIGN_CONTRACT_HEADING not in body:
+        return False, "missing '## Design & Contract' section"
+    section = _extract_section(body, _DESIGN_CONTRACT_HEADING)
+    for sub in _DESIGN_CONTRACT_SUBHEADINGS:
+        sub_body = _extract_h3(section, sub)
+        if sub_body is None:
+            return False, f"missing '{sub}' sub-heading under Design & Contract"
+        if not _subpart_filled(sub_body):
+            return False, (f"'{sub}' is empty or still the scaffold placeholder "
+                           f"(fill it, or write 'N/A — <reason>')")
+    return True, "ok"
+
+
+def _count_real_phases(body: str) -> int:
+    """Count `### Phase` headings whose title is not a `<...>` placeholder."""
+    n = 0
+    for line in body.splitlines():
+        m = _PHASE_HEADING_RE.match(line)
+        if not m:
+            continue
+        rest = m.group(1)
+        title = rest.split(":", 1)[1].strip() if ":" in rest else ""
+        if not title:
+            continue  # bare heading, no title -> treat as placeholder
+        if title.startswith("<") and title.endswith(">"):
+            continue
+        n += 1
+    return n
+
+
+def _is_complex_proposal(body: str) -> bool:
+    """Structural signal for whether the design-contract gate applies.
+
+    True iff (>=2 non-placeholder `### Phase` entries) OR (any `## Scope`
+    file-token lives under `contracts/`). FORM-only. By design this does NOT
+    trigger on single-phase cross-agent work — that's a deferred Open Question
+    (P-0124); revisit after dogfooding.
+    """
+    if _count_real_phases(body) >= 2:
+        return True
+    for tok in _extract_scope_file_tokens(body):
+        norm = tok.replace("\\", "/")
+        if norm.startswith("contracts/") or "/contracts/" in norm:
+            return True
+    return False
+
+
+# ---------------------------------------------------------------------------
 # create_proposal: allocate-id + scaffold write under filelock
 # ---------------------------------------------------------------------------
 
@@ -730,6 +920,7 @@ def transition_proposal(
     commit_hash: str = "",
     superseded_by: str = "",
     allow_empty_current_state: bool = False,
+    allow_thin_spec: bool = False,
 ) -> tuple[Path, str, str]:
     """Atomic state transition with State Log append.
 
@@ -776,6 +967,19 @@ def transition_proposal(
                         f"code/config does TODAY where you will change it (cite >=1 "
                         f"file:line you READ), or pass --allow-empty-current-state "
                         f"(justify in --note) for a legacy/greenfield case."
+                    )
+            # P-0124: design-contract gate. For COMPLEX proposals (>=2 phases or
+            # a contracts/ scope token) block approve until the Design & Contract
+            # section's three sub-parts are filled. Same predicate as audit
+            # Check 14 (WARN). FORM only — the approver judges substance.
+            if not allow_thin_spec and _is_complex_proposal(body):
+                ok, reason = design_contract_adequacy(body)
+                if not ok:
+                    raise ValueError(
+                        f"Cannot approve {proposal_id}: design-contract gate — {reason}. "
+                        f"Fill '## Design & Contract' (Interfaces·I/O·Realization / Field "
+                        f"Dictionary / Flow; use 'N/A — <reason>' where a sub-part truly "
+                        f"doesn't apply), or pass --allow-thin-spec (justify in --note)."
                     )
             fm["approved_at"] = today
         elif new_status == "in-progress":
@@ -907,11 +1111,49 @@ def _cmd_allocate_id(args):
     return 0
 
 
+def _emit_create_recall(description: str) -> None:
+    """Print proposal_suggest's three-way recall (①②③) after a create.
+
+    P-0124 makes the drafting recall automatic (was an optional step): surfaces
+    ① similar proposals / ② drafting checklist & lessons / ③ likely scope owner.
+    Best-effort — a recall failure WARNs but never fails `create` (the proposal
+    is already written). Prefers the in-process import (proposal_suggest lives
+    next to this file); falls back to shelling out to its CLI.
+    """
+    try:
+        sys.stdout.reconfigure(encoding="utf-8")  # ①②③/CJK on a GBK console
+    except (AttributeError, ValueError):
+        pass
+    try:
+        sys.path.insert(0, str(REPO_ROOT / "tools"))
+        import proposal_suggest as _ps
+        sys.stdout.write(_ps.render(_ps.suggest(description)) + "\n")
+        return
+    except Exception:
+        pass
+    try:
+        suggest_py = REPO_ROOT / "tools" / "proposal_suggest.py"
+        result = subprocess.run(
+            [sys.executable, str(suggest_py), description],
+            capture_output=True, text=True, encoding="utf-8",
+            timeout=20, cwd=REPO_ROOT,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            sys.stdout.write(result.stdout)
+            return
+    except Exception:
+        pass
+    sys.stdout.write("[WARN] proposal_suggest recall unavailable; skipped\n")
+
+
 def _cmd_create(args):
     path = create_proposal(slug=args.slug, title=args.title, agent=args.agent)
     print(f"[OK] Created {path.relative_to(REPO_ROOT.parent)}")
     fm, _ = parse_proposal(path)
     print(f"     id={fm['id']} agent={fm['agent']} status={fm['status']}")
+    # P-0124: auto-emit the drafting recall so the author sees prior art /
+    # checklist / scope owner without a separate opt-in step.
+    _emit_create_recall(args.title)
     return 0
 
 
@@ -924,6 +1166,7 @@ def _cmd_transition(args):
         commit_hash=args.commit or "",
         superseded_by=args.superseded_by or "",
         allow_empty_current_state=args.allow_empty_current_state,
+        allow_thin_spec=args.allow_thin_spec,
     )
     print(f"[OK] {args.id}: {prev} → {new}")
     print(f"     path: {path.relative_to(REPO_ROOT.parent)}")
@@ -1204,6 +1447,9 @@ def main(argv=None) -> int:
     p.add_argument("--allow-empty-current-state", action="store_true",
                    help="Override the P-0108 research gate on --to approved "
                         "(legacy/greenfield escape hatch; justify in --note)")
+    p.add_argument("--allow-thin-spec", action="store_true",
+                   help="Override the P-0124 design-contract gate on --to "
+                        "approved for a complex proposal (justify in --note)")
     p.set_defaults(func=_cmd_transition)
 
     p = sub.add_parser("archive", help="Move terminal proposal to _archive/<YYYY>/")

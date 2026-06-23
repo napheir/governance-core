@@ -24,7 +24,7 @@ ledger snapshot）。Agent 不直接 Edit frontmatter / 不直接动 body 之外
 | `/proposal classify <description>` | 三值 gate：决定是否需要 proposal | （只读） |
 | `/proposal create --slug X --title "Y" [--agent Z]` | 起草新 proposal，自动分配 P-NNNN | (新文件) → draft |
 | `/proposal submit <id>` | 请 user 评审 | draft → pending |
-| `/proposal approve <id>` | user 已明确批准（P-0108 研究门：Current State 须达标，否则 BLOCK） | pending → approved |
+| `/proposal approve <id>` | user 已明确批准（P-0108 研究门：Current State 须达标；P-0124 设计门：复杂提案 Design & Contract 须达标，否则 BLOCK） | pending → approved |
 | `/proposal start <id>` | 实施开始（可选；短任务可跳过） | approved → in-progress |
 | `/proposal complete <id> [--commit <hash>]` | reconcile + 实施完成 + 自动归档 | (approved\|in-progress) → implemented → archive |
 | `proposal_lib.py reconcile --id X --commit H` | as-built 覆盖差（advisory，complete step-0） | （只读） |
@@ -86,11 +86,12 @@ scope (建议): 加 rules.allow.txt 一行 + Phase 0 走 /iterate-constitution
 2. 应用上述"必判 / 可判"条件表
 3. 不动文件，输出三值 + reason + 建议 scope（如 PROPOSAL_REQUIRED）或最小问题（如 NEEDS_CLARIFICATION）
 
-> **可选建议模块**（只读、不阻断）：起草前可跑
+> **召回模块（P-0124：必跑，非可选）**：classify 时**必须**跑
 > `python tools/proposal_suggest.py "<description>"` surface 三路机械召回 ——
 > ① 类似 / 相关 proposal、② 起草检查项 / 历史经验、③ likely scope owner
-> （按 `agent_rules/*.allow.txt`）。输出仅供参考、决策权在起草 agent；每节空集
-> 显式渲染 `（无）`。② 数据源为 `knowledge/governance/proposal-drafting-checklist.md`
+> （按 `agent_rules/*.allow.txt`）。`create` 子命令在写完 scaffold 后**自动 emit**
+> 这三节（不再是单独 opt-in 步骤）。输出只读、不阻断、决策权在起草 agent；每节
+> 空集显式渲染 `（无）`。② 数据源为 `knowledge/governance/proposal-drafting-checklist.md`
 > （通用 seed，消费者自维护其条目）。
 
 ### `create --slug X --title "Y" [--agent Z]`
@@ -98,23 +99,46 @@ scope (建议): 加 rules.allow.txt 一行 + Phase 0 走 /iterate-constitution
 调 `python tools/proposal_lib.py create --slug X --title "Y" [--agent Z]`：
 
 1. lib 内部 filelock 内扫所有 in-flight + archive + legacy 文件，求 max NNNN + 1
-2. 写 11 段 v2 scaffold 到 `shared_state/proposals/<agent>/p-NNNN-<slug>.md`
+2. 写 v2 scaffold 到 `shared_state/proposals/<agent>/p-NNNN-<slug>.md`
 3. frontmatter: `id` / `agent` / `status: draft` / `created` / `owner`
-4. body 11 段：Trigger / **Current State (read, not assumed)** / Scope / Non-Goals /
-   **Alternatives & Rationale** / Guardrails / Phases（含 Phase 0 governance bootstrap
-   slot）/ Approval Criteria / Validation Plan / Rollback / Risks / State Log
+4. body 段序：Trigger / **Current State (read, not assumed)** / Scope /
+   **Design & Contract** / Non-Goals / **Open Questions** / Alternatives & Rationale /
+   Guardrails / Phases（含 Phase 0 governance bootstrap slot）/ Approval Criteria
+   （checklist 形式）/ Validation Plan / Rollback / Risks / State Log
 5. State Log 已有一行 `YYYY-MM-DD: draft created by <agent> agent (P-NNNN)`
+6. **自动 emit** proposal_suggest 三路召回 ①②③ 到 stdout（P-0124；best-effort，
+   召回失败只 WARN 不阻断 create）
 
 `--agent` 缺省时由 git 分支自动检测（master → core，feature/rules-* → rules，...）。
 
 Agent 收到 scaffold 路径后，**填充各段内容**（直接 Edit 文件 body 部分，不动 frontmatter）。
 
-> **P-0108 两个新段（研究 rigor）**：
+> **P-0108 研究段**：
 > - `## Current State (read, not assumed)` —— 实读 point-of-change 现状并 cite ≥1
 >   `file:line`；**approve 时硬门校验**（form：段在、非占位、有具体引用），不达标
 >   `approve` 被 lib BLOCK，须补研究或 `--allow-empty-current-state` 豁免。
 > - `## Alternatives & Rationale` —— proportionate：单一显然解写"单一显然解 + 理由"；
 >   设计抉择权衡 ≥2 方案 + 取舍。
+
+> **P-0124 设计段（比例化、有条件 gate）**：
+> - `## Design & Contract` —— 记录 HOW-designed。三个 H3 子项：
+>   - **Interfaces, I/O & Realization**：每个新/改边界（fn / CLI / file / endpoint）
+>     的签名 + 消费的 INPUT（哪些字段）+ 产出的 OUTPUT（哪些字段）。**每个用户可见
+>     能力 / 每处 mutation 都要点名 end-to-end 执行组件**（server / daemon / CLI /
+>     agent / static-file）；能力无命名执行机制 = 设计错误，要么建、要么在 Non-Goals
+>     显式 defer，不留模糊中间态（防 Todo-Board 式"静态页当后端交付"漂移）。
+>   - **Field Dictionary**：每个跨边界字段；若持久化 / 跨 agent，点名治理它的
+>     `contracts/` 文件（不另起平行词表与 `contracts/` 漂移）。
+>   - **Flow**：producer → transform → consumer → sink。
+> - **条件门**：仅**复杂提案**（≥2 个非占位 `### Phase`，**或** `## Scope`
+>   file-token 触及 `contracts/`）在 approve 时硬门校验三子项 form（剥占位后非空、
+>   或显式 `N/A — <reason>`）；简单提案空 Design & Contract 仍可 approve。不达标
+>   `approve` 被 lib BLOCK，须补设计或 `--allow-thin-spec`（在 `--note` 说明理由）豁免。
+> - `## Open Questions` —— approve 前应解决 / 显式 defer 的已知未决设计点；
+>   **轻量、不 gate**，approver 逐条裁定，无内容写 `None`。
+> - `## Approval Criteria` 为 **checklist**：从上面规格派生可勾选的具体检查项
+>   （非复述 goals），含"每个 Field Dictionary 项点名 `contracts/`"、"每个能力/mutation
+>   有命名 realizer"、"Open Questions 已决/已 defer"等。
 
 ### `submit <id>`
 
@@ -127,6 +151,10 @@ Agent 收到 scaffold 路径后，**填充各段内容**（直接 Edit 文件 bo
 **安全约束**：本 turn 用户消息必须含明确批准信号（`approved` / `通过` / `批准` / `ok 实施` / `可以实施` / `同意` / `同意该 proposal`）。否则拒绝并提示。
 
 调 `python tools/proposal_lib.py transition --id P-NNNN --to approved --note "<approval signal excerpt>"`。
+
+**两道 form 门**（lib 内强制，不达标 BLOCK）：① Current State（P-0108，所有提案）；
+② Design & Contract（P-0124，仅复杂提案）。豁免分别用 `--allow-empty-current-state`
+/ `--allow-thin-spec`，并在 `--note` 写明理由。
 
 ### `start <id>`（可选）
 

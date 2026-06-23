@@ -2,7 +2,7 @@
 title: Proposal Drafting Checklist (seed)
 status: active
 created: 2026-06-15
-updated: 2026-06-22
+updated: 2026-06-23
 owner: core
 carrier_class: reference
 tags: [governance, proposal, drafting, checklist]
@@ -106,3 +106,22 @@ related:
 - **怎么做**: 改动涉及跨 agent 契约时，直接读 schema / fixture / 真实配置确认
   现状，再落方案。
 - **来源**: P-0108 研究范式 dim-5（conditional / substance）
+
+### 复杂提案写清接口/字段/流程契约
+
+- **触发**: 设计, 字段, 契约, 接口, 流程, design, contract
+- **教训**: 复杂提案只写 Scope（WHAT）不写接口/字段/流程（HOW-designed），实现
+  期把没拍板的设计细节随手填，致实现漂移。
+- **怎么做**: 复杂改动在 `## Design & Contract` 写 Interfaces·I/O·Realization +
+  Field Dictionary（点名 `contracts/` 治理文件）+ Flow；approve 硬门校验 form。
+- **来源**: P-0124
+
+### 每个能力/mutation 点名执行组件
+
+- **触发**: 原型, ui, 控件, 静态, 页面, mutation, 后端, backend, server, daemon
+- **教训**: 原型控件/能力 = 隐性后端承诺；静态 `file://` 页面能显示却不能
+  mutate，漏建后端致功能不可用（典型：Todo Board 当静态页交付）。
+- **怎么做**: 每个用户可见能力 / 每处 mutation 都点名 end-to-end 执行组件
+  （server / daemon / CLI / agent / static-file），要么建、要么在 Non-Goals
+  显式 defer，不留模糊中间态。
+- **来源**: P-0124
