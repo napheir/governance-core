@@ -71,6 +71,13 @@ This repo runs its own proposal pipeline:
   / has no `file:line` ref (escape hatch `--allow-empty-current-state`);
   `proposal_lib.py reconcile --id P-NNNN --commit H` lists as-built coverage gaps
   (run at `complete` step-0). Details in the skill — this is just a pointer.
+- P-0124 design-contract rigor (v0.38.0): the scaffold gains a proportionate
+  `## Design & Contract` section (Interfaces·I/O·Realization / Field Dictionary /
+  Flow) + `## Open Questions`; `transition --to approved` hard-BLOCKs a COMPLEX
+  proposal (>=2 phases or a `contracts/` scope token) whose three design sub-parts
+  are still placeholder (escape hatch `--allow-thin-spec`). Simple proposals are
+  unaffected. `create` now auto-emits the `proposal_suggest` ①②③ recall. The gate
+  is form-only; audit Check 14 (WARN) shares its predicate. Details in the skill.
 
 ## 5. Constitution changes
 
