@@ -17,6 +17,28 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-23 — Bugfix：`_extract_section`/`_extract_h3` 不识别 fenced code block（v0.38.1）
+
+- **Bug**：`tools/proposal_lib.py` 的 `_extract_section`（及 P-0124 新增的 `_extract_h3`）
+  按行扫 `## `/`### ` 前缀但**不跟踪 ``` / ~~~ 围栏**。后果：一个在代码围栏里引用
+  `## Design & Contract` 模板（含 `<占位>`）的"元提案"，会让 `_extract_section` 抓到
+  **围栏内的占位模板**而非围栏后真正填好的段 → `design_contract_adequacy` 误判"占位/空" →
+  approve 门误 BLOCK / audit Check 14 误 WARN。同一 `_extract_section` 被 `current_state_adequacy`
+  与 `_extract_scope_file_tokens` 复用 → 属普遍性 robustness bug，非 P-0124 专有。
+- **复现确认**：TDD 先加围栏测试，对未修代码跑出**正是报告的错误**
+  （`'### Interfaces, I/O & Realization' is empty or still the scaffold placeholder`）。
+- **修复**：`_extract_section` + `_extract_h3` 各加 `_FENCE_RE` 围栏状态机——遇 ``` / ~~~ 行翻转
+  `in_fence`，`in_fence` 内的 `## `/`### ` 不计作 heading 边界（计作内容）。纯 form 谓词解析
+  健壮性修复，**不改门语义、不改 scaffold**。
+- **核实差异**：报告称对 `proposals/_archive/2026/p-0124-*.md` 跑 audit——但该归档**不存在**
+  （P-0124 是外部引用编号，从未是本仓 proposal，见 [[handed-proposal-id-may-not-be-local]]）。
+  改用构造的围栏 fixture + audit-level 测试覆盖该症状。
+- **测试**：design `test_proposal_design_contract.py` 加 4 例（`_extract_section`/`_extract_h3`
+  单测 + design_contract 围栏 + audit Check 14 围栏）→ 23/23；rigor 加 current_state 围栏例 →
+  18/18；自治层全套 proposal 测试 + `audit_proposals --root .` 0/45 失败 0 警告。版本 0.38.0→0.38.1。
+- **已知相邻 gap（未扩范围）**：`_count_real_phases` 也按行扫 `### Phase` 非围栏感知；围栏里
+  嵌 2-phase 模板会误判 complex。报告未涉、风险低，留作后续。
+
 ### 2026-06-23 — P-0124 实现：proposal scaffold 加 Design & Contract 段 + 条件 approve 门（v0.38.0）
 
 - **动机**：scaffold 记 WHAT（Scope）却从不记 HOW-designed —— 无接口签名 / 字段流转契约 /

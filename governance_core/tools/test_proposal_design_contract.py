@@ -195,6 +195,54 @@ def test_design_adequacy_empty_field_dict_table_is_unfilled():
     assert not ok and "Field Dictionary" in reason
 
 
+# --- fenced code block robustness (regression: fenced ##/### mis-grabbed) ----
+
+def test_extract_section_skips_fenced_heading():
+    body = (
+        "## Scope\n\nsee the template:\n\n"
+        "```text\n## Target\nFENCED-CONTENT\n```\n\n"
+        "## Target\n\nREAL-CONTENT\n\n"
+        "## End\n\nz\n"
+    )
+    sec = pl._extract_section(body, "## Target")
+    assert "REAL-CONTENT" in sec
+    assert "FENCED-CONTENT" not in sec
+
+
+def test_extract_h3_skips_fenced_subheading():
+    section = (
+        "intro\n\n"
+        "```\n### Flow\nFENCED-FLOW\n```\n\n"
+        "### Flow\n\nREAL-FLOW\n"
+    )
+    assert pl._extract_h3(section, "### Flow") == "REAL-FLOW"
+
+
+def test_design_adequacy_ignores_fenced_template():
+    # A meta-proposal that quotes the scaffold template (with <placeholder>s)
+    # inside a code fence in Scope, then fills the REAL Design & Contract after
+    # the fence. _extract_section must skip the fenced heading and grab the real
+    # section -> adequacy True. (Regression: the fenced `## Design & Contract`
+    # template was mis-grabbed, falsely BLOCKing approve / WARNing in audit.)
+    body = (
+        "## Scope\n\nWe add the section; the scaffold template is:\n\n"
+        "```text\n"
+        "## Design & Contract\n\n"
+        "### Interfaces, I/O & Realization\n"
+        "<sig + INPUT/OUTPUT + realizer>\n\n"
+        "### Field Dictionary\n"
+        "<fields>\n\n"
+        "### Flow\n"
+        "<producer -> sink>\n"
+        "```\n\n"
+        "## Design & Contract\n\n"
+        + _FILLED_DESIGN +
+        "\n## Non-Goals\n\nnone\n"
+    )
+    ok, reason = pl.design_contract_adequacy(body)
+    assert ok, reason
+
+
 # --- _is_complex_proposal ---------------------------------------------------
 
 def test_is_complex_two_phases():
@@ -293,6 +341,32 @@ def test_audit_check14_exempts_simple_and_pre_cutover():
                                         created="2026-06-01"))
         warns = ap._check_design_contract_adequacy([simple, old], d)
     assert warns == []
+
+
+def test_audit_check14_ignores_fenced_template():
+    # Mirror of the reported P-0124 symptom: a COMPLEX proposal whose Scope
+    # fences the scaffold template (placeholders) but fills the real Design &
+    # Contract after the fence. audit Check 14 must NOT misfire (no real
+    # p-0124 archive exists to test against, so use a representative fixture).
+    body = (
+        "---\nid: P-9200\nagent: core\nstatus: pending\ncreated: 2026-06-23\n---\n\n"
+        "# Proposal P-9200: Fenced meta\n\n"
+        "## Trigger\n\nx\n\n"
+        "## Current State (read, not assumed)\n\nRead `tools/proposal_lib.py:600`.\n\n"
+        "## Scope\n\nThe scaffold template is:\n\n"
+        "```text\n## Design & Contract\n\n### Interfaces, I/O & Realization\n<sig>\n\n"
+        "### Field Dictionary\n<fields>\n\n### Flow\n<a -> b>\n```\n\n"
+        "## Design & Contract\n\n" + _FILLED_DESIGN +
+        "\n## Non-Goals\n\nnone\n\n"
+        "## Phases\n\n### Phase 0: bootstrap\n\n- x\n\n### Phase 1: impl\n\n- y\n\n"
+        "## Approval Criteria\n\n- [ ] x\n"
+    )
+    assert pl._is_complex_proposal(body)  # 2 real phases -> gate applies
+    with tempfile.TemporaryDirectory() as dd:
+        d = Path(dd)
+        p = _write_inflight(d, "p-9200-fenced.md", body)
+        warns = ap._check_design_contract_adequacy([p], d)
+    assert warns == [], warns
 
 
 # --- create auto-emits the recall (f) ---------------------------------------

@@ -81,6 +81,19 @@ def test_adequacy_passes_with_file_line_ref():
     assert ok
 
 
+def test_adequacy_ignores_fenced_heading():
+    # `## Current State` quoted inside a code fence (placeholder) must not be
+    # mistaken for the real section that follows the fence with a file ref.
+    body = (
+        "## Scope\n\nthe scaffold template is:\n\n"
+        "```text\n## Current State (read, not assumed)\n<cite files you read>\n```\n\n"
+        "## Current State (read, not assumed)\n\nRead `tools/proposal_lib.py:600`.\n\n"
+        "## Scope\n"
+    )
+    ok, reason = pl.current_state_adequacy(body)
+    assert ok and reason == "ok"
+
+
 # --- section extraction primitives ------------------------------------------
 
 def test_extract_section_stops_at_next_h2():

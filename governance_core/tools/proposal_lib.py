@@ -589,17 +589,33 @@ _FILE_REF_RE = re.compile(
 )
 
 
+# A fenced-code-block delimiter line (``` or ~~~, any length >=3, optional
+# leading whitespace + info string). Headings quoted INSIDE a fence must not be
+# treated as section boundaries — otherwise a meta-proposal that shows the
+# scaffold template in a code fence makes _extract_section grab the fenced
+# placeholder instead of the real section (robustness bug; shared by
+# current_state_adequacy / design_contract_adequacy / scope-token extraction).
+_FENCE_RE = re.compile(r"^\s*(?:`{3,}|~{3,})")
+
+
 def _extract_section(body: str, heading_prefix: str) -> str:
     """Return the text under a `## Heading` line, up to the next `## ` or EOF.
 
     Matches by prefix so `## Current State (read, not assumed)` is found via
     `## Current State`. Returns '' if the heading is absent. H3 (`### `) lines
-    inside the section are preserved (only H2 boundaries close it).
+    inside the section are preserved (only H2 boundaries close it). `## ` lines
+    inside a fenced code block are content, NOT boundaries (see _FENCE_RE).
     """
     out: list[str] = []
     capturing = False
+    in_fence = False
     for line in body.splitlines():
-        if line.startswith("## "):
+        if _FENCE_RE.match(line):
+            in_fence = not in_fence
+            if capturing:
+                out.append(line)
+            continue
+        if not in_fence and line.startswith("## "):
             if capturing:
                 break
             if line.strip().startswith(heading_prefix):
@@ -745,13 +761,20 @@ def _extract_h3(section_body: str, h3_prefix: str) -> Optional[str]:
 
     Operates on the body of an already-extracted `## ` section (see
     _extract_section, which preserves H3 lines). Returns None if the sub-heading
-    is absent; '' if present but empty.
+    is absent; '' if present but empty. `### ` lines inside a fenced code block
+    are content, NOT boundaries (see _FENCE_RE).
     """
     out: list[str] = []
     capturing = False
     found = False
+    in_fence = False
     for line in section_body.splitlines():
-        if line.startswith("### "):
+        if _FENCE_RE.match(line):
+            in_fence = not in_fence
+            if capturing:
+                out.append(line)
+            continue
+        if not in_fence and line.startswith("### "):
             if capturing:
                 break
             if line.strip().startswith(h3_prefix):
