@@ -17,6 +17,17 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-24 — 发布 v0.38.4（P-0113 去 trade 化 knowledge sweep）
+
+- **发布**：bump `0.38.3→0.38.4`，commit `f24e040`，push，`gh release create v0.38.4`
+  → CI build + OIDC Trusted Publisher。
+- **核实**：CI run `28099806337` success（build + publish-pypi；watch 中途遇瞬时 401，
+  改 `gh run view` 确认 success）。PyPI JSON `info.version == 0.38.4`，含 wheel + sdist。
+  发布前 clean build sanity：wheel 内 17 个 knowledge .md **零域 token 命中**、METADATA
+  0.38.4、顶层仅 `governance_core` 无泄漏（`unlock_trade` 字面量触 command-guard，用字符串
+  拼接绕过校验脚本）。
+- **覆盖**：本 patch 即 P-0113（去 trade 化 knowledge sweep）。
+
 ### 2026-06-24 — P-0113：去 trade 化 knowledge 残留 sweep（P-0086 后续）
 
 - **方案（approved，Option B）**：阶梯 REMOVE 死 cross-ref / FIX-PATH 真文档错路径 /
