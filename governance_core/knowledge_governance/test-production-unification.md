@@ -2,7 +2,7 @@
 title: Test-Production Unification (Constitution Article 8 detail)
 status: active
 created: 2026-05-07
-updated: 2026-05-07
+updated: 2026-06-24
 owner: core
 tags: [governance, testing, production-parity, art8, paper, live]
 ---
@@ -79,5 +79,3 @@ Test 通过不等于生产正确。两个证据来源在历史事件中反复证
 - Constitution 第八条 (slim residue + pointer to this file)
 - 第十三条 附录 红线清单 — Art.8 row（子宪法不得放宽 ban）
 - `proposals/prefix_cost_optimization.md` §4.2 (extraction rationale)
-- `knowledge/governance/_constitution_inline_audit_2026-05-07.md` §2.1
-  (audit decision for Art.8 → this file)

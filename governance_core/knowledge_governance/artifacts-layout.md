@@ -2,7 +2,7 @@
 title: Artifacts Output Layout
 status: active
 created: 2026-04-28
-updated: 2026-04-28
+updated: 2026-06-24
 owner: core
 tags: [governance, artifacts, output-paths]
 ---
@@ -22,13 +22,9 @@ file.
 
 | Source | Output path |
 |--------|-------------|
-| rules (strangle) | `artifacts/strangle/{stage}/{exp_name}/` |
-| rules (strangle50) | `artifacts/strangle50/{stage}/{exp_name}/` |
-| rules (legacy) | `artifacts/rules/{run_name}/` |
-| trade | `artifacts/trade/{YYYYMMDD_HHMMSS}/` |
-| data | `artifacts/data/{task_name}/` |
-| simu | `artifacts/simu/{run_name}/` |
-| research | `artifacts/research/{task_name}/` |
+| per-agent (by variant / experiment) | `artifacts/<agent>/{stage}/{exp_name}/` |
+| per-agent (by run) | `artifacts/<agent>/{run_name}/` |
+| per-task | `artifacts/<task>/{task_name}/` |
 | tests | `artifacts/tests/` |
 | knowledge (shared dashboard) | `<install-root>/shared_state/knowledge/` (NOT in artifacts/) |
 
@@ -39,12 +35,13 @@ file.
 - `{stage}` — one of: `data` / `stage1` / `stage2` / `production` / `signals` / `oos_validation`
 - `{task_name}` — kebab-case task description
 
-## Datasets registry layer (rules pipeline)
+## Datasets registry layer (optional, per consumer pipeline)
 
-For long-lived datasets under `artifacts/{pipeline}/datasets/**`, write goes
-through `rules.strangle.dataset_registry.DatasetRegistry` (enforced by
-`edit-write-guard.py` Layer 4). Vintage + lineage + supersedes-chain are
-stamped automatically; see `proposals/dataset_registry_and_unified_artifacts_layout.md`.
+For long-lived datasets under `artifacts/{pipeline}/datasets/**`, a consumer may
+route writes through a dataset-registry module (e.g.
+`<consumer>.<pipeline>.dataset_registry.DatasetRegistry`) enforced by
+`edit-write-guard.py`, so vintage + lineage + supersedes-chain are stamped
+automatically.
 
 ## Why artifacts/ is gitignored (Art.9)
 
@@ -61,5 +58,3 @@ its physical location, single physical copy across all clones.
 ## See also
 
 - `.gitignore` — enforces the "no commit" rule
-- `knowledge/governance/data-flow.md` — what each pipeline produces under these paths
-- `proposals/dataset_registry_and_unified_artifacts_layout.md` — datasets/ subtree governance

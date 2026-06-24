@@ -2,7 +2,7 @@
 title: Sub-Constitution Red Lines (Constitution Appendix detail)
 status: active
 created: 2026-05-07
-updated: 2026-05-07
+updated: 2026-06-24
 owner: core
 tags: [governance, constitution, red-lines, sub-constitution, appendix]
 ---
@@ -89,12 +89,12 @@ the inline 附录 — extraction is transparent to the audit tool.
 
 ### ✅ 合规示例
 
-**data-agent 在第九条补充操作手册规范**：
+**某 consumer agent 在第九条补充操作手册规范**：
 
 ```markdown
 ### 9.1 核心使用方法管理
 
-在 `knowledge/operations/data-manual.md` 头部展示核心使用方法（如 `dashboard --prepare`）：
+在 `knowledge/operations/<agent>-manual.md` 头部展示核心使用方法（如 `governance-core upgrade`）：
 - 新增核心使用方法时必须更新本 agent 的操作手册
 - 不确定是否算核心使用方法时，询问用户
 ```
@@ -119,4 +119,3 @@ the inline 附录 — extraction is transparent to the audit tool.
 - Constitution 第十三条 (修改权限 + 监督机制)
 - `tools/audit_sub_constitutions.py` (CORE_KEYWORDS dict — actual tool source-of-truth)
 - `proposals/prefix_cost_optimization.md` §4.2 / audit §2.5 (extraction rationale)
-- `knowledge/governance/_constitution_inline_audit_2026-05-07.md` §2.5 (audit decision)

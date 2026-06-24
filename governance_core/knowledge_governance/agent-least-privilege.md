@@ -3,7 +3,7 @@ title: "Agent Runtime Least-Privilege Principle"
 tags: [governance, security, least-privilege, defense-in-depth]
 status: active
 created: 2026-05-01
-updated: 2026-06-01
+updated: 2026-06-24
 owner: core
 related:
   - agent_rules/shared.deny_commands.txt
@@ -67,27 +67,28 @@ If automation needs these, give it a separate identity that runs a fixed
 playbook with human review before execution — not the Agent's
 interactive session credentials.
 
-## 4. External API credential isolation (Futu trade unlock as example)
+## 4. External API credential isolation (privileged unlock as example)
 
 This principle is **already partially enforced** in the project:
 
-- `unlock_trade` substring is in `agent_rules/shared.deny_commands.txt`
+- A privileged unlock command substring (e.g. an external broker / payment /
+  deploy API unlock) is listed in `agent_rules/shared.deny_commands.txt`
   (blocked at the shell layer)
-- Trade unlock + execution is gated by trade-only role scope in
-  `agent_rules/trade.allow.txt`
-- The actual external API/broker password is stored in user-managed config
+- That unlock + execution is gated to a single privileged role scope in
+  `agent_rules/<role>.allow.txt`
+- The actual external API/service password is stored in user-managed config
   outside any Agent-scoped path
 
 But the principle could be tightened further: the Agent could in
-principle import `futu` and call unlock APIs without going through the
-shell layer. A defense-in-depth fix is to move trade unlock to a
+principle import the external SDK and call unlock APIs without going through the
+shell layer. A defense-in-depth fix is to move the privileged unlock to a
 sub-process that the Agent invokes via a controlled IPC interface (e.g.,
 write an "unlock requested" file, human watches and approves, daemon
 unlocks) — not direct API calls from the LLM-authored code.
 
 This is **not** scoped to be implemented today. It becomes actionable
-when the Agent's trade automation moves from research / paper modes into
-live execution.
+when a consumer's automation moves from research / dry-run modes into
+live execution against the privileged external API.
 
 ## 5. SQLite caveat
 

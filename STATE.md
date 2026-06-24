@@ -17,6 +17,30 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-24 — P-0113：去 trade 化 knowledge 残留 sweep（P-0086 后续）
+
+- **方案（approved，Option B）**：阶梯 REMOVE 死 cross-ref / FIX-PATH 真文档错路径 /
+  GENERICIZE 教学举例 token，机制文字逐字保留。Open Question §3「现存子目录」表按默认
+  (b) reframe 为"推荐映射"+ disclaimer（用户未否决）。对齐 P-0086/P-0079 先例。
+- **改动（9 文件，包源 `knowledge_governance/`）**：artifacts-layout、knowledge-html-profile、
+  sub-constitution-red-lines、test-production-unification、knowledge-carrier-classes（最重，
+  §2 表/各类举例/§3 表/§7 边界表）、scope-enforcement-mechanism、proposal-classify-fast-path、
+  agent-least-privilege（§4 Futu/trade 举例泛化）、data-analysis-discipline。改动文件 bump
+  `updated: 2026-06-24`。**保留** provenance `proposals/...` 指针、有效 gc cross-ref、中性
+  `agent_rules/<agent>` 占位。
+- **scope 扩展（grep gate 价值）**：grep gate 揪出 disposition 表（基于 path-grep）漏掉的
+  同类 token 残留 —— artifacts-layout per-source 表的 `strangle`×3 + `rules.strangle.
+  dataset_registry`、html-profile:36 与 data-analysis:38 的 `experiment_protocol`/`strangle`。
+  按 gate 零命中 exit criteria + 用户"全部解决"一并清理（per-source 表/datasets 段泛化为
+  `<agent>`/`<consumer>` 占位）。
+- **验证**：grep gate（trade token 集）**零命中**；指向不存在类别的具体死路径**零残留**
+  （只剩 `<占位>`）；`governance-core upgrade` 后 hub 自审 **Failed: 0 healthy**
+  （warnings 34→28）；tool 测试 16/16 sanity。
+- **故意未扩范围（flag 待后续）**：data-analysis-discipline.md 仍含**非路径类**残留
+  —— `/validate-pipeline` skill 引用、`rules-agent R3` 的 Dense/sparse 域术语；且该文件
+  整体偏 data 域，是否适合留在 gc 通用 knowledge 是更大问题。非本 sweep 的 path/token
+  scope，留作独立判断。
+
 ### 2026-06-24 — 发布 v0.38.3（P-0112 + 悬空 related 引用清理）
 
 - **发布**：bump `0.38.2→0.38.3`（两处），commit `a38b5b8`，push，

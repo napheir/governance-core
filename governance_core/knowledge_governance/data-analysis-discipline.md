@@ -2,7 +2,7 @@
 title: Data Analysis & Pipeline Validation Discipline
 status: active
 created: 2026-04-28
-updated: 2026-04-28
+updated: 2026-06-24
 owner: core
 tags: [governance, data-analysis, pipeline-validation, insights-driven]
 ---
@@ -35,7 +35,7 @@ abnormally few rows, you MUST explain why before presenting.
 Before modifying a data pipeline or feature set, you MUST:
 
 1. Verify **all expected columns** exist in output CSV/DataFrame
-2. Check whether config filtering **silently drops columns** (e.g., strangle
+2. Check whether config filtering **silently drops columns** (e.g., a
    config passing only a subset of features through)
 3. Print the intermediate DataFrame shape and column names
 4. Compare row count against expected total — > 5% deviation = data leak signal
@@ -60,7 +60,5 @@ debug time.
 ## See also
 
 - `/validate-pipeline` skill — codifies the column / dropna verification flow
-- `knowledge/governance/data-flow.md` — pipeline structure (so you know what
-  "all expected columns" means in each pipeline)
 - rules-agent `R3` — specific Dense audit data discipline (don't mix sparse
   event-sample sources into Dense lookback)

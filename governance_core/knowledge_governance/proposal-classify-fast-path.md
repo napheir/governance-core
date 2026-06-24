@@ -2,7 +2,7 @@
 title: Proposal Classify Gate — Fast-Path Hard-Block (P-0076)
 status: active
 created: 2026-05-26
-updated: 2026-05-26
+updated: 2026-06-24
 owner: core
 carrier_class: reference
 tags: [governance, proposal, classify, hook, enforcement, p-0076]
@@ -184,7 +184,7 @@ LLM-mode 的判定参考 `.claude/skills/proposal-vs-plan-mode-vs-commit.md`
 待数据收集完成后跑：
 - `tools/scan_classify_log.py`（待开发）→ 多少次 BLOCK / 多少 false positive / fail-open 次数 / wall-time 分布
 - 根据数据调 paths.json + keywords.json
-- 写 retro 到 `knowledge/decisions/adr-classify-fast-path.md`
+- 写 retro 到新 proposal 或 `docs/`
 
 ---
 
