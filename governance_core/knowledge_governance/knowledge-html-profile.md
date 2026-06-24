@@ -2,14 +2,13 @@
 title: Knowledge HTML Profile (P-0054)
 status: active
 created: 2026-05-13
-updated: 2026-05-30
+updated: 2026-06-24
 owner: core
 carrier_class: reference
 tags: [governance, knowledge, html-profile, mermaid, autogen, p-0054]
 related:
   - knowledge/governance/knowledge-carrier-classes.md
   - contracts/knowledge_frontmatter_schema.md
-  - knowledge/governance/data-flow.md
 ---
 
 # Knowledge HTML Profile

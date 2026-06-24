@@ -17,6 +17,21 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-24 — 修 2 个预存悬空 related 引用（P-0112 surface 出的独立问题）
+
+- **来源**：P-0112 修好崩溃后 hub 自审能跑到 per-file 检查，暴露 2 个悬空 `related:`。
+- **判定**：两个目标均**不存在**（gc 包无 `knowledge/decisions/` 目录 —— 上游项目路径
+  惯例），属上游域残留。无内容可保留 → **删悬空条目**（非补建目标）。NO_PROPOSAL
+  （窄文件、清晰复现、纯内容、无机制/契约变更）。
+- **改动**（包源 `governance_core/knowledge_governance/`）：
+  - `knowledge-html-profile.md`：删 `related: knowledge/governance/data-flow.md`，
+    `updated` 2026-05-30→2026-06-24。
+  - `resource-layer-hardening.md`：删 `related: knowledge/decisions/adr-session-boundary-guard.md`，
+    `updated` 2026-06-01→2026-06-24。
+- **验证**：`governance-core upgrade` 刷新 hub `knowledge/governance/` 安装产物后，
+  `python tools/audit_knowledge.py` → **Failed: 0「Knowledge base is healthy.」**
+  （hub 自审首次干净通过；34 warnings 为 transitional/WARN-only，非 failure）。
+
 ### 2026-06-24 — P-0112：audit_knowledge 容忍缺失 knowledge/INDEX.md（修预存崩溃）
 
 - **触发**：实施 P-0111 时 hub 自审 `python tools/audit_knowledge.py` 暴露预存崩溃
