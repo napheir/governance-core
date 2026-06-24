@@ -17,6 +17,20 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-24 — 未决后续（deferred follow-ups，knowledge 去域化）
+
+P-0113 去 trade 化 sweep 后刻意未扩范围、留待后续判断的两项（用户确认本轮到此为止）：
+
+1. **`data-analysis-discipline.md` 的非路径类残留**：仍含 `/validate-pipeline` skill
+   引用、`rules-agent R3` 的 Dense/sparse 域术语；且该文件整体偏 data 域 —— 是否该留在
+   gc 通用 knowledge、还是整体下沉/移除，是比"清死链"更大的判断题。grep token gate 不覆盖
+   这类（非路径、非已列 token），需专门一案。
+2. **provenance `proposals/<name>.md` 根级指针（~10 处）**：技术上悬空（根级 proposals
+   无 .md、全在 `_archive/`），但属迁移/提取出处，P-0086 先例明确保留。如要把它们重指
+   `proposals/_archive/<year>/p-NNNN-*.md` 实际路径，另起一个 proposal（与去域化正交）。
+
+两项均非 bug、不影响 audit（Failed:0）/ gate；纯文档完善度，优先级低。
+
 ### 2026-06-24 — 发布 v0.38.4（P-0113 去 trade 化 knowledge sweep）
 
 - **发布**：bump `0.38.3→0.38.4`，commit `f24e040`，push，`gh release create v0.38.4`
