@@ -415,11 +415,28 @@ def _audit_skill_tiers(root: Path, tiers_path: Path) -> tuple[int, int]:
         all_tier_entries.update(names)
     phantoms = all_tier_entries - md_skills
     for name in sorted(phantoms):
-        logger.warning(
-            "  FAIL: _tiers.json entry %r not found in skill registry "
-            "(phantom)", name
-        )
-        failed += 1
+        home_tiers = {t for t, names in tier_to_skills.items() if name in names}
+        if non_hub and home_tiers == {"branch"}:
+            # Non-hub clone: branch-tier skill *files* are branch-local (present
+            # in exactly one clone) while _tiers.json is a single globally-synced
+            # hub-owned file. A branch entry owned by another clone is therefore a
+            # legitimate phantom here, unresolvable by any local action (deleting
+            # the file can't touch the synced list). Mirror the 11a / 16a non-hub
+            # carve-outs (gc #101/P-0104, #102/P-0105): WARN, don't FAIL (gc #114
+            # / P-0111). Narrow to home_tiers == {"branch"} so a phantom that also
+            # lives in universal/project (a real, fixable gap) still FAILs.
+            logger.warning(
+                "  WARN: branch-tier entry %r absent in this clone — "
+                "branch-local file lives in its owning clone; _tiers.json is "
+                "hub-owned (non-hub clone)", name
+            )
+            warned += 1
+        else:
+            logger.warning(
+                "  FAIL: _tiers.json entry %r not found in skill registry "
+                "(phantom)", name
+            )
+            failed += 1
 
     # 11c. unclassified bucket non-empty → warn
     pending = tier_to_skills.get("unclassified", set())

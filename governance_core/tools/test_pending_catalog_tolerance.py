@@ -112,6 +112,58 @@ def test_ch11_nonhub_guide_uncataloged_still_fails(tmp_path):
     assert failed >= 1
 
 
+# ---- Check 11b: tiers -> registry phantom (branch-tier carve-out, gc #114) ----
+
+# A branch-tier skill *file* is branch-local (present in exactly one clone) while
+# _tiers.json is a single globally-synced hub-owned file. In a non-hub clone a
+# branch entry owned by another clone is a legitimate, locally-unresolvable
+# phantom -> WARN (P-0111), mirroring the 11a / 16a non-hub carve-outs. The hub
+# stays strict, ambiguity (no config) defaults strict, and the relaxation is
+# branch-tier-only (a universal/project phantom still FAILs).
+
+def test_ch11b_nonhub_branch_phantom_warns(tmp_path):
+    tp = _tiers(tmp_path, {"tiers": {"branch": {"skills": ["foreign-branch-skill"]}}})
+    _config(tmp_path, "trade-agent")  # non-hub consumer
+    failed, warned = ak._audit_skill_tiers(tmp_path, tp)
+    assert failed == 0  # branch-local phantom is hub-owned & unresolvable locally
+    assert warned >= 1
+
+
+def test_ch11b_hub_branch_phantom_fails(tmp_path):
+    tp = _tiers(tmp_path, {"tiers": {"branch": {"skills": ["foreign-branch-skill"]}}})
+    _config(tmp_path, "governance-core")  # the hub -> strict
+    failed, _ = ak._audit_skill_tiers(tmp_path, tp)
+    assert failed >= 1
+
+
+def test_ch11b_absent_config_strict(tmp_path):
+    tp = _tiers(tmp_path, {"tiers": {"branch": {"skills": ["foreign-branch-skill"]}}})
+    # no .governance/config.json -> ambiguous -> default strict
+    failed, _ = ak._audit_skill_tiers(tmp_path, tp)
+    assert failed >= 1
+
+
+def test_ch11b_nonhub_universal_phantom_still_fails(tmp_path):
+    # Carve-out is branch-only: a phantom in a non-branch tier stays a FAIL even
+    # in a non-hub clone (Non-Goal: keep the relaxation narrow).
+    tp = _tiers(tmp_path, {"tiers": {"universal": {"skills": ["ghost-skill"]}}})
+    _config(tmp_path, "trade-agent")
+    failed, _ = ak._audit_skill_tiers(tmp_path, tp)
+    assert failed >= 1
+
+
+def test_ch11b_nonhub_branch_and_universal_phantom_still_fails(tmp_path):
+    # A phantom that ALSO lives in universal/project (home_tiers != {"branch"})
+    # is a real, fixable gap and must still FAIL even in a non-hub clone.
+    tp = _tiers(tmp_path, {"tiers": {
+        "branch": {"skills": ["dual-home-skill"]},
+        "universal": {"skills": ["dual-home-skill"]},
+    }})
+    _config(tmp_path, "trade-agent")
+    failed, _ = ak._audit_skill_tiers(tmp_path, tp)
+    assert failed >= 1
+
+
 # ---- Check 16a: scenario-surface coverage ----
 
 def test_ch16_nonhub_learned_unsurfaced_warns(tmp_path):

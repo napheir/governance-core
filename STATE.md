@@ -17,6 +17,29 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-24 — P-0111：Check 11b 非 hub branch-tier phantom 豁免（gc #114）
+
+- **触发**：下游消费者 Trade Agent 报 gc #114 —— `audit_knowledge.py` Check 11b
+  （tiers→registry phantom）缺 Check 11a / 16a 都有的 non-hub 豁免。叠加 `_tiers.json`
+  `branch` tier「全局同步一份 / 文件 branch-local」结构错配，在非拥有者 clone 产生
+  **无本地动作可清零**的死锁：留文件 → 16a FAIL，删文件 → 11b phantom FAIL。阻塞每个
+  消费者的 `/publish-knowledge` `Failed=0` 门。
+- **方案（P-0111，approved）**：Option 2 最小对称补丁。11b phantom 循环对
+  `home_tiers == {"branch"}` 的 phantom 在 `non_hub` clone 下降级 WARN，复用既有
+  `_detect_non_hub`，**零契约变更**。窄判（`== {"branch"}`）：同挂 universal/project 的
+  phantom 仍 FAIL；hub / 无 config 仍严格 FAIL。Option 1（branch tier 加 ownership
+  标注，需改 `_tiers.json` schema）显式 defer。
+- **改动**：`governance_core/tools/audit_knowledge.py` 11b 段（`:412` 起）；
+  `test_pending_catalog_tolerance.py` 加 5 例（non-hub branch→WARN / hub→FAIL /
+  无 config→FAIL / non-branch phantom→FAIL / branch+universal 双挂→FAIL）。
+- **测试**：`test_pending_catalog_tolerance.py` 11/11；含 `test_command_coverage_exempt`
+  / `test_scenario_coverage_audit` 三套 18/18。直接对包源跑 #114 repro：non-hub branch
+  phantom → `failed=0, warned=2`，死锁解除。`governance-core upgrade --project-root .`
+  dogfood 重装，根副本 `:429` 已带 carve-out。
+- **预存无关项（未扩范围）**：hub 自审 `python tools/audit_knowledge.py` 崩于
+  `parse_category_owner_map`（`:209` 读缺失的 `knowledge/INDEX.md`），发生在 Check 11
+  之前，与本改动无关。
+
 ### 2026-06-23 — Bugfix：`_extract_section`/`_extract_h3` 不识别 fenced code block（v0.38.1）
 
 - **Bug**：`tools/proposal_lib.py` 的 `_extract_section`（及 P-0124 新增的 `_extract_h3`）
