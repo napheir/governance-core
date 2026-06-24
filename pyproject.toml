@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "governance-core"
-version = "0.38.3"
+version = "0.38.4"
 description = "Reusable multi-agent governance infrastructure (hooks + proposal + wrap-up + constitution iteration) extracted from agent-core (P-0059)."
 readme = "README.md"
 requires-python = ">=3.11"
