@@ -17,6 +17,17 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-24 — 发布 v0.38.3（P-0112 + 悬空 related 引用清理）
+
+- **发布**：bump `0.38.2→0.38.3`（两处），commit `a38b5b8`，push，
+  `gh release create v0.38.3` 触发 `release.yml` → build + OIDC Trusted Publisher。
+- **核实（非意图）**：CI run `28097541003` success（publish-pypi 21s）；PyPI JSON
+  `info.version == 0.38.3`，含 wheel + sdist。发布前本地 clean build sanity：wheel 含
+  P-0112 `index_present` 守卫、两个悬空 `related:` 已去（针对 frontmatter 块校验，
+  非全文 —— 正文 §6 边界表仍有 data-flow.md/models 举例残留，属更大去域化任务、未扩
+  范围）、METADATA 0.38.3、顶层仅 `governance_core` 无泄漏。
+- **覆盖**：本 patch 含 P-0112（INDEX.md 崩溃修复）+ 2 个悬空 related 引用清理。
+
 ### 2026-06-24 — 修 2 个预存悬空 related 引用（P-0112 surface 出的独立问题）
 
 - **来源**：P-0112 修好崩溃后 hub 自审能跑到 per-file 检查，暴露 2 个悬空 `related:`。
