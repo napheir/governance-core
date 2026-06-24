@@ -17,6 +17,28 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-24 — P-0112：audit_knowledge 容忍缺失 knowledge/INDEX.md（修预存崩溃）
+
+- **触发**：实施 P-0111 时 hub 自审 `python tools/audit_knowledge.py` 暴露预存崩溃
+  —— `main()` 无条件读 `knowledge/INDEX.md`（`:209`），缺失即裸抛 FileNotFoundError。
+  `main()` 对缺 `knowledge/`、缺 contract 都有干净 `[FATAL]` 守卫，唯独 INDEX.md 没有。
+- **关键约束**：不能简单返回空 map —— Check 4（owner-category，`:680`）对每个 knowledge
+  文件查 owner map，空表 → 全员误 FAIL。要的是"**跳过 Check 4**"而非"空表"。
+- **方案（P-0112，approved，Option A）**：INDEX.md 缺失 → WARN + `index_present=False`
+  + 跳过 Check 4（owner-category 是多 agent 归属概念，单 agent 退化），其余检查照跑。
+  INDEX.md **存在时行为零变化**。否决 B（FATAL，会让 hub 自审永久失败）/ C（给 hub 播种
+  INDEX.md，无生成器+安装产物，更大设计题，defer 到 Non-Goals）。
+- **改动**：`governance_core/tools/audit_knowledge.py` —— `parse_category_owner_map`
+  加防御性 `is_file()` 短路返 `{}`；`main()` 加 `index_present` 守卫 + WARN；Check 4
+  整段包 `if index_present:`。新增 `test_audit_index_absent.py`（5 例）。
+- **测试**：新套件 5/5；含 pending_catalog / scenario_coverage / command_coverage 共
+  23/23。hub 自审现跑通（WARN + 完成，不再 traceback）；`governance-core upgrade`
+  dogfood 重装，自治层副本同样不崩。
+- **新 surface 的独立问题（非本提案 scope，待报）**：崩溃修好后审计跑到，暴露 2 个预存
+  悬空 `related:` 引用 —— `knowledge-html-profile.md → knowledge/governance/data-flow.md`、
+  `resource-layer-hardening.md → knowledge/decisions/adr-session-boundary-guard.md`
+  （包源 `governance_core/knowledge_governance/`，之前被崩溃掩盖）。
+
 ### 2026-06-24 — 发布 v0.38.2（P-0111 / gc #114 修复）
 
 - **发布**：bump `0.38.1→0.38.2`（`pyproject.toml` + `governance_core/__init__.py`），

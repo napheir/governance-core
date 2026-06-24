@@ -204,8 +204,17 @@ def _expected_carrier_class(rel_path: Path) -> str | None:
 
 
 def parse_category_owner_map(knowledge_root: Path) -> dict[str, list[str]]:
-    """Parse top INDEX.md -> {category: [allowed_owners]} (list for multi-owner)."""
+    """Parse top INDEX.md -> {category: [allowed_owners]} (list for multi-owner).
+
+    Returns an empty map when ``knowledge/INDEX.md`` is absent (defensive: a
+    single-agent / pre-index project legitimately has no top-level index, and a
+    missing optional input must never crash the validator). main() additionally
+    gates Check 4 on the file's presence so the empty map is not mistaken for
+    "every category unowned" (P-0112 / gc #114 sibling).
+    """
     index_md = knowledge_root / "INDEX.md"
+    if not index_md.is_file():
+        return {}
     text = index_md.read_text(encoding="utf-8")
     result: dict[str, list[str]] = {}
     header_cols: list[str] | None = None
@@ -613,7 +622,21 @@ def main(root: Path | None = None) -> int:
         carrier_class_enum = parse_enum(contract_fm, "### 3.4 `carrier_class`")
     except ValueError:
         carrier_class_enum = set()
-    category_owners = parse_category_owner_map(knowledge_dir)
+    # Check 4 (owner-matches-category) needs the top INDEX.md owner map. A
+    # single-agent / pre-index project legitimately has no top-level INDEX.md
+    # (owner-category is a multi-agent ownership concept). When it is absent,
+    # WARN and SKIP Check 4 rather than FATAL (which would permanently fail a
+    # legitimate single-agent self-audit) or fail-all (an empty map would flag
+    # every file's category as "unowned"). All other checks still run. P-0112.
+    index_present = (knowledge_dir / "INDEX.md").is_file()
+    if index_present:
+        category_owners = parse_category_owner_map(knowledge_dir)
+    else:
+        logger.warning(
+            "[WARN] knowledge/INDEX.md absent -- owner/category check "
+            "(Check 4) skipped (single-agent or pre-index project)"
+        )
+        category_owners = {}
 
     logger.info(
         "Contract v1.2.0 loaded: required=%s status_enum=%s owner_enum=%s "
@@ -674,16 +697,18 @@ def main(root: Path | None = None) -> int:
             fail(f, f"owner {owner_val!r} not in enum {sorted(owner_enum)}")
             continue
 
-        # Check 4: owner matches category
-        rel = f.relative_to(knowledge_dir)
-        category = rel.parts[0] if rel.parts else ""
-        allowed = category_owners.get(category) if category in category_owners else None
-        if allowed is None:
-            fail(f, f"category {category!r} not found in top INDEX.md owner map")
-            continue
-        if owner_val not in allowed:
-            fail(f, f"owner {owner_val!r} not permitted for category {category!r} (allowed: {allowed})")
-            continue
+        # Check 4: owner matches category (only when a top INDEX.md owner map
+        # exists; absent -> skipped with a WARN at load time, see main(). P-0112)
+        if index_present:
+            rel = f.relative_to(knowledge_dir)
+            category = rel.parts[0] if rel.parts else ""
+            allowed = category_owners.get(category) if category in category_owners else None
+            if allowed is None:
+                fail(f, f"category {category!r} not found in top INDEX.md owner map")
+                continue
+            if owner_val not in allowed:
+                fail(f, f"owner {owner_val!r} not permitted for category {category!r} (allowed: {allowed})")
+                continue
 
         # Check 5: date format + updated >= created
         created_raw = fm["created"]
