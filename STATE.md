@@ -17,6 +17,18 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-06-24 — 发布 v0.38.2（P-0111 / gc #114 修复）
+
+- **发布**：bump `0.38.1→0.38.2`（`pyproject.toml` + `governance_core/__init__.py`），
+  commit `5ea6712`，push master，`gh release create v0.38.2` 触发 `release.yml` →
+  build + OIDC Trusted Publisher。
+- **核实（非意图）**：CI run `28084278001` success（build 13s + publish-pypi 19s）；
+  PyPI JSON `info.version == 0.38.2`，`0.38.2` 含 wheel + sdist 双产物。发布前本地
+  `python -m build`（先清 build/dist/egg-info）sanity：wheel 含 11b carve-out 串、
+  METADATA Version 0.38.2、顶层仅 `governance_core`（无自治层/maintainer 泄漏）。
+- **issue #114**：发布后关闭（fixed-and-shipped，留言指向 v0.38.2 + `upgrade`）。
+- **patch 语义**：纯 bugfix → patch bump，与 0.38.1（围栏 bugfix）体例一致。
+
 ### 2026-06-24 — P-0111：Check 11b 非 hub branch-tier phantom 豁免（gc #114）
 
 - **触发**：下游消费者 Trade Agent 报 gc #114 —— `audit_knowledge.py` Check 11b
