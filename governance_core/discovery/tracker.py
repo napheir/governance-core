@@ -261,6 +261,34 @@ class SkillTracker:
         entry["last_triggered"] = _today()
         self._save()
 
+    def record_loaded(self, name: str) -> None:
+        """Record that a skill's body was loaded by a Read of its .md (path C).
+
+        Learned + guide skills are consulted by *reading the .md body* (Read
+        tool), never through the Skill tool -- so ``record_use`` (PostToolUse
+        Skill) never fires for them and their funnel ``load`` axis was pinned
+        at 0 (P-0113 WS-D). This is the missing Read-based half of path C.
+
+        Kept distinct from ``record_use`` so a Read-consult is never conflated
+        with a Skill-tool command load. Per-day deduped on ``last_loaded``
+        (mirrors ``record_surfaced``) so a burst read of N skills in one
+        session does not inflate the count. Lazy-migrates ``loaded_count`` /
+        ``last_loaded`` like the schema-v2 surfaced/triggered fields.
+
+        Args:
+            name: Skill name whose .md body was read.
+        """
+        today = _today()
+        skills = self._data.setdefault("skills", {})
+        entry = skills.setdefault(name, {
+            "use_count": 0, "last_used": None, "created": today,
+            "refinement_count": 0,
+        })
+        if entry.get("last_loaded") != today:
+            entry["loaded_count"] = _int_field(entry, "loaded_count") + 1
+            entry["last_loaded"] = today
+            self._save()
+
     def funnel_row(self, name: str) -> dict:
         """Return the Surfaced/Triggered/Loaded counters for one skill.
 
@@ -272,17 +300,22 @@ class SkillTracker:
             name: Skill name.
 
         Returns:
-            Dict with surfaced_count / triggered_count / use_count and the
-            three last-* timestamps (None when never recorded).
+            Dict with surfaced_count / triggered_count / use_count /
+            loaded_count and the four last-* timestamps (None when never
+            recorded). ``loaded_count`` is the Read-based body-load count
+            (P-0113 WS-D); ``use_count`` remains the Skill-tool body-load
+            count -- the funnel sums them for the ``load`` axis.
         """
         entry = self._data.get("skills", {}).get(name, {})
         return {
             "surfaced_count": _int_field(entry, "surfaced_count"),
             "triggered_count": _int_field(entry, "triggered_count"),
             "use_count": _int_field(entry, "use_count"),
+            "loaded_count": _int_field(entry, "loaded_count"),
             "last_surfaced": entry.get("last_surfaced"),
             "last_triggered": entry.get("last_triggered"),
             "last_used": entry.get("last_used"),
+            "last_loaded": entry.get("last_loaded"),
         }
 
     # --- Session complexity tracking ---

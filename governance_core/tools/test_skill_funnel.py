@@ -102,6 +102,34 @@ def _tracker_cases() -> list[bool]:
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
+    # 3b. loaded per-day dedup (P-0115): two same-day Read-consults -> count 1;
+    #     a prior day's last_loaded -> next call increments to 2. Mirrors the
+    #     surfaced dedup so a burst read of N skills does not inflate.
+    tr, tmp = _fresh_tracker()
+    try:
+        tr.record_loaded("z")
+        tr.record_loaded("z")
+        same_day = tr._data["skills"]["z"]["loaded_count"]
+        tr._data["skills"]["z"]["last_loaded"] = "2000-01-01"
+        tr.record_loaded("z")
+        next_day = tr._data["skills"]["z"]["loaded_count"]
+        results.append(_case(
+            "loaded: per-day deduped (same-day=1, new-day=2)",
+            lambda: same_day == 1 and next_day == 2))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+    # 3c. loaded is distinct from use_count (Read-consult != Skill-tool load).
+    tr, tmp = _fresh_tracker()
+    try:
+        tr.record_loaded("w")
+        e = tr._data["skills"]["w"]
+        results.append(_case(
+            "loaded: distinct counter, does not touch use_count",
+            lambda: e["loaded_count"] == 1 and e["use_count"] == 0))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
     # 4. atomic save: no leftover .tmp file, target is valid JSON.
     tr, tmp = _fresh_tracker()
     try:
@@ -115,7 +143,7 @@ def _tracker_cases() -> list[bool]:
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    # 5. funnel_row zeros for an unrecorded skill.
+    # 5. funnel_row zeros for an unrecorded skill (incl. the P-0115 fields).
     tr, tmp = _fresh_tracker()
     try:
         row = tr.funnel_row("never-seen")
@@ -123,7 +151,8 @@ def _tracker_cases() -> list[bool]:
             "funnel_row: unrecorded skill -> all-zero row",
             lambda: row["surfaced_count"] == 0
             and row["triggered_count"] == 0 and row["use_count"] == 0
-            and row["last_triggered"] is None))
+            and row["loaded_count"] == 0
+            and row["last_triggered"] is None and row["last_loaded"] is None))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
@@ -208,11 +237,14 @@ def _funnel_report_cases() -> list[bool]:
     results: list[bool] = []
     proj = Path(tempfile.mkdtemp(prefix="gc_funnel_proj_"))
     try:
-        # Three guide skills: one surfaced-only (retire), one triggered-not-
-        # loaded (slim), one loaded (neither).
+        # Four guide skills: one surfaced-only (retire), one triggered-not-
+        # loaded (slim), one loaded via the Skill tool (star), one loaded ONLY
+        # via a Read of its body (read-star, P-0115) -- the last must count as
+        # loaded (load = use_count + loaded_count) and so be neither retire nor
+        # slim, even though its use_count is 0.
         guide_dir = proj / ".claude" / "skills"
         guide_dir.mkdir(parents=True)
-        for name in ("retire-me", "slim-me", "star-me"):
+        for name in ("retire-me", "slim-me", "star-me", "read-star-me"):
             (guide_dir / f"{name}.md").write_text(
                 f"---\ndescription: {name}\n---\nbody\n", encoding="utf-8")
 
@@ -221,10 +253,12 @@ def _funnel_report_cases() -> list[bool]:
         # Inject a temp tracker so seeding/reporting never touches real state.
         usage = proj / ".usage.json"
         reg._tracker = SkillTracker(tracker_path=usage)
-        reg._tracker.record_surfaced(["retire-me", "slim-me", "star-me"])
+        reg._tracker.record_surfaced(
+            ["retire-me", "slim-me", "star-me", "read-star-me"])
         reg._tracker.record_triggered("slim-me")
         reg._tracker.record_triggered("star-me")
         reg._tracker.record_use("star-me")
+        reg._tracker.record_loaded("read-star-me")
 
         buf = io.StringIO()
         with contextlib.redirect_stdout(buf):
@@ -232,7 +266,7 @@ def _funnel_report_cases() -> list[bool]:
         report = buf.getvalue()
 
         results.append(_case(
-            "funnel report: exactly one retire candidate",
+            "funnel report: exactly one retire candidate (read-load counts)",
             lambda: "retire candidates (surfaced, never triggered/loaded): 1"
             in report))
         results.append(_case(
@@ -240,17 +274,63 @@ def _funnel_report_cases() -> list[bool]:
             lambda: "slim candidates   (triggered, never loaded):          1"
             in report))
         results.append(_case(
-            "funnel report: all three skills appear in the table",
-            lambda: all(n in report
-                        for n in ("retire-me", "slim-me", "star-me"))))
+            "funnel report: all four skills appear in the table",
+            lambda: all(n in report for n in
+                        ("retire-me", "slim-me", "star-me", "read-star-me"))))
     finally:
         shutil.rmtree(proj, ignore_errors=True)
     return results
 
 
+READ_HOOK = REPO / ".claude" / "hooks" / "skill-read-tracker.py"
+
+
+def _load_read_hook():
+    """Load the autonomy-layer skill-read-tracker hook as a module.
+
+    Unlike the router, this hook does not rebind stdout at import, so a plain
+    spec-load is safe.
+    """
+    spec = importlib.util.spec_from_file_location("_read_hook_under_test",
+                                                  READ_HOOK)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _hook_cases() -> list[bool]:
+    """skill-read-tracker _skill_name_from_path derivation cases (P-0115)."""
+    results: list[bool] = []
+    if not READ_HOOK.is_file():
+        results.append(_case(
+            "read-hook present in autonomy layer (run upgrade first)",
+            lambda: False))
+        return results
+
+    mod = _load_read_hook()
+    fn = mod._skill_name_from_path
+    cases = [
+        (".claude/skills/foo.md", "foo", "guide path -> stem"),
+        (".claude/skills/learned/bar.md", "bar", "learned path -> stem"),
+        ("C:/x/.claude/skills/baz.md", "baz", "abs path -> stem"),
+        ("C:\\x\\.claude\\skills\\qux.md", "qux", "backslash path -> stem"),
+        (".claude/skills/README.md", "", "README excluded"),
+        (".claude/skills/_template.md", "", "_template excluded"),
+        ("docs/other.md", "", "non-skill md -> empty"),
+        (".claude/skills/foo.txt", "", "non-md -> empty"),
+        ("", "", "empty path -> empty"),
+    ]
+    for path, expected, label in cases:
+        results.append(_case(
+            f"name-derivation: {label}",
+            lambda p=path, e=expected: fn(p) == e))
+    return results
+
+
 def main() -> int:
     """Run the case groups; exit non-zero on any failure."""
-    results = (_tracker_cases() + _router_cases() + _funnel_report_cases())
+    results = (_tracker_cases() + _router_cases() + _funnel_report_cases()
+               + _hook_cases())
     passed, total = sum(results), len(results)
     out(f"\n{passed}/{total} skill-funnel cases passed")
     return 0 if passed == total else 1

@@ -549,9 +549,15 @@ def _emit_funnel(registry: "SkillRegistry") -> None:
     rows = []
     for e in universe:
         row = tracker.funnel_row(e["name"])
-        surf, trig, load = (row["surfaced_count"], row["triggered_count"],
-                            row["use_count"])
-        last = row["last_triggered"] or row["last_used"] or "-"
+        surf, trig = row["surfaced_count"], row["triggered_count"]
+        # load = both body-load paths: Skill-tool (use_count) + a Read of the
+        # .md body (loaded_count, P-0113 WS-D). Learned/guide skills are Read,
+        # not Skill-tool loaded, so loaded_count is the previously-missing half
+        # that kept this column pinned at 0. The two counters are disjoint
+        # event sources (Skill tool vs Read tool), so summing never double-counts.
+        load = row["use_count"] + row["loaded_count"]
+        last = (row["last_triggered"] or row["last_loaded"]
+                or row["last_used"] or "-")
         rows.append((e["name"], e["source_type"], surf, trig, load, last))
     # retire candidates (surfaced, never triggered/loaded) sort to the top,
     # then by engagement (triggered+loaded) desc, then surfaced desc.

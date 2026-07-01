@@ -17,6 +17,26 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-01 — 完成 #122：skill-usage funnel loaded-counter（P-0115）
+
+- **问题**：funnel `load` 列对 learned/guide 恒 0 —— 它们经 Read `.md` body 消费、不走
+  Skill 工具（skill-usage-tracker 只听 Skill），path C 的 Read 半从未接线（P-0113 WS-D）。
+- **改动（7 处，包源）**：`tracker.record_loaded`（per-day dedup、独立于 `record_use`）+
+  `funnel_row` 扩 `loaded_count`/`last_loaded`；`registry._emit_funnel` load 列改
+  `use_count + loaded_count`；新 hook `skill-read-tracker.py`（PostToolUse/Read →
+  record_loaded）；`hooks_manifest.json` 注册；`runtime_import_audit.FAIL_OPEN_GC_IMPORTERS`
+  登记（否则 doctor exit 9）；`runtime-import-discipline.md` 补行。
+- **refinement（经用户确认）**：load = use_count + loaded_count，而非 issue 字面「仅
+  loaded_count」—— guide 也能经 Skill 工具加载，只读 loaded_count 会静默丢该信号；两计数器
+  事件源不相交，求和不重复计。
+- **验证**：test_skill_funnel 23/23（+14 新）、candidate-recovery 16/16；hook 端到端
+  subprocess（exit 0、同日 dedup=1、非 skill/非 Read 均 no-op）；upgrade `settings 20 hooks`、
+  doctor exit 0（hooks=21 / registered=20）；wheel 隔离 OK（top-level 仅 `governance_core*`、
+  含新 hook、`maintainer/` 无泄漏）。版本 0.38.6→0.38.7。
+- **Non-Goals**：v1 不做意图分类；不碰 sync_infra CENTRAL_HOOKS（多-clone，hub N/A）。
+- 涉及：`tracker.py`、`registry.py`、新 `skill-read-tracker.py`、`hooks_manifest.json`、
+  `runtime_import_audit.py`、`runtime-import-discipline.md`、`test_skill_funnel.py`、版本×2。
+
 ### 2026-07-01 — 候选 curation：promote #121 triage-and-trim skill（P-0114）
 
 - **#121 promote → guide**：`triage-and-trim-bloated-memory-index`（trade-agent）判为

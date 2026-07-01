@@ -14,6 +14,7 @@
     "repo-health.py":           {"event": "PostToolUse",     "matcher": "Bash"},
     "direction-guard.py":       {"event": "PostToolUse",     "matcher": "Edit|Write"},
     "skill-usage-tracker.py":   {"event": "PostToolUse",     "matcher": "Skill"},
+    "skill-read-tracker.py":    {"event": "PostToolUse",     "matcher": "Read"},
     "cache-watchdog.py":        {"event": "UserPromptSubmit", "matcher": null},
     "constitution-reminder.py": {"event": "UserPromptSubmit", "matcher": null},
     "prompt-context-router.py": {"event": "UserPromptSubmit", "matcher": null},

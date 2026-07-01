@@ -38,6 +38,11 @@ FAIL_OPEN_GC_IMPORTERS: frozenset[str] = frozenset({
     "renewal-reminder.py",
     "update-reminder.py",
     "skill-usage-tracker.py",
+    # P-0115 (issue #122): the Read-based path-C counter imports
+    # discovery.tracker inside _record(); the import is guarded (try/except ->
+    # pass) and the hook always exits 0, so a broken package degrades it to a
+    # no-op -- never freezes a Read.
+    "skill-read-tracker.py",
     # P-0092 (gc #25): the funnel's path-B counter imports discovery.tracker
     # inside _make_trigger_recorder(); the import is guarded (returns None on
     # failure) and the hook already fails open (silent sys.exit(0) on any

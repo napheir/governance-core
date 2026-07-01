@@ -30,6 +30,17 @@
         ]
       },
       {
+        "matcher": "Read",
+        "_managed": "governance-core",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/skill-read-tracker.py\"",
+            "timeout": 15
+          }
+        ]
+      },
+      {
         "matcher": "Skill",
         "_managed": "governance-core",
         "hooks": [
