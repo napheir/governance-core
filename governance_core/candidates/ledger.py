@@ -167,6 +167,13 @@ def parse_payload_from_issue_body(body: str) -> tuple[dict, dict[str, bytes]]:
     Phase 2 reject feedback), and the P-0077 drift-diff body shape --
     one parser, one source of truth.
     """
+    # GitHub issue bodies fetched via `gh` carry CRLF line endings; the
+    # fenced-block regexes below anchor on `\n`, so a raw CRLF body matches
+    # nothing (the `### candidate.json` block is "missing"). Normalizing to
+    # LF also keeps the captured payload bytes LF-based, so the hub rehash
+    # reproduces the consumer's LF payload_digest instead of a CRLF variant
+    # that would silently defeat sha-based dedup/blocking.
+    body = body.replace("\r\n", "\n")
     json_match = _CANDIDATE_JSON_FENCE_RE.search(body)
     if not json_match:
         raise ValueError("issue body has no `### candidate.json` block")

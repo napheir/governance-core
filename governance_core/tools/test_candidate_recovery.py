@@ -99,6 +99,19 @@ def _parser_cases() -> list[bool]:
     results.append(_case(
         "parse: payload bytes round-trip byte-for-byte",
         lambda: payload["foo.md"] == payload_bytes))
+
+    # CRLF body (as `gh issue view` returns on a Windows hub): the parser
+    # must normalize to LF so the block still matches AND the recovered
+    # payload bytes/digest equal the LF variant (defeats a silent sha
+    # mismatch that would break dedup/blocking on a CRLF hub).
+    crlf_body = body.replace("\n", "\r\n")
+    meta_crlf, payload_crlf = _ledger.parse_payload_from_issue_body(crlf_body)
+    results.append(_case(
+        "parse: CRLF body -> candidate.json still recovered",
+        lambda: meta_crlf["id"] == "cand-trade-agent-20260526-foo"))
+    results.append(_case(
+        "parse: CRLF body -> payload bytes normalized to LF (match LF body)",
+        lambda: payload_crlf["foo.md"] == payload["foo.md"] == payload_bytes))
     results.append(_case(
         "parse: digest of rebuilt payload equals hash of original",
         lambda: _ledger._hash_payload([("foo.md", payload_bytes)])

@@ -17,6 +17,23 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-01 — 候选 curation：修 CRLF 解析 blocker + reject #120
+
+- **blocker（bug fix）**：`governance_core/candidates/ledger.py` 的
+  `parse_payload_from_issue_body` 用 `^### candidate\.json\n...` 锚 LF，但 gh 在
+  Windows hub 取回的 issue body 是 CRLF → `reject_candidate` + ledger self-heal
+  在真实 issue 上全解析失败。函数顶部加 `body.replace(CRLF, LF)` 单点归一化（同时
+  修潜在 sha 保真：CRLF hub 重算 digest 永对不上 consumer 的 LF digest）。
+  `test_candidate_recovery.py` 加 2 个 CRLF 用例（`_build_issue_body` 全 LF、从不
+  触发 CRLF，正是漏网原因 —— 见 memory `hub-cannot-dogfood-crlf-drift`）。16/16 +
+  uplink-drift 20/20 通过。
+- **#120 reject-with-advisory**：`external-api-categorical-backfill`（trade-agent）
+  判出 charter —— 数据管道工程 skill、非治理能力；gc 18 个 common 层 skill 全为
+  治理/harness/meta。`maintainer/reject_candidate.py --also-close`，registry 记
+  sha=35318c3c、advice=留作 trade-agent 本地 business skill。
+- **版本**：0.38.4→0.38.5。upgrade + doctor green（hooks=20 / registered=19 / clauses=18）。
+- 涉及：`ledger.py`、`test_candidate_recovery.py`、`rejected_registry.json`、版本×2。
+
 ### 2026-06-24 — 未决后续（deferred follow-ups，knowledge 去域化）
 
 P-0113 去 trade 化 sweep 后刻意未扩范围、留待后续判断的两项（用户确认本轮到此为止）：

@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-05-29T06:20:35Z",
+  "updated": "2026-07-01T03:39:31Z",
   "rejected": [
     {
       "rejected_at": "2026-05-29",
@@ -29,6 +29,18 @@
       ],
       "reason": "Business-layer content. Outputs reference trade-specific paths (tests/scenarios/trade_stage_X, tests/daily/mock_components.py, tests/daily/test_pipeline_gates.py); domain framing ('selection/risk module', 'option/account/sector state') is trade-pipeline language; the 'parquet pattern P-0070/0071' citation is trade-agent's internal proposal ids, not governance-core's. The abstract spec-mock pattern itself is worth keeping as a governance-core authored skill guide -- the hub will author that directly, separate from the trade-internal SOP.",
       "advice": "Keep as a local learned skill in trade-agent. Remove `layer: candidate-common` from the skill's frontmatter, or delete the skill if no longer used."
+    },
+    {
+      "rejected_at": "2026-07-01",
+      "skill_name": "external-api-categorical-backfill",
+      "payload_sha256": "35318c3cf4ec3611cc08df6c0466dae91bb000b9d214cfeaee4643b55df39d97",
+      "block_by_name": false,
+      "origin": "trade-agent",
+      "issue_urls": [
+        "https://github.com/napheir/governance-core/issues/120"
+      ],
+      "reason": "Out of governance-core charter. governance-core is a pure governance/harness infrastructure hub; all common-layer skills are governance/meta (memory, proposal, constitution, skill-registry, install) -- none is a business-domain engineering skill. external-api-categorical-backfill is a data-pipeline engineering capability (rate-limited external API, throttled idempotent backfill, categorical classification). The mechanism is sound but it is general software engineering, not a governance capability, so it does not fit the common layer.",
+      "advice": "Keep it as a local business-layer skill in trade-agent scope -- retag layer: business (the skill Notes already say to persist the schema doc in the producing agent own scope, not cross-agent contracts). The mechanism is well-formed and worth keeping locally. If governance-core common layer later broadens from a governance/harness exchange into a general engineering-skill exchange, resubmit then."
     }
   ]
 }
