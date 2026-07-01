@@ -17,6 +17,16 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-01 — 发布 v0.38.7（候选 curation 批 + funnel WS-D）
+
+- **发布**：`gh release create v0.38.7`（target master）→ CI release run `28493093455`
+  → build + OIDC Trusted Publisher。跳过 0.38.5/0.38.6 中间版（未单独发），一次带上三个 patch。
+- **核实（实际发布态，非 intent —— memory `release-verify-actual-published-state`）**：run
+  jobs build + publish-pypi 均 success；PyPI JSON `info.version == 0.38.7`，含 wheel + sdist
+  （`governance_core-0.38.7-py3-none-any.whl` + `.tar.gz`）。
+- **覆盖**：0.38.5 CRLF parser fix + reject #120；0.38.6 promote #121 guide；0.38.7 funnel
+  loaded-counter (#122)。push `04829e1..fb67a35`。
+
 ### 2026-07-01 — 完成 #122：skill-usage funnel loaded-counter（P-0115）
 
 - **问题**：funnel `load` 列对 learned/guide 恒 0 —— 它们经 Read `.md` body 消费、不走
