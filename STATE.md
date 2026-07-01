@@ -17,6 +17,21 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-01 — 修 #119：消费者声明 intentional-drift → layer:business（P-0117）
+
+- **问题**：`installer._capture_drift` 把每个 drift 文件都打 `candidate-common`，消费者
+  sweep 每次 upgrade 重复 uplink 同一**有意** drift（digest 台账因日期戳 re-mint 挡不住；
+  rejected_registry 被动 + 名全局，语义也不对）。
+- **改动（ADR option 1，用户定）**：加 `installer._load_intentional_drift()` 读消费者自有
+  `.governance/intentional_drift.json`（`{"schema":1,"drift_targets":[...]}`，fail-safe、
+  Art.4 无 get-default、路径 `/` 归一）；`_capture_drift` 对声明路径传 `layer="business"`
+  （sweep 只吃 candidate-common → 天然跳过），其余不变，**仍捕获**（保 capture 安全网）。
+- **跨仓库对齐**：文件名 + schema 锁定 trade-agent P-0125 已发 interim → 消费者剪枝可零改造退役。
+- **验证**：pytest 11/11（+5 新：parser 4 + business/candidate-common 分层 1）；upgrade +
+  doctor exit 0；wheel 隔离 OK（consumer `intentional_drift.json` 不入 wheel/manifest）。
+  版本 0.38.8→0.38.9。schema 归 parser 所有（同 P-0115 `.usage.json` 先例，非 contracts/）。
+- 涉及：`installer.py`（常量 + helper + layer 选择）、`test_installer_drift_eol.py`、版本×2。
+
 ### 2026-07-01 — 修 #123：session-boundary-guard UTF-8 字节读 + fail-closed（P-0116）
 
 - **bug**：`governance_core/tools/session-boundary-guard.py` 的 `main()` 用文本模式

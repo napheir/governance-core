@@ -63,6 +63,11 @@ PKG_ROOT = Path(__file__).resolve().parent
 CONFIG_REL = ".governance/config.json"
 CLAUSES_REL = ".governance/clauses"
 INSTALLED_FILES_REL = ".governance/installed_files.json"
+# Consumer-owned (P-0117, #119): declares install-managed files the consumer has
+# intentionally + permanently diverged, so _capture_drift stamps them layer:business
+# (sweep skips non-common) instead of re-uplinking them every upgrade. NOT in
+# installed_files.json -- upgrade never clobbers it.
+INTENTIONAL_DRIFT_REL = ".governance/intentional_drift.json"
 CLAUDE_DIR = ".claude"
 
 # Category -> (source-subdir-in-pkg, destination-subdir-in-project)
@@ -363,6 +368,42 @@ def _write_installed_manifest(project_root: Path,
     logger.info("[manifest] wrote installed_files.json (%d files)", len(files))
 
 
+def _load_intentional_drift(project_root: Path) -> set[str]:
+    """Return repo-relative paths a consumer declared as intentional drift.
+
+    Reads the consumer-owned ``.governance/intentional_drift.json`` (schema
+    ``{"schema": 1, "drift_targets": ["<repo-relative path>", ...]}``). A drifted
+    install-managed file whose path is in this set is stamped ``layer: business``
+    by ``_capture_drift`` (so the consumer sweep, which acts only on
+    ``candidate-common``, skips it) instead of being re-uplinked as a candidate on
+    every upgrade (P-0117, #119).
+
+    Fail-safe: missing / malformed / wrong-schema -> empty set. The file is
+    advisory noise-suppression, never a correctness gate, so a bad file must not
+    break upgrade. Paths are normalized to forward slashes for matching against
+    manifest entries. Uses explicit membership tests (no dict fallback-default,
+    per Art.4).
+    """
+    path = project_root / INTENTIONAL_DRIFT_REL
+    if not path.exists():
+        return set()
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as exc:
+        logger.warning("[drift] ignoring malformed %s: %s",
+                       INTENTIONAL_DRIFT_REL, exc)
+        return set()
+    if (not isinstance(data, dict) or "schema" not in data
+            or data["schema"] != 1):
+        logger.warning("[drift] %s has unexpected schema; ignoring",
+                       INTENTIONAL_DRIFT_REL)
+        return set()
+    targets = data["drift_targets"] if "drift_targets" in data else []
+    if not isinstance(targets, list):
+        return set()
+    return {str(t).replace("\\", "/") for t in targets if isinstance(t, str)}
+
+
 def _capture_drift(project_root: Path, consumer_id: str,
                    dry_run: bool = False) -> list[str]:
     """Capture locally-edited install-managed files as drift candidates.
@@ -384,6 +425,10 @@ def _capture_drift(project_root: Path, consumer_id: str,
         return []
     outbox = collect.outbox_dir(project_root)
     drifted: list[str] = []
+    # P-0117 (#119): consumer-declared intentional drift is captured but stamped
+    # layer:business so the candidate-common-only sweep skips it (no recurring
+    # hub uplink of the same permanent divergence).
+    intentional = _load_intentional_drift(project_root)
     for entry in manifest["files"]:
         path = project_root / entry["path"]
         if not path.exists():
@@ -396,6 +441,9 @@ def _capture_drift(project_root: Path, consumer_id: str,
             continue  # dry-run: detect drift, do not build envelopes
         category = entry["category"]
         kind = category if category in ("hook", "skill") else "mechanism"
+        drift_layer = ("business"
+                       if entry["path"].replace("\\", "/") in intentional
+                       else "candidate-common")
         try:
             envelope.build_envelope(
                 outbox,
@@ -405,6 +453,7 @@ def _capture_drift(project_root: Path, consumer_id: str,
                 rationale=(f"install-managed file locally edited: "
                            f"{entry['path']}"),
                 payload_files=[path],
+                layer=drift_layer,
                 drift_target=entry["path"],
                 baseline_sha256=entry["baseline_sha256"],
             )
