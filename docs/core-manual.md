@@ -355,6 +355,20 @@ install-managed paths are eligible, so business / authored files and the
 capture, so a stale file that was locally edited is first captured as a
 candidate. `governance-core upgrade --no-prune` keeps stale files.
 
+**Intentional-drift declaration** (P-0117, #119): a consumer that has
+*permanently* diverged an install-managed file (e.g. a business bridge grafted
+onto a managed tool) can list its repo-relative path in a consumer-owned
+`.governance/intentional_drift.json`
+(`{"schema": 1, "drift_targets": ["<repo-relative path>", ...]}`).
+`_capture_drift` **still captures** such a file (the capture-then-overwrite
+safety net is preserved) but stamps its envelope `layer: business` instead of
+`candidate-common`, so the consumer's `candidate.py sweep` (which acts only on
+`candidate-common`) skips it — the same permanent drift no longer re-uplinks to
+the hub as a candidate on every `upgrade`. The file is consumer-authored, is
+**not** in `installed_files.json` (so `upgrade` never clobbers it), and never
+enters the wheel. Missing / malformed / wrong-schema → treated as "no
+declarations" (fail-safe; behaviour identical to today).
+
 ### Released-to-business: STALE_PRUNE_EXEMPT (P-0075, gc #24)
 
 > Release cohorts so far: **P-0075** (0.7.0 — design residue: component-catalog

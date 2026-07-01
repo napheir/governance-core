@@ -6,6 +6,60 @@
 
 ---
 
+### 2026-07-01 — 完成 #122：skill-usage funnel loaded-counter（P-0115）
+
+- **问题**：funnel `load` 列对 learned/guide 恒 0 —— 它们经 Read `.md` body 消费、不走
+  Skill 工具（skill-usage-tracker 只听 Skill），path C 的 Read 半从未接线（P-0113 WS-D）。
+- **改动（7 处，包源）**：`tracker.record_loaded`（per-day dedup、独立于 `record_use`）+
+  `funnel_row` 扩 `loaded_count`/`last_loaded`；`registry._emit_funnel` load 列改
+  `use_count + loaded_count`；新 hook `skill-read-tracker.py`（PostToolUse/Read →
+  record_loaded）；`hooks_manifest.json` 注册；`runtime_import_audit.FAIL_OPEN_GC_IMPORTERS`
+  登记（否则 doctor exit 9）；`runtime-import-discipline.md` 补行。
+- **refinement（经用户确认）**：load = use_count + loaded_count，而非 issue 字面「仅
+  loaded_count」—— guide 也能经 Skill 工具加载，只读 loaded_count 会静默丢该信号；两计数器
+  事件源不相交，求和不重复计。
+- **验证**：test_skill_funnel 23/23（+14 新）、candidate-recovery 16/16；hook 端到端
+  subprocess（exit 0、同日 dedup=1、非 skill/非 Read 均 no-op）；upgrade `settings 20 hooks`、
+  doctor exit 0（hooks=21 / registered=20）；wheel 隔离 OK（top-level 仅 `governance_core*`、
+  含新 hook、`maintainer/` 无泄漏）。版本 0.38.6→0.38.7。
+- **Non-Goals**：v1 不做意图分类；不碰 sync_infra CENTRAL_HOOKS（多-clone，hub N/A）。
+- 涉及：`tracker.py`、`registry.py`、新 `skill-read-tracker.py`、`hooks_manifest.json`、
+  `runtime_import_audit.py`、`runtime-import-discipline.md`、`test_skill_funnel.py`、版本×2。
+
+### 2026-07-01 — 候选 curation：promote #121 triage-and-trim skill（P-0114）
+
+- **#121 promote → guide**：`triage-and-trim-bloated-memory-index`（trade-agent）判为
+  charter 内、通用、net-new（size 轴，补 `memory-staleness-policy` 的 time 轴）。经
+  P-0114（classify→create→approve→implement→archive）。payload `type: learned→guide`、
+  去 `layer`、补 house frontmatter，body 逐字保留。落 `governance_core/skills/`，tier-B
+  SessionStart 注入（无需改 manifest）。
+- **决策记录**：`registry.record_candidate` 记 `promoted`（非 `candidate.py promote`，
+  避免 raw payload 覆盖手改 —— memory `curate-promote-clobbers-genericized-payload`）。
+- **验证**：registry table 列出新 guide；upgrade `.claude/skills 18→19`、doctor green；
+  wheel 隔离 OK（top-level 仅 `governance_core*`、含新 guide、`maintainer/` 无泄漏、
+  skills .md 20）。版本 0.38.5→0.38.6。
+- **cross-link #122**：本 guide 的 B1 毕业 gate（closure check 确认 surface 可达）是
+  policy 半；#122 funnel loaded-counter 是 instrument 半（另案）。
+- 涉及：新 `triage-and-trim-bloated-memory-index.md`、`consumer_registry.json`、版本×2。
+
+### 2026-07-01 — 候选 curation：修 CRLF 解析 blocker + reject #120
+
+- **blocker（bug fix）**：`governance_core/candidates/ledger.py` 的
+  `parse_payload_from_issue_body` 用 `^### candidate\.json\n...` 锚 LF，但 gh 在
+  Windows hub 取回的 issue body 是 CRLF → `reject_candidate` + ledger self-heal
+  在真实 issue 上全解析失败。函数顶部加 `body.replace(CRLF, LF)` 单点归一化（同时
+  修潜在 sha 保真：CRLF hub 重算 digest 永对不上 consumer 的 LF digest）。
+  `test_candidate_recovery.py` 加 2 个 CRLF 用例（`_build_issue_body` 全 LF、从不
+  触发 CRLF，正是漏网原因 —— 见 memory `hub-cannot-dogfood-crlf-drift`）。16/16 +
+  uplink-drift 20/20 通过。
+- **#120 reject-with-advisory**：`external-api-categorical-backfill`（trade-agent）
+  判出 charter —— 数据管道工程 skill、非治理能力；gc 18 个 common 层 skill 全为
+  治理/harness/meta。`maintainer/reject_candidate.py --also-close`，registry 记
+  sha=35318c3c、advice=留作 trade-agent 本地 business skill。
+- **版本**：0.38.4→0.38.5。upgrade + doctor green（hooks=20 / registered=19 / clauses=18）。
+- 涉及：`ledger.py`、`test_candidate_recovery.py`、`rejected_registry.json`、版本×2。
+
+
 ### 2026-06-23 — Bugfix：`_extract_section`/`_extract_h3` 不识别 fenced code block（v0.38.1）
 
 - **Bug**：`tools/proposal_lib.py` 的 `_extract_section`（及 P-0124 新增的 `_extract_h3`）
