@@ -183,6 +183,15 @@
       "decision": "promoted",
       "note": "P-0110: genericized (de-trade-ified Notes + dropped consumer-only xref) + landed governance_core/skills/, theme=universal, commit 6901556, v0.37.0",
       "reviewed_at": "2026-06-22T07:05:37Z"
+    },
+    {
+      "id": "cand-trade-agent-20260630-triage-and-trim-bloated-memory-index",
+      "origin": "trade-agent",
+      "kind": "skill",
+      "title": "triage-and-trim-bloated-memory-index",
+      "decision": "promoted",
+      "note": "Promoted as common-layer guide via P-0114 (frontmatter learned->guide, body verbatim). Policy-half of the skill-graduation seam; cross-links #122 funnel loaded-counter (instrument-half).",
+      "reviewed_at": "2026-07-01T03:49:21Z"
     }
   ]
 }

@@ -17,6 +17,22 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-01 — 候选 curation：promote #121 triage-and-trim skill（P-0114）
+
+- **#121 promote → guide**：`triage-and-trim-bloated-memory-index`（trade-agent）判为
+  charter 内、通用、net-new（size 轴，补 `memory-staleness-policy` 的 time 轴）。经
+  P-0114（classify→create→approve→implement→archive）。payload `type: learned→guide`、
+  去 `layer`、补 house frontmatter，body 逐字保留。落 `governance_core/skills/`，tier-B
+  SessionStart 注入（无需改 manifest）。
+- **决策记录**：`registry.record_candidate` 记 `promoted`（非 `candidate.py promote`，
+  避免 raw payload 覆盖手改 —— memory `curate-promote-clobbers-genericized-payload`）。
+- **验证**：registry table 列出新 guide；upgrade `.claude/skills 18→19`、doctor green；
+  wheel 隔离 OK（top-level 仅 `governance_core*`、含新 guide、`maintainer/` 无泄漏、
+  skills .md 20）。版本 0.38.5→0.38.6。
+- **cross-link #122**：本 guide 的 B1 毕业 gate（closure check 确认 surface 可达）是
+  policy 半；#122 funnel loaded-counter 是 instrument 半（另案）。
+- 涉及：新 `triage-and-trim-bloated-memory-index.md`、`consumer_registry.json`、版本×2。
+
 ### 2026-07-01 — 候选 curation：修 CRLF 解析 blocker + reject #120
 
 - **blocker（bug fix）**：`governance_core/candidates/ledger.py` 的
