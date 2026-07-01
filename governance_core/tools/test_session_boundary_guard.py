@@ -45,6 +45,30 @@ def run_hook(payload: dict, *, cwd: Path, env_override: bool = False) -> tuple[i
     return result.returncode, result.stderr
 
 
+def run_hook_raw(raw: bytes, *, cwd: Path, extra_env: dict | None = None) -> tuple[int, str]:
+    """Drive the hook with RAW stdin bytes (bypasses text-mode encoding).
+
+    Used to exercise the UTF-8 byte-decode (#123): the payload is real UTF-8
+    bytes (not re-encoded by subprocess text mode), and `extra_env` can force a
+    non-UTF-8 stdio locale (PYTHONIOENCODING) so the old text-mode
+    `json.load(sys.stdin)` would raise and fail-open — the fixed byte-read must
+    still decode + evaluate correctly.
+    """
+    env = os.environ.copy()
+    env.pop("CLAUDE_BOUNDARY_OVERRIDE", None)
+    if extra_env:
+        env.update(extra_env)
+    result = subprocess.run(
+        [sys.executable, str(HOOK)],
+        input=raw,
+        capture_output=True,
+        timeout=10,
+        cwd=str(cwd),
+        env=env,
+    )
+    return result.returncode, result.stderr.decode("utf-8", errors="replace")
+
+
 def make_settings_json(d: Path, project_root: str) -> None:
     sub = d / ".claude"
     sub.mkdir(parents=True, exist_ok=True)
@@ -354,11 +378,38 @@ def main() -> int:
                 print(f"  [FAIL] {label} (rc={rc}): {err.strip()[:200]}")
                 failed += 1
 
+        # ----- Case 26: CJK path outside boundary under non-UTF-8 stdio -----
+        # #123 regression: payload carries a real UTF-8 CJK filename outside the
+        # boundary, driven with PYTHONIOENCODING=ascii. The fixed byte-read
+        # decodes it and BLOCKS; the old text-mode json.load(sys.stdin) would
+        # raise on the CJK bytes under ascii stdio and fail OPEN (exit 0).
+        cjk_outside = elsewhere / "中文-secret.txt"
+        raw = json.dumps(
+            {"tool_name": "Edit",
+             "tool_input": {"file_path": str(cjk_outside)}},
+            ensure_ascii=False,
+        ).encode("utf-8")
+        rc, err = run_hook_raw(
+            raw, cwd=agent_core, extra_env={"PYTHONIOENCODING": "ascii"})
+        if rc == 2:
+            print("  [OK]   26. CJK path outside boundary (ascii stdio) -> block")
+        else:
+            print(f"  [FAIL] 26. CJK outside under ascii stdio (rc={rc}, expected 2): {err.strip()[:200]}")
+            failed += 1
+
+        # ----- Case 27: malformed payload -> fail CLOSED (#123) -----
+        rc, err = run_hook_raw(b"this is not json{", cwd=agent_core)
+        if rc == 2 and "failing closed" in err:
+            print("  [OK]   27. malformed payload -> block (fail-closed)")
+        else:
+            print(f"  [FAIL] 27. malformed payload (rc={rc}, expected 2 + fail-closed): {err.strip()[:200]}")
+            failed += 1
+
     print()
     if failed:
         print(f"[FAIL] {failed} case(s) failed")
         return 1
-    print("[PASS] all 25 cases passed")
+    print("[PASS] all 27 cases passed")
     return 0
 
 

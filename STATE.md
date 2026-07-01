@@ -17,6 +17,21 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-01 — 修 #123：session-boundary-guard UTF-8 字节读 + fail-closed（P-0116）
+
+- **bug**：`governance_core/tools/session-boundary-guard.py` 的 `main()` 用文本模式
+  `json.load(sys.stdin)`（随 GBK/cp936 locale 误解 CJK 路径）且 `except: exit(0)` fail-open。
+  它是**唯一**还这样的 hook —— 其余 20 个 hook 全用 `sys.stdin.buffer.read().decode("utf-8")`。
+- **改动（用户定 fail-closed）**：`main()` 改 UTF-8 字节读（对齐全家，T-0015）；parse/decode
+  失败 → stderr BLOCKED + `exit 2`（fail-closed，boundary-guard 专属加固，siblings 保持
+  fail-open）。边界判定逻辑不动。
+- **回归测试（+2 → 27）**：CJK 路径在 `PYTHONIOENCODING=ascii` 下仍 BLOCK（旧码会
+  UnicodeDecodeError → fail-open exit 0，测试证伪）；malformed payload → BLOCK（fail-closed）。
+- **无自锁**：项目 upgrade 只装项目 `tools/`，不碰 `~/.claude/hooks/` 活动守卫。
+- **验证**：test_session_boundary_guard 27/27；upgrade + doctor exit 0；wheel 隔离 OK。
+  版本 0.38.7→0.38.8。先例 P-0101（同款 UTF-8 修 classify-fast）/ P-0087。
+- 涉及：`session-boundary-guard.py`、`test_session_boundary_guard.py`、版本×2。
+
 ### 2026-07-01 — 发布 v0.38.7（候选 curation 批 + funnel WS-D）
 
 - **发布**：`gh release create v0.38.7`（target master）→ CI release run `28493093455`

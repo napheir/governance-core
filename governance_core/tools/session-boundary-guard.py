@@ -423,10 +423,21 @@ def check_repo_health_alarm() -> None:
 
 def main() -> None:
     try:
-        hook_input = json.load(sys.stdin)
+        # Read raw bytes + explicit UTF-8 so a CJK payload is not mis-decoded by
+        # a GBK/cp936 locale. Text-mode json.load(sys.stdin) reads in the ambient
+        # locale and silently corrupts CJK file paths, making the guard evaluate a
+        # garbled path (T-0015; #123). Every sibling hook already does this.
+        hook_input = json.loads(sys.stdin.buffer.read().decode("utf-8"))
     except Exception:
-        # Malformed payload -- delegate (don't break CC).
-        sys.exit(0)
+        # Fail CLOSED. Under global bypassPermissions this guard is the primary
+        # backstop; a payload it cannot parse must NOT silently allow a
+        # cross-boundary write -- it blocks (unlike the fail-open sibling guards,
+        # whose availability posture is deliberate). (#123)
+        sys.stderr.write(
+            "[SESSION BOUNDARY GUARD] BLOCKED: could not parse tool payload "
+            "(failing closed).\n"
+        )
+        sys.exit(2)
 
     tool_name = hook_input.get("tool_name", "")
     if tool_name not in {"Bash", "Edit", "Write"}:
