@@ -17,6 +17,16 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-01 — 发布 v0.38.9（#123 boundary-guard + #119 intentional-drift）
+
+- **发布**：`gh release create v0.38.9`（target master）→ CI release run `28497552876`
+  → build + OIDC Trusted Publisher。跳过 0.38.8 中间版（未单独发）。
+- **核实（实际发布态）**：run jobs build + publish-pypi 均 success；PyPI 按版本端点
+  `/0.38.9/json` version==0.38.9，含 wheel + sdist。注意 aggregate `/json` 一度因 Fastly
+  缓存滞后仍显 0.38.7 —— 按版本端点为准（memory `release-verify-actual-published-state`）。
+- **覆盖**：0.38.8 #123 boundary-guard UTF-8 + fail-closed；0.38.9 #119 intentional-drift。
+  push `c6ae193..d79fb7b`。
+
 ### 2026-07-01 — 修 #119：消费者声明 intentional-drift → layer:business（P-0117）
 
 - **问题**：`installer._capture_drift` 把每个 drift 文件都打 `candidate-common`，消费者
