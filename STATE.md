@@ -17,6 +17,19 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-08 — 发布 v0.39.0（P-0118：_tiers.json 退休 / theme 派生）
+
+- **bump**：0.38.9 → 0.39.0（`pyproject.toml:7` + `governance_core/__init__.py:6`）。minor
+  —— P-0118 退休整个中心化 `_tiers.json` 子系统、injection/index/audit 改从 per-skill
+  `theme` 派生，属消费者可见行为变更。
+- **发布**：`gh release create v0.39.0`（target master）→ CI `release.yml` build + OIDC
+  Trusted Publisher（P-0064）。
+- **消费者影响**：升级后其 `_tiers.json` 被忽略（injection 改读 `theme:universal` + learned）；
+  audit Check 11/16 改 theme 版；`build_skill_index`/`skill_catalog` 输出改 theme 分组。过时
+  的 `test_pending_catalog_tolerance.py` 被正常 prune（非 ownership transfer，无需 EXEMPT）。
+- **核实**：actual published state 见本 turn 报告（`gh run` + PyPI `/0.39.0/json`，
+  memory `release-verify-actual-published-state`：按版本端点为准，勿信 aggregate 缓存）。
+
 ### 2026-07-08 — P-0118 Phase 2-3：_tiers.json 全面退休，builder/auditor/writer 收敛到 theme
 
 - **Phase 2（builder 去域化）**：`build_skill_index.py` / `skill_catalog.py` 重写为从
