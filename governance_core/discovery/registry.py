@@ -57,6 +57,7 @@ class SkillEntry:
     tags: list = field(default_factory=list)
     trigger: str = ""  # e.g. "/audit", "python -m skills.start_futu_opend"
     score: float = 0.0  # weighted score from tracker (frequency + recency)
+    theme: str = ""  # sync/reuse breadth: "universal"|"core-only"|"<agent>"|""; P-0118 also feeds injection
 
     def to_dict(self) -> dict:
         """Serialize to dict for JSON output."""
@@ -258,7 +259,7 @@ class SkillRegistry:
                 continue  # skip templates
             name = md_file.stem
             content = md_file.read_text(encoding="utf-8")
-            desc, tags = self._extract_metadata(content)
+            desc, tags, theme = self._extract_metadata(content)
 
             if not desc:
                 # Fallback: use first non-empty, non-heading line
@@ -273,6 +274,7 @@ class SkillRegistry:
                 file_path=str(md_file),
                 tags=tags,
                 trigger=trigger,
+                theme=theme,
             )
 
     def _scan_python_modules(self) -> None:
@@ -304,22 +306,28 @@ class SkillRegistry:
             )
 
     @staticmethod
-    def _extract_metadata(content: str) -> tuple[str, list]:
-        """Extract description and tags from YAML frontmatter.
+    def _extract_metadata(content: str) -> tuple[str, list, str]:
+        """Extract description, tags and theme from YAML frontmatter.
 
         Args:
             content: Full markdown content.
 
         Returns:
-            Tuple of (description, tags).
+            Tuple of (description, tags, theme). `theme` is the raw
+            sync/reuse-breadth value ("universal"|"core-only"|"<agent>") that
+            sync_infra already enforces on shared skills, or "" when absent
+            (e.g. a learned skill). P-0118 also reads it to derive the
+            SessionStart universal-injection pool; enum validation stays with
+            sync_infra / the auditor, not this reader.
         """
         match = _FRONTMATTER_RE.match(content)
         if not match:
-            return "", []
+            return "", [], ""
 
         frontmatter = match.group(1)
         desc = ""
         tags = []
+        theme = ""
 
         for line in frontmatter.split("\n"):
             line = line.strip()
@@ -330,8 +338,10 @@ class SkillRegistry:
                 # Handle [tag1, tag2] format
                 tag_str = tag_str.strip("[]")
                 tags = [t.strip().strip('"').strip("'") for t in tag_str.split(",") if t.strip()]
+            elif line.startswith("theme:"):
+                theme = line.split(":", 1)[1].strip().strip('"').strip("'")
 
-        return desc, tags
+        return desc, tags, theme
 
     @staticmethod
     def _extract_first_line_desc(content: str) -> str:
@@ -428,29 +438,33 @@ _UNIVERSAL_INJECTION_LIMIT = 10
 
 
 def emit_bounded_injection(registry: "SkillRegistry") -> Optional[str]:
-    """Return a bounded SessionStart skill menu, or None if no scenario index.
+    """Return a bounded SessionStart skill menu, or None if nothing to surface.
 
-    Issue #100 / P-0103 part A. Re-balances prefix_cost_optimization.md C3
-    (counts-only) with a BOUNDED names menu so an agent can actually consult
-    learned skills:
+    Issue #100 / P-0103 part A; universal derivation reworked by P-0118 to read
+    the pre-existing per-skill ``theme:`` frontmatter (sync_infra's breadth
+    field) instead of a central ``_tiers.json``. Re-balances
+    prefix_cost_optimization.md C3 (counts-only) with a BOUNDED names menu so an
+    agent can actually consult learned skills:
 
-      - universal-tier skills (``knowledge/skills/_tiers.json`` ->
-        ``tiers.universal.skills``) as ``name + 1-line desc``, capped at
-        ``_UNIVERSAL_INJECTION_LIMIT``;
+      - the universal-injection pool = every ``learned`` skill (this agent's own
+        session extractions) plus every ``guide`` whose frontmatter
+        ``theme == "universal"`` (cross-agent shared design principles present on
+        every clone). Rendered as ``name + 1-line desc``, capped at
+        ``_UNIVERSAL_INJECTION_LIMIT``. ``theme: core-only`` / ``theme: <agent>``
+        guides are niche and reach the surface via a scenario cluster, not the
+        every-session pool;
       - a compact scenario-cluster map (``knowledge/skills/_scenario_clusters.json``)
         ``cluster -> member names``; cluster BODIES stay lazy (Skill tool).
 
     Records path-A surfacing via the usage funnel (``record_surfaced``).
-    Returns ``None`` when neither index is authored (e.g. a hub with 0 learned
-    skills) so the caller falls back to the counts-only summary. Membership is
-    consumer-authored (gitignored ``knowledge/skills/``); gc ships only this
-    reader + the schema doc (``knowledge/governance/skill-scenario-clusters.md``).
+    Returns ``None`` when neither a universal pool nor any cluster is authored
+    (e.g. a hub with 0 learned + 0 theme:universal skills) so the caller falls
+    back to the counts-only summary. gc ships this reader + the schema doc
+    (``knowledge/governance/skill-scenario-clusters.md``); P-0118 retires the
+    central ``_tiers.json`` authoring in favour of ``theme``.
     """
     skills_dir = registry._root / "knowledge" / "skills"
-    tiers_path = skills_dir / "_tiers.json"
     clusters_path = skills_dir / "_scenario_clusters.json"
-    if not tiers_path.exists() and not clusters_path.exists():
-        return None
 
     def _load(path: Path) -> dict:
         try:
@@ -463,24 +477,25 @@ def emit_bounded_injection(registry: "SkillRegistry") -> Optional[str]:
         # consumer-authored data file, not config, but the guard is textual.
         return d[key] if isinstance(d, dict) and key in d else default
 
-    universal: list = []
-    if tiers_path.exists():
-        tiers = _load(tiers_path)
-        universal = list(
-            _field(_field(_field(tiers, "tiers", {}), "universal", {}),
-                   "skills", [])
-        )
+    # learned + guide entries carry per-skill `theme` + description;
+    # manifest_for_injection is already sorted by (-score, name). Every entry
+    # dict carries source_type + theme (asdict), so `e[...]` is a plain lookup,
+    # not a defaulted `.get` (Art.4).
+    inject_entries = registry.manifest_for_injection(["learned", "guide"])
+    by_name = {e["name"]: (e["description"] or "") for e in inject_entries}
+
+    # Universal pool from the pre-existing `theme` field (P-0118): a learned
+    # skill is always this agent's own; a guide is shared-universal when
+    # sync_infra themed it `universal`. No central `_tiers.json` read.
+    universal = [e["name"] for e in inject_entries
+                 if e["source_type"] == "learned" or e["theme"] == "universal"]
+
     clusters: dict = {}
     if clusters_path.exists():
         clusters = _field(_load(clusters_path), "clusters", {})
 
     if not universal and not clusters:
         return None
-
-    by_name = {
-        e["name"]: (e["description"] or "")
-        for e in registry.manifest_for_injection(["learned", "guide"])
-    }
 
     surfaced: list = []
     lines = [

@@ -17,6 +17,29 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-08 — P-0118 Phase 0-1：skill 复用分类统一到既有 theme（注入解耦）
+
+- **背景**：trade-agent handoff `skill-reuse-layer-unification.md` 提议给 skill 加
+  per-skill `reuse` frontmatter、退休中心化 `_tiers.json`。核对现状发现诊断**被低估**：
+  gc 包源已 ship 整套 `_tiers.json` 子系统（reader + 2 builder + writer + auditor），
+  且 `build_skill_index.py:41` / `skill_catalog.py:36` **硬编码 "Trade Agent"** 域泄漏。
+- **关键转向**：实施中发现 gc **已有** per-skill 广度字段 `theme:`（universal/core-only/
+  `<agent>`，sync_infra 强制、决定跨 clone 分发；`sync_infra.py:231-251`）—— 即文档称
+  "不存在"的那个字段。故**不新增 `reuse`**（会成第 5 条重叠轴），维护者批 Option 1：
+  injection/index 直接派生自 `theme`、退休 `_tiers.json`。零新字段 / 零 backfill。
+- **P-0118**（pending→approved→in-progress）：完整统一，4 phase；本次交付 Phase 0-1。
+- **Phase 0（doc）**：`knowledge_governance/skill-scenario-clusters.md` 记录 theme 作为
+  广度字段 + 注入派生规则 + 退休 `_tiers.json`（title/tags/updated 同步）。
+- **Phase 1（注入）**：`registry.py` 加 `SkillEntry.theme` + `_extract_metadata` 解析
+  theme；`emit_bounded_injection` 注入池 = 所有 learned + `theme:universal` guide，
+  **停读 `_tiers.json`**。重写 `test_skill_injection_bounded.py`（9 cases 含 `_tiers.json`
+  忽略回归守卫）全绿；auditor 18/18 不回归。hub dogfood：SessionStart 从 counts-only
+  升级为 theme 派生的 bounded 菜单（18 universal guide，capped 10 + "+8 more"）。
+- **待续**：Phase 2（builder/catalog 派生 theme + 清 "Trade Agent"）、Phase 3（auditor
+  Check 11/16 + extract-skill writer + candidate collect + 退休 `_tiers.json` 物理文件）。
+- **改动**：`governance_core/{knowledge_governance/skill-scenario-clusters.md,
+  discovery/registry.py, tools/test_skill_injection_bounded.py}`。
+
 ### 2026-07-07 — Candidate curation：4 open issue 清空（3 dup + 1 拒）
 
 - **审查**：`/curate-candidate`。open candidate = #124/#125/#127
