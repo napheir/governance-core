@@ -1,22 +1,21 @@
 # -*- coding: utf-8 -*-
-"""User-friendly CLI for browsing the skill catalog by organizational tier.
+"""User-friendly CLI for browsing the skill catalog by theme.
 
-Reads the same data as tools/build_skill_index.py (registry × _tiers.json)
-but formats for terminal consumption rather than markdown. Use this when
-you want to know "what skills can I use here?" without leaving the shell.
+Reads the same data as tools/build_skill_index.py (the registry, grouped by each
+skill's `theme:` frontmatter -- universal | core-only | <agent>) but formats for
+terminal consumption rather than markdown. Use this when you want to know "what
+skills can I use here?" without leaving the shell.
 
 Examples:
-    python tools/skill_catalog.py                 # all tiers, all types
-    python tools/skill_catalog.py --tier universal
-    python tools/skill_catalog.py --tier branch --type command
-    python tools/skill_catalog.py --unclassified  # only the T0 bucket
-    python tools/skill_catalog.py --grep wrap     # filter by name substring
+    python tools/skill_catalog.py                      # all groups, all types
+    python tools/skill_catalog.py --group universal
+    python tools/skill_catalog.py --group core-only --type command
+    python tools/skill_catalog.py --grep wrap          # filter by name substring
 
 This is read-only and side-effect free; for the markdown view consumed by
 knowledge/ tooling, see tools/build_skill_index.py.
 """
 import argparse
-import json
 import logging
 import sys
 from pathlib import Path
@@ -29,29 +28,42 @@ from governance_core.discovery.registry import SkillRegistry  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
-TIERS_PATH = PROJECT_ROOT / "knowledge" / "skills" / "_tiers.json"
-TIER_ORDER = ["universal", "project", "branch", "unclassified"]
-TIER_TITLES = {
-    "universal": "Tier 1 — Universal",
-    "project": "Tier 2 — Project-Universal (Trade Agent)",
-    "branch": "Tier 3 — Branch / Business",
-    "unclassified": "Unclassified",
+_HEAD_GROUPS = ("universal", "core-only")
+_TAIL_GROUPS = ("learned", "unclassified")
+_GROUP_TITLES = {
+    "universal": "Universal",
+    "core-only": "Core-only",
+    "learned": "Learned (per-agent extractions)",
+    "unclassified": "Unclassified (missing theme)",
 }
 
 
-def _load_tiers() -> dict:
-    if not TIERS_PATH.is_file():
-        raise FileNotFoundError(f"Missing tier map: {TIERS_PATH}")
-    return json.loads(TIERS_PATH.read_text(encoding="utf-8"))
-
-
-def _load_manifest() -> dict[str, dict]:
+def _load_manifest() -> list[dict]:
     reg = SkillRegistry(track_usage=False)
     reg.scan()
-    return {
-        s["name"]: s for s in reg.manifest()
-        if s["source_type"] != "module"
-    }
+    return [s for s in reg.manifest() if s["source_type"] != "module"]
+
+
+def _theme_group(entry: dict) -> str:
+    """Index group of a skill, derived from its theme (see build_skill_index)."""
+    if entry["source_type"] == "learned":
+        return "learned"
+    return entry["theme"] or "unclassified"
+
+
+def _group_title(group: str) -> str:
+    """Human title; per-agent themes render as 'Agent: <name>'."""
+    return _GROUP_TITLES[group] if group in _GROUP_TITLES else f"Agent: {group}"
+
+
+def _ordered_groups(present: set) -> list:
+    """universal, core-only, <agents...>, learned, unclassified (present only)."""
+    order = [g for g in _HEAD_GROUPS if g in present]
+    agents = sorted(g for g in present
+                    if g not in _HEAD_GROUPS and g not in _TAIL_GROUPS)
+    order.extend(agents)
+    order.extend(g for g in _TAIL_GROUPS if g in present)
+    return order
 
 
 def _print_skill(entry: dict, indent: int = 2) -> None:
@@ -67,13 +79,13 @@ def _print_skill(entry: dict, indent: int = 2) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Browse the skill catalog by organizational tier."
+        description="Browse the skill catalog by theme."
     )
     parser.add_argument(
-        "--tier",
-        choices=TIER_ORDER,
+        "--group",
         default=None,
-        help="Filter to a single tier (default: all).",
+        help="Filter to a single theme group "
+             "(universal | core-only | <agent> | learned | unclassified).",
     )
     parser.add_argument(
         "--type",
@@ -88,64 +100,44 @@ def main() -> int:
         help="Filter by case-insensitive substring match on skill name.",
     )
     parser.add_argument(
-        "--unclassified",
-        action="store_true",
-        help="Shortcut: --tier=unclassified (show only awaiting-review).",
-    )
-    parser.add_argument(
         "--names-only",
         action="store_true",
         help="Print one skill name per line (no descriptions); useful for piping.",
     )
     args = parser.parse_args()
 
-    tiers_data = _load_tiers()
     manifest = _load_manifest()
-
-    selected_tier = "unclassified" if args.unclassified else args.tier
-    tiers_to_show = [selected_tier] if selected_tier else TIER_ORDER
+    grouped: dict[str, list[dict]] = {}
+    for entry in manifest:
+        grouped.setdefault(_theme_group(entry), []).append(entry)
 
     grep_lower = args.grep.lower() if args.grep else None
+    groups_to_show = ([args.group] if args.group
+                      else _ordered_groups(set(grouped)))
 
     total = 0
-    for tier_id in tiers_to_show:
-        tier = tiers_data["tiers"].get(tier_id, {})
-        names = sorted(tier.get("skills", []))
-        if not names:
-            if selected_tier:  # explicit ask for empty tier
-                print(f"[{TIER_TITLES[tier_id]}]  (empty)")
-            continue
-
-        # Apply filters
+    for group in groups_to_show:
+        entries = grouped[group] if group in grouped else []
         filtered = []
-        for name in names:
-            entry = manifest.get(name)
-            if entry is None:
-                # Phantom: print explicit marker so the bug is visible
-                if not args.type and not grep_lower:
-                    filtered.append({"name": name, "_phantom": True})
-                continue
+        for entry in sorted(entries, key=lambda e: e["name"]):
             if args.type and entry["source_type"] != args.type:
                 continue
-            if grep_lower and grep_lower not in name.lower():
+            if grep_lower and grep_lower not in entry["name"].lower():
                 continue
             filtered.append(entry)
 
         if not filtered:
+            if args.group:  # explicit ask for an empty / unknown group
+                print(f"[{_group_title(group)}]  (empty)")
             continue
 
         if not args.names_only:
-            desc = tier.get("description", "")
-            print(f"\n[{TIER_TITLES[tier_id]}]  ({len(filtered)})")
-            if desc:
-                print(f"  {desc}")
+            print(f"\n[{_group_title(group)}]  ({len(filtered)})")
             print()
 
         for entry in filtered:
             if args.names_only:
                 print(entry["name"])
-            elif entry.get("_phantom"):
-                print(f"  ⚠ {entry['name']:<55} [PHANTOM — not in registry]")
             else:
                 _print_skill(entry)
         total += len(filtered)

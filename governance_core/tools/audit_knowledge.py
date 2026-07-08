@@ -17,7 +17,7 @@ Checks run (severity in brackets):
   8. Staleness (>30 days since update)           [warn]
   9. Cross-reference link integrity              [fail]
  10. briefing enum valid (optional field)        [fail]
- 11. Skill tier bijection + INDEX.md freshness   [fail / warn]
+ 11. Skill theme present + INDEX.md freshness    [fail / warn]
  12. carrier_class present                       [warn — transitional v1.2.0]
  13. carrier_class enum valid                    [warn — transitional v1.2.0]
  14. carrier_class matches expected path         [warn — transitional v1.2.0]
@@ -91,8 +91,8 @@ AUTOGEN_PLACEHOLDER_MARKERS = (
     'class="autogen-block"',  # P-0054 HTML form, accepted ahead of migration
 )
 
-# For Check 11 (skill tier bijection) we import the registry and the
-# index builder. Both live under the project root, not as installed
+# For Check 11 (skill theme + INDEX.md freshness) we import the registry
+# and the index builder. Both live under the project root, not as installed
 # packages, so we widen sys.path explicitly.
 if str(DEFAULT_ROOT) not in sys.path:
     sys.path.insert(0, str(DEFAULT_ROOT))
@@ -313,36 +313,32 @@ def _parse_link_value(raw: str) -> list[str]:
     return [raw.strip("\"'")]
 
 
-# -------------- skill tier bijection --------------
-
-def _detect_non_hub(root: Path) -> bool:
-    """Default-strict non-hub detection for audit relaxations (gc #101 / P-0104).
-
-    Returns True only when the config for ``root`` positively identifies a
-    downstream consumer clone. Any ambiguity (config absent / unreadable / no
-    consumer_id, or the hub itself) returns False, so the strict FAIL behavior
-    is the default and a relaxation can never silently weaken the hub.
-    """
-    try:
-        from governance_core.config import is_non_hub_clone
-        return is_non_hub_clone(root)
-    except Exception:
-        return False
+# -------------- skill theme + scenario surface --------------
+#
+# P-0118 note: the non-hub audit carve-outs (gc #101/#102/#114) and their
+# `_detect_non_hub` helper are gone. They existed because `_tiers.json` was a
+# single globally-synced hub-owned list, so a clone could legitimately hold
+# phantom/uncataloged entries. `theme` lives per-file, so there is no central
+# list to drift -- the strict check is always correct, hub or clone.
 
 
-def _audit_skill_tiers(root: Path, tiers_path: Path) -> tuple[int, int]:
-    """Audit knowledge/skills/_tiers.json against the live registry.
+def _audit_skill_themes(root: Path) -> tuple[int, int]:
+    """Audit per-skill ``theme`` frontmatter + INDEX.md freshness (P-0118).
 
-    Three independent checks:
-      11a. Bijection registry → tiers  (FAIL) — every md-skill must be
-           classified into exactly one tier.
-      11b. Bijection tiers → registry  (FAIL) — every tier entry must
-           correspond to an existing md-skill (no phantoms).
-      11c. INDEX.md freshness          (WARN) — generated INDEX.md must
-           match what build_skill_index.render() would produce now.
+    Replaces the retired ``knowledge/skills/_tiers.json`` bijection. Because
+    ``theme`` lives on each skill file (sync_infra-enforced) rather than a
+    central globally-synced list, the old central-vs-registry bijection AND its
+    whole family of non-hub carve-outs (gc #101/#102/#114) are gone -- there is
+    no central list to drift or to hold phantoms:
 
-    Python modules (source_type='module') are excluded — they are
-    library code, not workflows; not in scope for tier classification.
+      11a. theme presence (FAIL) -- every command/guide carries a non-empty
+           ``theme`` (universal | core-only | <agent>); learned skills carry
+           none (per-agent, not sync-routed).
+      11b. INDEX.md freshness (WARN) -- when the optional
+           ``knowledge/skills/INDEX.md`` exists it must equal
+           ``build_skill_index.render(manifest)``.
+
+    Python modules (source_type='module') are excluded.
 
     Returns:
         (failed_count, warned_count).
@@ -356,149 +352,56 @@ def _audit_skill_tiers(root: Path, tiers_path: Path) -> tuple[int, int]:
         logger.warning("  WARN: skill registry import failed: %s", exc)
         return 0, 1
 
-    try:
-        tiers_data = json.loads(tiers_path.read_text(encoding="utf-8"))
-    except Exception as exc:
-        logger.warning("  FAIL: cannot parse _tiers.json: %s", exc)
-        return 1, 0
-
     # project_root=root so --root and isolated test fixtures scan the audited
-    # clone's skills (consistent with Check 16); at the hub this coincides with
-    # the git-toplevel default.
+    # clone's skills; at the hub this coincides with the git-toplevel default.
     registry = SkillRegistry(track_usage=False, project_root=root)
     registry.scan()
     manifest = registry.manifest()
-    md_skills = {
-        s["name"] for s in manifest
-        if s["source_type"] != "module"
-    }
-    # Learned skills (source_type='learned') are the only ones a non-hub clone
-    # can produce locally; _tiers.json is hub-owned, so a freshly-extracted
-    # learned skill is legitimately catalog-pending in a consumer (gc #101).
-    learned_skills = {
-        s["name"] for s in manifest if s["source_type"] == "learned"
-    }
-    non_hub = _detect_non_hub(root)
+    md = [s for s in registry.manifest() if s["source_type"] != "module"]
 
-    tier_to_skills: dict[str, set[str]] = {}
-    for tier_id, tier_body in tiers_data.get("tiers", {}).items():
-        tier_to_skills[tier_id] = set(tier_body.get("skills", []))
-
-    classified = set()
-    duplicates: list[tuple[str, list[str]]] = []
-    for name in md_skills:
-        homes = [t for t, names in tier_to_skills.items() if name in names]
-        if len(homes) > 1:
-            duplicates.append((name, homes))
-        if homes:
-            classified.add(name)
-
-    # 11a. registry → tiers
-    unclassified = md_skills - classified
-    for name in sorted(unclassified):
-        if non_hub and name in learned_skills:
-            # Non-hub clone: _tiers.json is hub-owned / out of this clone's
-            # scope, so a just-extracted learned skill is legitimately pending
-            # the hub's cataloging sweep (gc #101 / P-0104). WARN, don't FAIL.
-            logger.warning(
-                "  WARN: learned skill %r not yet in _tiers.json — pending "
-                "hub catalog (non-hub clone)", name
-            )
-            warned += 1
-        else:
-            logger.warning(
-                "  FAIL: skill %r not classified in _tiers.json", name
-            )
-            failed += 1
-
-    # Duplicate classification is also a fail (each skill must live in one tier)
-    for name, homes in duplicates:
+    # 11a. theme presence on shared skills (command/guide); learned carry none.
+    for s in sorted((s for s in md
+                     if s["source_type"] in ("command", "guide")
+                     and not s["theme"]),
+                    key=lambda s: s["name"]):
         logger.warning(
-            "  FAIL: skill %r appears in multiple tiers: %s", name, homes
-        )
+            "  FAIL: skill %r has no `theme:` frontmatter "
+            "(universal | core-only | <agent>)", s["name"])
         failed += 1
 
-    # 11b. tiers → registry
-    all_tier_entries: set[str] = set()
-    for names in tier_to_skills.values():
-        all_tier_entries.update(names)
-    phantoms = all_tier_entries - md_skills
-    for name in sorted(phantoms):
-        home_tiers = {t for t, names in tier_to_skills.items() if name in names}
-        if non_hub and home_tiers == {"branch"}:
-            # Non-hub clone: branch-tier skill *files* are branch-local (present
-            # in exactly one clone) while _tiers.json is a single globally-synced
-            # hub-owned file. A branch entry owned by another clone is therefore a
-            # legitimate phantom here, unresolvable by any local action (deleting
-            # the file can't touch the synced list). Mirror the 11a / 16a non-hub
-            # carve-outs (gc #101/P-0104, #102/P-0105): WARN, don't FAIL (gc #114
-            # / P-0111). Narrow to home_tiers == {"branch"} so a phantom that also
-            # lives in universal/project (a real, fixable gap) still FAILs.
-            logger.warning(
-                "  WARN: branch-tier entry %r absent in this clone — "
-                "branch-local file lives in its owning clone; _tiers.json is "
-                "hub-owned (non-hub clone)", name
-            )
-            warned += 1
-        else:
-            logger.warning(
-                "  FAIL: _tiers.json entry %r not found in skill registry "
-                "(phantom)", name
-            )
-            failed += 1
-
-    # 11c. unclassified bucket non-empty → warn
-    pending = tier_to_skills.get("unclassified", set())
-    if pending:
-        logger.warning(
-            "  WARN: %d skill(s) in unclassified bucket awaiting tier "
-            "assignment: %s",
-            len(pending), sorted(pending),
-        )
-        warned += 1
-
-    # 11d. INDEX.md freshness — compare against builder output
+    # 11b. INDEX.md freshness -- only when the optional index was generated.
     index_path = root / "knowledge" / "skills" / "INDEX.md"
-    try:
-        from build_skill_index import render as render_index
-    except Exception as exc:
-        logger.warning("  WARN: build_skill_index import failed: %s", exc)
-        return failed, warned + 1
-
-    if not index_path.is_file():
-        logger.warning("  WARN: knowledge/skills/INDEX.md missing — run "
-                       "`python tools/build_skill_index.py`")
-        warned += 1
-    else:
-        expected = render_index(tiers_data, [
-            s for s in registry.manifest() if s["source_type"] != "module"
-        ])
-        actual = index_path.read_text(encoding="utf-8")
-        if actual != expected:
+    if index_path.is_file():
+        try:
+            from build_skill_index import render as render_index
+        except Exception as exc:
+            logger.warning("  WARN: build_skill_index import failed: %s", exc)
+            return failed, warned + 1
+        expected = render_index(md)
+        if index_path.read_text(encoding="utf-8") != expected:
             logger.warning(
                 "  WARN: knowledge/skills/INDEX.md is stale (does not match "
-                "builder output) — run `python tools/build_skill_index.py`"
-            )
+                "builder output) -- run `python tools/build_skill_index.py`")
             warned += 1
         else:
-            logger.info(
-                "  [OK] %d md-skills classified across %d tier(s); "
-                "INDEX.md up to date",
-                len(md_skills),
-                sum(1 for n in tier_to_skills.values() if n),
-            )
+            logger.info("  [OK] %d md-skills themed; INDEX.md up to date",
+                        len(md))
+    elif failed == 0:
+        logger.info("  [OK] %d md-skills themed (no INDEX.md generated)",
+                    len(md))
 
     return failed, warned
 
 
-def _audit_scenario_coverage(root: Path, clusters_path: Path,
-                             tiers_path: Path) -> tuple[int, int]:
+def _audit_scenario_coverage(root: Path, clusters_path: Path) -> tuple[int, int]:
     """Audit scenario-surface coverage (P-0103 part C, gc #100).
 
     Once a project authors ``knowledge/skills/_scenario_clusters.json``, every
-    md-skill must ENTER the SessionStart surface -- be in the ``universal``
-    tier (``_tiers.json``) OR a member of >=1 scenario cluster -- otherwise it
-    can never be consulted, the very gap that left ~50 skills at use_count=0.
+    md-skill must ENTER the SessionStart surface -- be a ``theme: universal``
+    skill, a learned skill (always injected), OR a member of >=1 scenario
+    cluster -- otherwise it can never be consulted, the very gap that left ~50
+    skills at use_count=0 (P-0118: universal derives from ``theme``, not
+    ``_tiers.json``).
 
       16a. Coverage (FAIL) -- every md-skill is universal or clustered.
       16b. Phantom  (FAIL) -- every cluster member resolves to a real md-skill.
@@ -538,49 +441,30 @@ def _audit_scenario_coverage(root: Path, clusters_path: Path,
     command_skills = {
         s["name"] for s in manifest if s["source_type"] == "command"
     }
-    non_hub = _detect_non_hub(root)
-
-    universal: set = set()
-    if tiers_path.is_file():
-        try:
-            td = json.loads(tiers_path.read_text(encoding="utf-8"))
-            universal = set(
-                _field(_field(_field(td, "tiers", {}), "universal", {}),
-                       "skills", [])
-            )
-        except (json.JSONDecodeError, OSError):
-            universal = set()
+    # Surfaced every session (P-0118): theme:universal skills + all learned
+    # (each agent's own, always injected) + scenario-cluster members.
+    universal = {s["name"] for s in manifest
+                 if s["source_type"] != "module" and s["theme"] == "universal"}
 
     clustered: set = set()
     for body in _field(clusters_data, "clusters", {}).values():
         clustered.update(_field(body, "members", []))
 
-    surfaced = universal | clustered
+    surfaced = universal | learned_skills | clustered
 
     # 16a. coverage
     for name in sorted(md_skills - surfaced):
         if name in command_skills:
-            # Slash commands are always listed in the harness Skill-tool menu
-            # and invoked by name, so their discoverability never depends on
-            # SessionStart cluster surfacing -- the use_count=0 gap (P-0113)
-            # this gate closes is about consult-only learned/guide skills.
-            # Exempt commands from FAIL (gc #102 / P-0105); this is additive to
-            # the #101 non-hub-learned WARN carve-out below, not a replacement.
+            # Slash commands are always in the harness Skill-tool menu and
+            # invoked by name, so discoverability never depends on SessionStart
+            # cluster surfacing (gc #102 / P-0105). learned skills are always in
+            # `surfaced`, so the old non-hub-learned WARN carve-out is gone.
             continue
-        if non_hub and name in learned_skills:
-            # Non-hub clone: surfacing catalog (universal tier / clusters) is
-            # hub-owned, so a freshly-extracted learned skill is legitimately
-            # pending the hub's cataloging sweep (gc #101 / P-0104).
-            logger.warning(
-                "  WARN: learned skill %r not yet surfaced — pending hub "
-                "catalog (non-hub clone)", name)
-            warned += 1
-        else:
-            logger.warning(
-                "  FAIL: skill %r is neither universal nor in any scenario "
-                "cluster -- it will never be surfaced (add it to the universal "
-                "tier or a _scenario_clusters.json cluster)", name)
-            failed += 1
+        logger.warning(
+            "  FAIL: skill %r is neither theme:universal nor in any scenario "
+            "cluster -- it will never be surfaced (theme it universal or add "
+            "it to a _scenario_clusters.json cluster)", name)
+        failed += 1
 
     # 16b. phantom
     for name in sorted(clustered - md_skills):
@@ -591,8 +475,8 @@ def _audit_scenario_coverage(root: Path, clusters_path: Path,
 
     if failed == 0:
         logger.info(
-            "  [OK] %d md-skills all surfaced (universal or clustered)",
-            len(md_skills))
+            "  [OK] %d md-skills all surfaced (theme:universal, learned, or "
+            "clustered)", len(md_skills))
     return failed, warned
 
 
@@ -804,20 +688,17 @@ def main(root: Path | None = None) -> int:
             age = (today - updated).days
             warn(f, f"{age} days since update")
 
-    # --- Check 11: skill tier bijection + INDEX.md freshness ---
-    tiers_path = root / "knowledge" / "skills" / "_tiers.json"
-    if tiers_path.is_file():
-        logger.info("\n=== Check 11: Skill tier classification ===")
-        tier_failed, tier_warned = _audit_skill_tiers(root, tiers_path)
-        failed += tier_failed
-        warnings += tier_warned
+    # --- Check 11: per-skill theme + INDEX.md freshness (P-0118) ---
+    logger.info("\n=== Check 11: Skill theme classification ===")
+    theme_failed, theme_warned = _audit_skill_themes(root)
+    failed += theme_failed
+    warnings += theme_warned
 
     # --- Check 16: skill scenario-surface coverage (P-0103 C, gc #100) ---
     clusters_path = root / "knowledge" / "skills" / "_scenario_clusters.json"
     if clusters_path.is_file():
         logger.info("\n=== Check 16: Skill scenario-surface coverage ===")
-        sc_failed, sc_warned = _audit_scenario_coverage(
-            root, clusters_path, tiers_path)
+        sc_failed, sc_warned = _audit_scenario_coverage(root, clusters_path)
         failed += sc_failed
         warnings += sc_warned
 

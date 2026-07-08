@@ -17,6 +17,31 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-08 — P-0118 Phase 2-3：_tiers.json 全面退休，builder/auditor/writer 收敛到 theme
+
+- **Phase 2（builder 去域化）**：`build_skill_index.py` / `skill_catalog.py` 重写为从
+  `theme` 派生分组（universal / core-only / `<agent>` / learned），**删硬编码 "Trade Agent"
+  + universal/project/branch TIER_ORDER** 域泄漏；不再需 `_tiers.json` 即可运行；render 去
+  时间戳变确定性；顺带清 skill_catalog 一处 Art.7 `⚠` Unicode 违规。
+- **Phase 3（auditor + writer 收敛）**：
+  - `audit_knowledge` Check 11 `_audit_skill_tiers`（bijection + non-hub carve-out）→
+    `_audit_skill_themes`（theme 存在 + INDEX 新鲜度）；Check 16 universal 改从 `theme:universal`
+    派生、learned 恒 surfaced。**删 `_detect_non_hub` 及整套 non-hub carve-out**（per-file
+    theme 无中心漂移，carve-out 存在理由消失，见记忆 `nonhub-audit-carveouts-are-a-family`）。
+  - `extract-skill.md` writer：删 hub/non-hub 的 `_tiers.json` 编目步（6/6b/7/8/6N/7N/8N）→
+    learned 恒 auto-surfaced，极简为"可选 cluster + 可选 rebuild index"。
+  - 事实指针同步：`session-context.py` docstring、`art_15` 条款、`skill-scenario-clusters.md`
+    的 "universal 集来自 _tiers.json" → 改 `theme`。
+  - **candidate.py 无需改**（collect 用 `layer: candidate-common` envelope 轴，不碰 _tiers）。
+- **测试**：删 `test_pending_catalog_tolerance.py`（整文件测已移除的 non-hub carve-out）→ 新增
+  `test_skill_theme_audit.py`；重写 `test_scenario_coverage_audit.py` / `test_command_coverage_exempt.py`
+  为 theme 版。4 个 skill 测试 23/23 绿；全 tools 套件无新增回归（8 仍为包源布局伪失败）。
+- **dogfood**：upgrade 后 hub `build_skill_index` 生成 INDEX.md（33 skills / Universal+Core-only），
+  `--check` 幂等，`audit` Check 11 [OK] + 整体 healthy，`skill_catalog` [Universal](28)/[Core-only](5)。
+- **发现待办（正交）**：`rotate_state.py:31` ARCHIVE_HEADER 硬编码 "Trade Agent" —— 另一处域泄漏，
+  属 STATE archive 非 skill-tier，留后续。
+- **P-0118 全 4 phase 完成** → /proposal complete。
+
 ### 2026-07-08 — P-0118 Phase 0-1：skill 复用分类统一到既有 theme（注入解耦）
 
 - **背景**：trade-agent handoff `skill-reuse-layer-unification.md` 提议给 skill 加

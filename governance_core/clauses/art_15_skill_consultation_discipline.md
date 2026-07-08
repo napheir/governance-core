@@ -30,9 +30,10 @@ phase_2_action: ready-to-use
 
 - SessionStart 的技能注入**有界**（只发名字 + 描述 + cluster 映射，body 懒加载），
   以免 prompt prefix 膨胀；该注入器由 governance-core 维护。
-- universal 集（`knowledge/skills/_tiers.json` 的 `universal` tier）与
+- universal 集（`theme: universal` 的 skill + 各 agent 自有的 learned skill）与
   scenario-cluster 成员（`knowledge/skills/_scenario_clusters.json`）由**各 agent
-  在自己 clone 自著**；契约见 `knowledge/governance/skill-scenario-clusters.md`。
+  在自己 clone 自著**（`theme` 由 sync_infra 强制路由）；契约见
+  `knowledge/governance/skill-scenario-clusters.md`。
 
 **子宪法扩展点**：各 agent 可在子宪法补充本 agent 的 universal 集 / cluster 划分
 约定与触发细节，但不得放宽"先咨询、后推导"的纪律。

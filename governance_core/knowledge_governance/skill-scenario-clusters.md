@@ -114,7 +114,7 @@ above are a template, not a shipped seed. Authoring is wired into
 ## Consumed by
 
 - `governance_core/hooks/session-context.py::_emit_skill_injection` — emits the
-  bounded menu, falling back to counts-only when this file (and `_tiers.json`)
-  are absent.
+  bounded menu, falling back to counts-only when nothing surfaces (no
+  `theme:universal` / learned skills, no clusters).
 - `governance_core/discovery/registry.py::emit_bounded_injection` — the reader;
   records path-A surfacing via the usage funnel (`record_surfaced`).

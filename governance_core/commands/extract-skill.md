@@ -48,73 +48,34 @@ After completing a complex, multi-step workflow, use this command to capture it 
    python -m governance_core.discovery.registry --format table
    ```
 
-> **Steps 6–8 are role-dependent.** `knowledge/skills/_tiers.json` and
-> `knowledge/skills/INDEX.md` are **hub-owned**. If your clone is the
-> **convergence hub** (the governance-core self-host: `.governance/config.json`
-> `authorization.consumer_id` == `governance-core`, role core) follow the **Hub
-> path** below. A **non-hub business / consumer clone** follows the **Non-hub
-> path** further down — it cannot edit the hub-owned catalog in scope, and the
-> hub catalogs the skill for it via a later sweep (gc #101 / P-0104).
+> **Steps 6–8 (surfacing).** A learned skill is **auto-surfaced**: P-0118 puts
+> every learned skill in the SessionStart universal-injection pool (it is this
+> agent's own extraction), so it is consulted without any central catalog. The
+> retired `knowledge/skills/_tiers.json` and its old hub/non-hub tier-cataloging
+> steps are gone — there is nothing tier-shaped to edit, in any clone.
 
-### Hub path (core agent)
+6. **(Optional) Cluster it for scenario recall.** The skill already surfaces via
+   the universal pool. If it belongs to a task-shaped scenario, also add it to a
+   cluster in `knowledge/skills/_scenario_clusters.json` (a `cluster -> members`
+   map; schema in `knowledge/governance/skill-scenario-clusters.md`) so it
+   surfaces under that scenario too. Owner-maintained, in scope for any clone.
 
-6. **Classify the skill's tier**: Decide which organizational tier the new skill belongs to and update `knowledge/skills/_tiers.json`:
-   - **`universal`** — reusable in any Claude Code project (no Trade Agent coupling)
-   - **`project`** — depends on Trade Agent infra (multi-clone / Futu / shared_state / contracts), cross-agent
-   - **`branch`** — bound to a specific agent's business domain (rules / trade / data)
-   - **`unclassified`** — only if you genuinely cannot decide now; must be reclassified before next `/wrap-up` (audit warns on non-empty unclassified)
-
-   Edit `knowledge/skills/_tiers.json` and append the skill name to the chosen tier's `skills` array (keep array sorted alphabetically).
-
-6b. **Surface the skill** (P-0103, gc #100): a tier classification is not
-   enough — a skill is only ever **consulted** if it enters the SessionStart
-   surface (第十五条 技能咨询纪律). Ensure the new skill is either in the
-   **`universal`** tier (surfaced every session) OR a member of a **scenario
-   cluster** in `knowledge/skills/_scenario_clusters.json` (a `cluster ->
-   members` map; schema in `knowledge/governance/skill-scenario-clusters.md`).
-   A `project` / `branch` skill that sits in no cluster is never surfaced and
-   stays dead weight — `audit_knowledge.py` Check 16 FAILs on it once any
-   scenario clusters are authored.
-
-7. **Rebuild the skill index**: Run the builder so `knowledge/skills/INDEX.md` reflects the new skill:
+7. **(Optional) Refresh the browse index.** `knowledge/skills/INDEX.md` is a
+   human-browsable catalog now derived from each skill's `theme` (learned skills
+   group under "Learned"). Rebuild it if you want the browse view current:
    ```bash
    python tools/build_skill_index.py
    ```
 
-8. **Verify audit passes**: Confirm bijection holds (every skill classified, no phantoms):
+8. **Verify audit passes:**
    ```bash
    python tools/audit_knowledge.py
-   # Check 11 must report: [OK] N md-skills classified across 3 tier(s); INDEX.md up to date
-   # Check 16 (if scenario clusters authored): [OK] N md-skills all surfaced (universal or clustered)
+   # Check 11 (theme): [OK] N md-skills themed; INDEX.md up to date
+   # Check 16 (if scenario clusters authored): [OK] N md-skills all surfaced
    ```
 
-### Non-hub path (business / consumer agent)
-
-You own your skill file and your own scenario clusters, but **not** the
-reuse-tier catalog. Do only the in-scope steps; the hub catalogs the rest via a
-later sweep.
-
-6N. **Surface via your own scenario cluster** (replaces steps 6 / 6b / 7): add
-   the new skill to a cluster in your `knowledge/skills/_scenario_clusters.json`
-   (owner-maintained, in scope) so it enters your SessionStart surface (第十五条
-   技能咨询纪律). Schema: `knowledge/governance/skill-scenario-clusters.md`.
-
-7N. **Skip the hub-owned catalog steps**: do **not** edit
-   `knowledge/skills/_tiers.json` and do **not** rebuild
-   `knowledge/skills/INDEX.md`. They are hub-owned — a local edit is out of scope
-   and `governance-core upgrade` would overwrite it.
-
-8N. **Treat the catalog audit as WARN-pending, not FAIL**: in a non-hub clone
-   `audit_knowledge.py` Check 11 / Check 16 record a just-extracted,
-   not-yet-cataloged **learned** skill as `WARN: ... pending hub catalog` (gc
-   #101 / P-0104) — NOT a failure. Do **not** roll back the extraction on that
-   WARN. The hub later picks up the skill (it carries `layer: candidate-common`
-   from step 2) via its cataloging sweep and assigns the tier + rebuilds INDEX
-   centrally.
-
-9. **Report to user**: Show the skill name, location, chosen tier (or
-   `pending hub catalog` for a non-hub clone), layer, and a summary of what was
-   captured.
+9. **Report to user**: Show the skill name, location, `layer` (candidate-common
+   vs business), and a summary of what was captured.
 
 ## Notes
 
@@ -122,4 +83,4 @@ later sweep.
 - Use `--overwrite` flag if refining an existing skill (re-extract over the prior version)
 - Follow kebab-case naming convention
 - Reference: `knowledge/research/hermes_agent.md` (Section 2, Mechanism A)
-- Tier decision is informed by `knowledge/skills/INDEX.md` examples — browse with `python tools/skill_catalog.py` to see what each tier currently contains
+- Browse existing skills by `theme` group with `python tools/skill_catalog.py` (or the generated `knowledge/skills/INDEX.md`)

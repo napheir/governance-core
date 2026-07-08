@@ -367,17 +367,20 @@ def _check_restart_required() -> str:
 def _emit_skill_injection(root) -> str:
     """Emit the SessionStart skill menu (bounded names) or a counts-only summary.
 
-    P-0103 part A (issue #100): when a consumer has authored a scenario index
-    (``knowledge/skills/_tiers.json`` / ``_scenario_clusters.json``), emit a
-    BOUNDED menu -- universal-tier ``name + desc`` (capped) + a compact
-    ``cluster -> members`` map, bodies lazy -- so the agent can actually
-    consult learned skills, and record path-A surfacing. This re-balances
-    prefix_cost_optimization.md C3 (approved 2026-05-07; the full ~1650-token
-    Tier A+B dump) without re-introducing it: names + a compact map only.
+    P-0103 part A (issue #100), theme-derived since P-0118: when the project has
+    universal-injection skills (every ``learned`` skill + every guide with
+    ``theme: universal``) and/or an authored
+    ``knowledge/skills/_scenario_clusters.json``, emit a BOUNDED menu --
+    universal ``name + desc`` (capped) + a compact ``cluster -> members`` map,
+    bodies lazy -- so the agent can actually consult learned skills, and record
+    path-A surfacing. This re-balances prefix_cost_optimization.md C3 (approved
+    2026-05-07; the full ~1650-token Tier A+B dump) without re-introducing it:
+    names + a compact map only.
 
-    Fallback: when no scenario index is authored (e.g. a hub with 0 learned
-    skills), or anything goes wrong, emit the C3 counts-only summary computed
-    via direct glob (constant-time, no import). SessionStart must never break.
+    Fallback: when nothing surfaces (e.g. a hub with 0 learned + 0
+    theme:universal skills) or anything goes wrong, emit the C3 counts-only
+    summary computed via direct glob (constant-time, no import). SessionStart
+    must never break.
     """
     skills_dir = Path(root) / ".claude" / "skills"
     if not skills_dir.is_dir():
