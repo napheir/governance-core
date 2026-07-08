@@ -545,13 +545,15 @@ def _v2_scaffold(proposal_id: str, title: str, agent: str) -> str:
 
 ## Approval Criteria
 
-> Concrete checks to tick before approval — derive from the spec above, don't restate
-> goals. For a complex proposal include, as applicable:
+> Each item pairs a plain-language acceptance with ONE discriminating check token
+> (`cmd: <exit 0 = pass>` / `agent-rubric: <ref>` / `human-verify: <sentence>`; see
+> contracts/proposal_gate_schema.md). An item with no check token is prose, not an
+> acceptance signal.
 
-- [ ] Every Field Dictionary entry names its governing `contracts/` file (or is N/A)
-- [ ] Every user-facing capability / mutation has a named realizer (nothing implied-but-unbuilt)
-- [ ] All Open Questions are resolved or explicitly deferred
-- [ ] <proposal-specific checks>
+- [ ] Every Field Dictionary entry names its governing `contracts/` file (or is N/A) — human-verify: each field row cites a contracts/ file
+- [ ] Every user-facing capability / mutation has a named realizer — human-verify: nothing implied-but-unbuilt
+- [ ] All Open Questions are resolved or explicitly deferred — human-verify: none left undecided
+- [ ] <proposal-specific acceptance> — cmd: <command whose exit 0 proves it>
 
 ## Validation Plan
 
@@ -885,6 +887,60 @@ def _is_complex_proposal(body: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# P-0119: Signed Approval Criteria gate — every `## Approval Criteria` item pairs
+# an acceptance with one discriminating check token (cmd:/agent-rubric:/
+# human-verify:). FORM-only (token present, not that it passes), like the two
+# gates above. `approval_criteria_adequacy` is the shared predicate behind the
+# transitional approve WARN and audit Check 15. Grammar: proposal_gate_schema.md.
+# ---------------------------------------------------------------------------
+
+_APPROVAL_CRITERIA_HEADING = "## Approval Criteria"
+_CHECK_ITEM_RE = re.compile(r"^\s*-\s*\[[ xX]\]")
+_CHECK_TOKEN_RE = re.compile(r"(?:cmd|agent-rubric|human-verify):")
+
+
+def approval_criteria_adequacy(body: str) -> tuple[bool, str]:
+    """Form-only: every `## Approval Criteria` checklist item carries a check token.
+
+    A check token is `cmd:` / `agent-rubric:` / `human-verify:` (see
+    contracts/proposal_gate_schema.md). FORM only — the token must be PRESENT,
+    not that a `cmd:` exits 0. Shared predicate behind the transitional approve
+    WARN (P-0119 Phase 1) and audit Check 15. An absent section or a section with
+    no checklist items passes (nothing to sign); a `>` guidance line is not an item.
+    """
+    if _APPROVAL_CRITERIA_HEADING not in body:
+        return True, "ok (no Approval Criteria section)"
+    section = _extract_section(body, _APPROVAL_CRITERIA_HEADING)
+    lines = section.splitlines()
+    unsigned: list[str] = []
+    i = 0
+    while i < len(lines):
+        if not _CHECK_ITEM_RE.match(lines[i]):
+            i += 1
+            continue
+        # Item block: the `- [ ]` line + indented continuation lines, up to the
+        # next item / a blank line / a new `## ` heading.
+        block = [lines[i]]
+        j = i + 1
+        while j < len(lines):
+            nxt = lines[j]
+            if (_CHECK_ITEM_RE.match(nxt) or not nxt.strip()
+                    or nxt.startswith("## ")):
+                break
+            block.append(nxt)
+            j += 1
+        if not _CHECK_TOKEN_RE.search("\n".join(block)):
+            unsigned.append(lines[i].strip()[:60])
+        i = j
+    if unsigned:
+        return False, (
+            f"{len(unsigned)} Approval Criteria item(s) lack a check token "
+            f"(cmd:/agent-rubric:/human-verify:): {unsigned[:3]}"
+        )
+    return True, "ok"
+
+
+# ---------------------------------------------------------------------------
 # create_proposal: allocate-id + scaffold write under filelock
 # ---------------------------------------------------------------------------
 
@@ -944,6 +1000,7 @@ def transition_proposal(
     superseded_by: str = "",
     allow_empty_current_state: bool = False,
     allow_thin_spec: bool = False,
+    allow_unsigned_criteria: bool = False,
 ) -> tuple[Path, str, str]:
     """Atomic state transition with State Log append.
 
@@ -1003,6 +1060,20 @@ def transition_proposal(
                         f"Fill '## Design & Contract' (Interfaces·I/O·Realization / Field "
                         f"Dictionary / Flow; use 'N/A — <reason>' where a sub-part truly "
                         f"doesn't apply), or pass --allow-thin-spec (justify in --note)."
+                    )
+            # P-0119 Phase 1: signed Approval Criteria gate. Transitional WARN
+            # (not BLOCK yet — flips after cutover, Phase 3). Same predicate as
+            # audit Check 15. FORM only — the approver judges substance.
+            if not allow_unsigned_criteria:
+                ok, reason = approval_criteria_adequacy(body)
+                if not ok:
+                    print(
+                        f"[WARN] {proposal_id}: approval-criteria gate — {reason}. "
+                        f"Give each '## Approval Criteria' item one check token "
+                        f"(cmd:/agent-rubric:/human-verify:; see "
+                        f"contracts/proposal_gate_schema.md). Transitional WARN "
+                        f"(will BLOCK after cutover); --allow-unsigned-criteria to silence.",
+                        file=sys.stderr,
                     )
             fm["approved_at"] = today
         elif new_status == "in-progress":
@@ -1190,6 +1261,7 @@ def _cmd_transition(args):
         superseded_by=args.superseded_by or "",
         allow_empty_current_state=args.allow_empty_current_state,
         allow_thin_spec=args.allow_thin_spec,
+        allow_unsigned_criteria=args.allow_unsigned_criteria,
     )
     print(f"[OK] {args.id}: {prev} → {new}")
     print(f"     path: {path.relative_to(REPO_ROOT.parent)}")
@@ -1473,6 +1545,9 @@ def main(argv=None) -> int:
     p.add_argument("--allow-thin-spec", action="store_true",
                    help="Override the P-0124 design-contract gate on --to "
                         "approved for a complex proposal (justify in --note)")
+    p.add_argument("--allow-unsigned-criteria", action="store_true",
+                   help="Silence the P-0119 signed-criteria WARN on --to approved "
+                        "(each Approval Criteria item should carry a check token)")
     p.set_defaults(func=_cmd_transition)
 
     p = sub.add_parser("archive", help="Move terminal proposal to _archive/<YYYY>/")

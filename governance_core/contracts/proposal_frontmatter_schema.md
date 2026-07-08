@@ -1,6 +1,6 @@
 # Contract: proposals/**/*.md Frontmatter Schema
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: active
 **Owner**: core
 **Consumers**: all agents (write proposals, read status), `tools/audit_proposals.py` (validation), `.claude/hooks/session-context.py` (filter pending list), `.claude/commands/proposal.md` (skill that mutates status)
@@ -14,6 +14,10 @@ location semantics).
 
 ## Version history
 
+- **1.2.0** (2026-07-08, P-0119 Phase 0): Add optional `execution` field
+  (§4.7) marking an execution-class proposal whose `### Phase` gates are
+  machine-run by `/proposal run`. Backward-compatible (absent = a normal
+  proposal). Gate/check grammar in `contracts/proposal_gate_schema.md`.
 - **1.1.0** (2026-05-12, P-0001 Phase 0): Add required `id` field
   (`P-NNNN` format, must match filename prefix + body H1 title) and
   required `agent` field (owner short-name enum). Backward-compatible
@@ -126,6 +130,12 @@ status is set**, otherwise omitted.
 |-------|------|-------|
 | `supersedes` | list[string] | relative paths to proposals this one replaces (mirror of others' `superseded_by`) |
 | `related` | list[string] | conceptually linked proposals or knowledge entries |
+
+### 4.7 Execution class (added v1.2.0, P-0119)
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `execution` | string (runner id) | **Optional.** Present marks an *execution-class* proposal whose `### Phase` entries carry machine-run `gate:` + `calibration:` lines (see `contracts/proposal_gate_schema.md`). gc ships one runner id, `gates`, executed by `/proposal run <id>`. Absent = a normal proposal (no per-phase gate machinery; the field never fires). When present, `transition --to approved` hard-gates each phase's gate calibration (exemption `--allow-uncalibrated-gate`, justify in `--note`). |
 
 ---
 

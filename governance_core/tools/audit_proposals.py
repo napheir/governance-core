@@ -35,8 +35,11 @@ Validates:
   Check 14: in-flight non-terminal COMPLEX proposals created on/after the
             P-0124 cutover carry an adequate Design & Contract section
             (shares the transition --to approved predicate) — WARN only (P-0124)
+  Check 15: in-flight non-terminal proposals created on/after the P-0119
+            cutover carry SIGNED Approval Criteria (each item has a check
+            token; shares the transitional approve predicate) — WARN only (P-0119)
 
-Schema: contracts/proposal_frontmatter_schema.md v1.1.0
+Schema: contracts/proposal_frontmatter_schema.md v1.2.0
 
 Usage:
     python tools/audit_proposals.py            # validate, exit 1 on error
@@ -83,6 +86,10 @@ _CURRENT_STATE_CHECKED_STATUSES = {"pending", "approved", "in-progress"}
 # as of P-0124, so grandfather everything created before its landing date —
 # older complex proposals never had the section and would flood the audit.
 DESIGN_CONTRACT_CUTOVER = "2026-06-23"
+
+# Check 15 (P-0119): the signed check-token grammar for Approval Criteria did
+# not exist before this cutover — grandfather everything older.
+APPROVAL_CRITERIA_CUTOVER = "2026-07-08"
 
 _FRONTMATTER_OPEN = re.compile(r"\A---\s*\n")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -534,6 +541,41 @@ def _check_design_contract_adequacy(in_flight: list, repo_root: Path) -> list:
     return warnings
 
 
+def _check_approval_criteria_adequacy(in_flight: list, repo_root: Path) -> list:
+    """Check 15 (P-0119): WARN-only — in-flight non-terminal proposals created
+    on/after APPROVAL_CRITERIA_CUTOVER whose Approval Criteria items lack a
+    check token (cmd:/agent-rubric:/human-verify:).
+
+    Shares the `approval_criteria_adequacy` predicate with the transitional
+    `transition --to approved` WARN so the two never disagree. Archive + legacy
+    + draft + terminal + pre-cutover are exempt (the check-token grammar did not
+    exist before). Fails open (no WARN) if the predicate can't be imported.
+    """
+    warnings = []
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from proposal_lib import approval_criteria_adequacy, parse_proposal
+    except Exception:
+        return warnings  # predicate unavailable -> fail open (WARN-only check)
+    for path in in_flight:
+        try:
+            fm, body = parse_proposal(path)
+        except Exception:
+            continue
+        if fm.get("status") not in _CURRENT_STATE_CHECKED_STATUSES:
+            continue
+        created = fm.get("created", "")
+        if not _DATE_RE.match(created) or created < APPROVAL_CRITERIA_CUTOVER:
+            continue  # pre-cutover grandfathered
+        ok, reason = approval_criteria_adequacy(body)
+        if not ok:
+            warnings.append(
+                f"Check 15 WARN: {path.name} ({fm.get('status')}) "
+                f"Approval Criteria unsigned — {reason}"
+            )
+    return warnings
+
+
 def _collect_files(repo_root: Path) -> dict:
     """Return {region: [path, ...]} for the 3 scan regions.
 
@@ -654,6 +696,9 @@ def main() -> int:
     # Check 14: Design & Contract adequacy (WARN only, P-0124) — shares the
     # transition --to approved predicate; complex + post-cutover only.
     warnings += _check_design_contract_adequacy(regions["in-flight"], repo_root)
+    # Check 15: Approval Criteria signed (WARN only, P-0119) — shares the
+    # transitional approve predicate; post-cutover only.
+    warnings += _check_approval_criteria_adequacy(regions["in-flight"], repo_root)
     for w in warnings:
         sys.stdout.write(f"WARN: {w}\n")
 

@@ -17,6 +17,28 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-08 — P-0119 Phase 0-1：签字验收门（第三道 approve form-gate）
+
+- **背景**：trade-agent handoff `proposal-signed-acceptance-gates.md` —— 在现有两门
+  （Current State/Design）上加第三道签字门 + execution-class 校准轨。§1 引用核对对齐 main
+  （唯一漂移：Design gate 在 `proposal_lib.py:829` 非 brief 说的 `:486`）；§5 todo 桥本仓无
+  （不引入）；§7 命名定 `execution: gates` + `/proposal run`。P-0119 approved（全 4 phase）。
+- **Phase 0（契约）**：新 `contracts/proposal_gate_schema.md`（check/gate/calibration grammar）；
+  `proposal_frontmatter_schema.md` 加 optional `execution` 字段 → v1.2.0。
+- **Phase 1（通用签字门）**：`proposal_lib.approval_criteria_adequacy(body)`（FORM：每个 Approval
+  Criteria 项须带一个 check token `cmd:`/`agent-rubric:`/`human-verify:`）；`_v2_scaffold` 项模板
+  token 化；approve 路径追加**迁移期 WARN**（stderr，非 BLOCK，Phase 3 再翻）+
+  `--allow-unsigned-criteria`；`audit_proposals` Check 15（WARN，共享谓词，cutover 2026-07-08
+  grandfather）。
+- **dogfood**：Check 15 立刻 WARN 了 P-0119 自身 3 个未签通用项 → 补 token 后 audit 0/0；本提案
+  Approval Criteria 全按签字格式（自证）。
+- **测试**：`test_proposal_gates.py` 10 例全过；既有 gate 测试（design_contract/rigor/classify）
+  60 例无回归。
+- **待续**：Phase 2（execution-class 校准硬门 + `/proposal run` runner，含 arbitrary-cmd 安全面）、
+  Phase 3（签字门 WARN→BLOCK，rotation 后）。
+- **改动**：`governance_core/{contracts/proposal_gate_schema.md(新), contracts/proposal_frontmatter_schema.md,
+  tools/proposal_lib.py, tools/audit_proposals.py, tools/test_proposal_gates.py(新)}`。
+
 ### 2026-07-08 — 发布 v0.39.0（P-0118：_tiers.json 退休 / theme 派生）
 
 - **bump**：0.38.9 → 0.39.0（`pyproject.toml:7` + `governance_core/__init__.py:6`）。minor
