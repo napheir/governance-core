@@ -17,6 +17,22 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-08 — P-0119 Phase 2：execution-class 校准硬门 + /proposal run runner
+
+- **校准门**：`gate_calibration_adequacy(body)`（FORM：execution-class 提案每个真 phase 须有
+  `gate: <check-token>` + `calibration: neg→FAIL; golden→PASS`）；approve 对 `execution:` 提案
+  硬 BLOCK + `--allow-uncalibrated-gate`；audit Check 16（WARN，共享谓词，cutover grandfather，
+  非-execution 免检）。
+- **runner `/proposal run <id> [--execute]`**：跑 approved/in-progress 的 execution-class 提案
+  per-phase `gate:`。**默认 dry-run**（只列不跑）；`--execute` 才跑 `cmd:` gate。非 approved /
+  非 execution-class → 拒绝。安全：cmd 任意、repo root 同步执行、approve=授权、dry-run-default。
+- **文档**：`commands/proposal.md` 补 approve 四门说明 + `run` 章节 + 子命令表行。
+- **测试**：`test_proposal_gates.py` +8（校准门 / phase 提取 / gate token），共 18；既有 gate
+  测试 68 无回归；audit 0/0。
+- **P-0119 全 phase（0-2）完成**；Phase 3（签字门 WARN→BLOCK）留待一个 rotation 后翻转。
+- **改动**：`governance_core/{tools/proposal_lib.py, tools/audit_proposals.py,
+  tools/test_proposal_gates.py, commands/proposal.md}`。
+
 ### 2026-07-08 — P-0119 Phase 0-1：签字验收门（第三道 approve form-gate）
 
 - **背景**：trade-agent handoff `proposal-signed-acceptance-gates.md` —— 在现有两门

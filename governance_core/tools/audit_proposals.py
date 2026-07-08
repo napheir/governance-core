@@ -38,6 +38,9 @@ Validates:
   Check 15: in-flight non-terminal proposals created on/after the P-0119
             cutover carry SIGNED Approval Criteria (each item has a check
             token; shares the transitional approve predicate) — WARN only (P-0119)
+  Check 16: in-flight non-terminal EXECUTION-CLASS proposals created on/after
+            the P-0119 cutover carry calibrated per-phase gates (gate: +
+            calibration:; shares the approve BLOCK predicate) — WARN only (P-0119)
 
 Schema: contracts/proposal_frontmatter_schema.md v1.2.0
 
@@ -90,6 +93,9 @@ DESIGN_CONTRACT_CUTOVER = "2026-06-23"
 # Check 15 (P-0119): the signed check-token grammar for Approval Criteria did
 # not exist before this cutover — grandfather everything older.
 APPROVAL_CRITERIA_CUTOVER = "2026-07-08"
+
+# Check 16 (P-0119): the execution-class calibrated-gate grammar is new too.
+GATE_CALIBRATION_CUTOVER = "2026-07-08"
 
 _FRONTMATTER_OPEN = re.compile(r"\A---\s*\n")
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
@@ -576,6 +582,43 @@ def _check_approval_criteria_adequacy(in_flight: list, repo_root: Path) -> list:
     return warnings
 
 
+def _check_gate_calibration_adequacy(in_flight: list, repo_root: Path) -> list:
+    """Check 16 (P-0119): WARN-only — in-flight non-terminal EXECUTION-CLASS
+    proposals created on/after GATE_CALIBRATION_CUTOVER whose phases lack a
+    signed + calibrated gate.
+
+    Shares the `gate_calibration_adequacy` predicate with the `transition --to
+    approved` BLOCK so WARN and BLOCK never disagree. Non-execution proposals
+    are exempt (the gate does not fire). Grandfathers pre-cutover proposals.
+    Fails open (no WARN) if the predicate can't be imported.
+    """
+    warnings = []
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from proposal_lib import gate_calibration_adequacy, parse_proposal
+    except Exception:
+        return warnings  # predicate unavailable -> fail open (WARN-only check)
+    for path in in_flight:
+        try:
+            fm, body = parse_proposal(path)
+        except Exception:
+            continue
+        if fm.get("status") not in _CURRENT_STATE_CHECKED_STATUSES:
+            continue
+        created = fm.get("created", "")
+        if not _DATE_RE.match(created) or created < GATE_CALIBRATION_CUTOVER:
+            continue  # pre-cutover grandfathered
+        if not fm.get("execution"):
+            continue  # non-execution proposals exempt (gate doesn't fire)
+        ok, reason = gate_calibration_adequacy(body)
+        if not ok:
+            warnings.append(
+                f"Check 16 WARN: {path.name} ({fm.get('status')}) "
+                f"gate calibration — {reason}"
+            )
+    return warnings
+
+
 def _collect_files(repo_root: Path) -> dict:
     """Return {region: [path, ...]} for the 3 scan regions.
 
@@ -699,6 +742,9 @@ def main() -> int:
     # Check 15: Approval Criteria signed (WARN only, P-0119) — shares the
     # transitional approve predicate; post-cutover only.
     warnings += _check_approval_criteria_adequacy(regions["in-flight"], repo_root)
+    # Check 16: execution-class gate calibration (WARN only, P-0119) — shares
+    # the approve BLOCK predicate; execution-class + post-cutover only.
+    warnings += _check_gate_calibration_adequacy(regions["in-flight"], repo_root)
     for w in warnings:
         sys.stdout.write(f"WARN: {w}\n")
 

@@ -27,6 +27,7 @@ ledger snapshot）。Agent 不直接 Edit frontmatter / 不直接动 body 之外
 | `/proposal approve <id>` | user 已明确批准（P-0108 研究门：Current State 须达标；P-0124 设计门：复杂提案 Design & Contract 须达标，否则 BLOCK） | pending → approved |
 | `/proposal start <id>` | 实施开始（可选；短任务可跳过） | approved → in-progress |
 | `/proposal complete <id> [--commit <hash>]` | reconcile + 实施完成 + 自动归档 | (approved\|in-progress) → implemented → archive |
+| `/proposal run <id> [--execute]` | 执行 execution-class 提案的 per-phase gate（dry-run 默认） | （只读 / 执行） |
 | `proposal_lib.py reconcile --id X --commit H` | as-built 覆盖差（advisory，complete step-0） | （只读） |
 | `/proposal reject <id> --reason "..."` | user 明确否决 | pending → rejected |
 | `/proposal supersede <id> --by <new-path>` | 被新方案替代 | (任意) → superseded |
@@ -152,15 +153,33 @@ Agent 收到 scaffold 路径后，**填充各段内容**（直接 Edit 文件 bo
 
 调 `python tools/proposal_lib.py transition --id P-NNNN --to approved --note "<approval signal excerpt>"`。
 
-**两道 form 门**（lib 内强制，不达标 BLOCK）：① Current State（P-0108，所有提案）；
-② Design & Contract（P-0124，仅复杂提案）。豁免分别用 `--allow-empty-current-state`
-/ `--allow-thin-spec`，并在 `--note` 写明理由。
+**Approve 时的 form 门**（lib 内强制，FORM-only，substance 是 approver 判断）：
+① Current State（P-0108，所有提案，BLOCK）；② Design & Contract（P-0124，仅复杂提案，
+BLOCK）；③ 签字验收（P-0119，所有提案：每个 `## Approval Criteria` 项须带一个 check token
+`cmd:`/`agent-rubric:`/`human-verify:` —— 迁移期 **WARN**，rotation 后 BLOCK）；④ 校准门
+（P-0119，仅 execution-class 即 frontmatter 带 `execution:` 的提案：每个 `### Phase` 须有
+`gate:` + `calibration:`（neg→FAIL, golden→PASS），BLOCK）。豁免分别用
+`--allow-empty-current-state` / `--allow-thin-spec` / `--allow-unsigned-criteria` /
+`--allow-uncalibrated-gate`，并在 `--note` 写明理由。grammar 见
+`contracts/proposal_gate_schema.md`。
 
 ### `start <id>`（可选）
 
 调 `python tools/proposal_lib.py transition --id P-NNNN --to in-progress`。
 
 短任务可跳过直接 `complete`。
+
+### `run <id> [--execute]`（仅 execution-class）
+
+调 `python tools/proposal_lib.py run --id P-NNNN [--execute]`：执行一个 **approved /
+in-progress 的 execution-class** 提案（frontmatter 带 `execution:`）的 per-phase `gate:`。
+
+- **默认 dry-run**：只列每个 phase 的 gate（含 `cmd:` 内容），**不执行**。加 `--execute` 才真跑
+  `cmd:` gate（exit 0 = pass）；`agent-rubric:` / `human-verify:` gate 列为待人工签。
+- 非 approved/in-progress 或非 execution-class → 拒绝（exit 非 0）。approve **冻结** gate 集：
+  改已批 gate 需重批。
+- **安全**：`cmd:` gate 是任意命令，在 repo root 同步执行；approve execution-class 提案 = 对其
+  gate cmd 的显式授权。默认 dry-run 让你先看清再 `--execute`。
 
 ### `complete <id> [--commit <hash>]`
 

@@ -11,7 +11,12 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # governance_core/tools
-from proposal_lib import approval_criteria_adequacy  # noqa: E402
+from proposal_lib import (  # noqa: E402
+    approval_criteria_adequacy,
+    gate_calibration_adequacy,
+    _phase_blocks,
+    _extract_gate_token,
+)
 
 
 def _body(criteria: str) -> str:
@@ -79,3 +84,62 @@ def test_checked_box_item_also_gated():
     # a `- [x]` (checked) item still needs a token
     ok, _ = approval_criteria_adequacy(_body("- [x] done but no token"))
     assert not ok
+
+
+# ---- Phase 2: execution-class gate calibration ----
+
+_GOOD_PHASE = (
+    "### Phase 1: do the thing\n"
+    "- Deliverables: x\n"
+    "- gate: cmd: python -m pytest tools/test_x.py\n"
+    "- calibration: neg tests/broken -> FAIL; golden tests/good -> PASS\n"
+    "- Exit criteria: y\n"
+)
+
+
+def _exec_body(phases: str) -> str:
+    return f"# Proposal P-9999: x\n\n## Phases\n\n{phases}\n"
+
+
+def test_calibration_good_phase_passes():
+    ok, _ = gate_calibration_adequacy(_exec_body(_GOOD_PHASE))
+    assert ok
+
+
+def test_calibration_missing_gate_fails():
+    ok, _ = gate_calibration_adequacy(_exec_body(
+        "### Phase 1: x\n- calibration: neg a -> FAIL; golden b -> PASS\n"))
+    assert not ok
+
+
+def test_calibration_missing_calibration_fails():
+    ok, _ = gate_calibration_adequacy(_exec_body(
+        "### Phase 1: x\n- gate: cmd: true\n"))
+    assert not ok
+
+
+def test_calibration_missing_neg_fails():
+    ok, _ = gate_calibration_adequacy(_exec_body(
+        "### Phase 1: x\n- gate: cmd: true\n- calibration: golden b -> PASS\n"))
+    assert not ok
+
+
+def test_calibration_no_real_phase_fails():
+    ok, _ = gate_calibration_adequacy(_exec_body("### Phase 0: <placeholder>\n"))
+    assert not ok
+
+
+def test_phase_blocks_skips_placeholder():
+    body = _exec_body("### Phase 0: <x>\n- a\n" + _GOOD_PHASE)
+    blocks = _phase_blocks(body)
+    assert len(blocks) == 1  # only the real phase
+    assert "do the thing" in blocks[0][0]
+
+
+def test_extract_gate_token():
+    kind, val = _extract_gate_token("- gate: cmd: python x.py\n")
+    assert kind == "cmd" and val == "python x.py"
+
+
+def test_extract_gate_token_none():
+    assert _extract_gate_token("- Deliverables: no gate here\n") is None

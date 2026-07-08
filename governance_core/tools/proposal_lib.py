@@ -941,6 +941,152 @@ def approval_criteria_adequacy(body: str) -> tuple[bool, str]:
 
 
 # ---------------------------------------------------------------------------
+# P-0119 Phase 2: execution-class calibrated phase gates + runner. Only fires
+# when frontmatter carries `execution: <runner>`. Each real `### Phase` needs a
+# signed `gate:` + a `calibration:` (neg fixture -> FAIL, golden -> PASS) — a
+# check that passes on broken input is not a gate. `gate_calibration_adequacy`
+# is the shared predicate behind the approve BLOCK and audit Check 16. FORM-only.
+# Grammar: contracts/proposal_gate_schema.md.
+# ---------------------------------------------------------------------------
+
+_GATE_TOKEN_RE = re.compile(
+    r"^\s*[-*]?\s*gate:\s*(cmd|agent-rubric|human-verify):\s*(.+)$", re.MULTILINE)
+_CALIBRATION_LINE_RE = re.compile(r"^\s*[-*]?\s*calibration:", re.MULTILINE)
+_CALIB_NEG_RE = re.compile(r"neg\b.*fail", re.IGNORECASE)
+_CALIB_GOLDEN_RE = re.compile(r"golden\b.*pass", re.IGNORECASE)
+
+
+def _phase_blocks(body: str) -> list:
+    """Return (heading, block-text) for each REAL (non-placeholder) `### Phase`.
+
+    A phase's block runs from its `### Phase` line to the next `### ` / `## ` /
+    EOF. Placeholder phases (`<...>` title or no title) are skipped (mirrors
+    _count_real_phases). Headings inside a fenced code block are content.
+    """
+    def _is_real(head_line: str) -> bool:
+        m = _PHASE_HEADING_RE.match(head_line)
+        if not m:
+            return False
+        rest = m.group(1)
+        title = rest.split(":", 1)[1].strip() if ":" in rest else ""
+        if not title:
+            return False
+        return not (title.startswith("<") and title.endswith(">"))
+
+    blocks: list = []
+    in_fence = False
+    cur_head = None
+    cur_body: list = []
+    for line in body.splitlines():
+        if _FENCE_RE.match(line):
+            in_fence = not in_fence
+            if cur_head is not None:
+                cur_body.append(line)
+            continue
+        if not in_fence and (line.startswith("### ") or line.startswith("## ")):
+            if cur_head is not None:
+                blocks.append((cur_head, "\n".join(cur_body)))
+                cur_head, cur_body = None, []
+            if line.startswith("### ") and _is_real(line):
+                cur_head = line
+                cur_body = []
+            continue
+        if cur_head is not None:
+            cur_body.append(line)
+    if cur_head is not None:
+        blocks.append((cur_head, "\n".join(cur_body)))
+    return blocks
+
+
+def gate_calibration_adequacy(body: str) -> tuple[bool, str]:
+    """Form-only: each real phase of an execution-class proposal has a signed
+    `gate:` + a `calibration:` line naming a negative fixture (`neg ... FAIL`)
+    and a golden (`golden ... PASS`).
+
+    Only meaningful for execution-class proposals — the caller gates on the
+    `execution` frontmatter field. FORM only — it does NOT run the gate. Shared
+    predicate behind the `transition --to approved` BLOCK (execution-class only)
+    and audit Check 16. See contracts/proposal_gate_schema.md.
+    """
+    blocks = _phase_blocks(body)
+    if not blocks:
+        return False, "execution-class proposal has no real `### Phase` to gate"
+    for head, block in blocks:
+        title = head.strip()[:50]
+        if not _GATE_TOKEN_RE.search(block):
+            return False, (f"phase {title!r} has no signed `gate:` line "
+                           f"(gate: cmd:/agent-rubric:/human-verify: ...)")
+        calib = "\n".join(ln for ln in block.splitlines()
+                          if _CALIBRATION_LINE_RE.match(ln))
+        if not calib:
+            return False, f"phase {title!r} has no `calibration:` line"
+        if not (_CALIB_NEG_RE.search(calib) and _CALIB_GOLDEN_RE.search(calib)):
+            return False, (f"phase {title!r} calibration must evidence a "
+                           f"negative fixture (neg ... FAIL) AND a golden "
+                           f"(golden ... PASS)")
+    return True, "ok"
+
+
+def _extract_gate_token(block: str) -> Optional[tuple]:
+    """Return (kind, value) of a phase block's `gate:` token, or None."""
+    m = _GATE_TOKEN_RE.search(block)
+    if m is None:
+        return None
+    return m.group(1), m.group(2).strip()
+
+
+def run_proposal(proposal_id: str, execute: bool = False) -> dict:
+    """Execute an approved execution-class proposal's per-phase `gate:` tokens.
+
+    Refuses (raises) unless the proposal is approved/in-progress AND
+    execution-class (`execution` frontmatter) — approval freezes the gate set,
+    so editing an approved gate requires re-approval. Only `cmd:` gates run
+    (exit 0 = pass); `agent-rubric:` / `human-verify:` gates are reported for
+    manual sign-off. **Dry-run by default** (lists the gates without running);
+    pass execute=True to run `cmd:` gates synchronously in the repo root. A
+    `cmd:` gate is arbitrary; approving the execution-class proposal is the
+    human's authorization for it. Returns a results dict.
+    """
+    path = find_by_id(proposal_id)
+    if path is None:
+        raise FileNotFoundError(f"Proposal {proposal_id} not found")
+    fm, body = parse_proposal(path)
+    status = fm.get("status", "")
+    if status not in ("approved", "in-progress"):
+        raise ValueError(
+            f"{proposal_id} is {status!r}; `run` needs an approved / in-progress "
+            f"proposal (approval freezes the gate set)")
+    if not fm.get("execution"):
+        raise ValueError(
+            f"{proposal_id} is not execution-class (no `execution:` frontmatter); "
+            f"nothing to run")
+    results: list = []
+    for head, block in _phase_blocks(body):
+        phase = head.strip()
+        gate = _extract_gate_token(block)
+        if gate is None:
+            results.append({"phase": phase, "kind": "none", "status": "no-gate"})
+            continue
+        kind, value = gate
+        if kind != "cmd":
+            results.append({"phase": phase, "kind": kind,
+                            "status": "manual", "detail": value})
+            continue
+        if not execute:
+            results.append({"phase": phase, "kind": "cmd",
+                            "status": "dry-run", "cmd": value})
+            continue
+        rc = subprocess.run(
+            value, shell=True, cwd=str(REPO_ROOT),
+            capture_output=True, text=True, encoding="utf-8",
+        ).returncode
+        results.append({"phase": phase, "kind": "cmd",
+                        "status": "pass" if rc == 0 else "fail",
+                        "cmd": value, "returncode": rc})
+    return {"id": proposal_id, "execute": execute, "results": results}
+
+
+# ---------------------------------------------------------------------------
 # create_proposal: allocate-id + scaffold write under filelock
 # ---------------------------------------------------------------------------
 
@@ -1001,6 +1147,7 @@ def transition_proposal(
     allow_empty_current_state: bool = False,
     allow_thin_spec: bool = False,
     allow_unsigned_criteria: bool = False,
+    allow_uncalibrated_gate: bool = False,
 ) -> tuple[Path, str, str]:
     """Atomic state transition with State Log append.
 
@@ -1074,6 +1221,19 @@ def transition_proposal(
                         f"contracts/proposal_gate_schema.md). Transitional WARN "
                         f"(will BLOCK after cutover); --allow-unsigned-criteria to silence.",
                         file=sys.stderr,
+                    )
+            # P-0119 Phase 2: execution-class calibration hard-gate. Fires only
+            # for execution-class proposals (`execution` frontmatter present).
+            # Same predicate as audit Check 16. FORM only.
+            if not allow_uncalibrated_gate and fm.get("execution"):
+                ok, reason = gate_calibration_adequacy(body)
+                if not ok:
+                    raise ValueError(
+                        f"Cannot approve {proposal_id}: gate-calibration gate — {reason}. "
+                        f"Each `### Phase` of an execution-class proposal needs a signed "
+                        f"`gate:` + a `calibration:` (neg ... -> FAIL; golden ... -> PASS); "
+                        f"see contracts/proposal_gate_schema.md, or pass "
+                        f"--allow-uncalibrated-gate (justify in --note)."
                     )
             fm["approved_at"] = today
         elif new_status == "in-progress":
@@ -1262,9 +1422,28 @@ def _cmd_transition(args):
         allow_empty_current_state=args.allow_empty_current_state,
         allow_thin_spec=args.allow_thin_spec,
         allow_unsigned_criteria=args.allow_unsigned_criteria,
+        allow_uncalibrated_gate=args.allow_uncalibrated_gate,
     )
     print(f"[OK] {args.id}: {prev} → {new}")
     print(f"     path: {path.relative_to(REPO_ROOT.parent)}")
+    return 0
+
+
+def _cmd_run(args):
+    result = run_proposal(args.id, execute=args.execute)
+    mode = "execute" if args.execute else "dry-run"
+    print(f"=== run {args.id} ({mode}) ===")
+    for r in result["results"]:
+        line = f"  {r['phase']}: [{r['status']}]"
+        if "cmd" in r:
+            line += f"  cmd: {r['cmd']}"
+        elif "detail" in r:
+            line += f"  {r['kind']}: {r['detail']}"
+        print(line)
+    fails = [r for r in result["results"] if r["status"] == "fail"]
+    if fails:
+        print(f"[FAIL] {len(fails)} gate(s) failed", file=sys.stderr)
+        return 1
     return 0
 
 
@@ -1548,7 +1727,17 @@ def main(argv=None) -> int:
     p.add_argument("--allow-unsigned-criteria", action="store_true",
                    help="Silence the P-0119 signed-criteria WARN on --to approved "
                         "(each Approval Criteria item should carry a check token)")
+    p.add_argument("--allow-uncalibrated-gate", action="store_true",
+                   help="Override the P-0119 calibration gate on --to approved "
+                        "for an execution-class proposal (justify in --note)")
     p.set_defaults(func=_cmd_transition)
+
+    p = sub.add_parser("run", help="Execute an approved execution-class "
+                                   "proposal's per-phase gates (dry-run default)")
+    p.add_argument("--id", required=True)
+    p.add_argument("--execute", action="store_true",
+                   help="Actually run cmd: gates (default: dry-run, list only)")
+    p.set_defaults(func=_cmd_run)
 
     p = sub.add_parser("archive", help="Move terminal proposal to _archive/<YYYY>/")
     p.add_argument("--id", required=True)
