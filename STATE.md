@@ -17,6 +17,18 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-08 — 发布 v0.40.0（P-0119：签字验收门 + execution-class 校准轨）
+
+- **bump**：0.39.0 → 0.40.0（`pyproject.toml:7` + `governance_core/__init__.py:6`）。minor ——
+  P-0119 additive 加第三/四道 approve form-gate + `/proposal run` runner。
+- **发布**：`gh release create v0.40.0`（target master）→ CI `release.yml` build + OIDC Trusted
+  Publisher（P-0064）。
+- **消费者影响**：升级后 approve 多两道 form 门：③签字验收（每个 `## Approval Criteria` 项须带
+  check token `cmd:`/`agent-rubric:`/`human-verify:`，**迁移期 WARN**，cutover 2026-07-08
+  grandfather）；④execution-class 校准门（仅 frontmatter 带 `execution:` 的提案，BLOCK）。新
+  `/proposal run` 子命令（dry-run 默认）。均 additive，普通提案只多一个 WARN。
+- **核实**：actual published state 见本 turn 报告（`gh run` + PyPI `/0.40.0/json`，按版本端点为准）。
+
 ### 2026-07-08 — P-0119 Phase 2：execution-class 校准硬门 + /proposal run runner
 
 - **校准门**：`gate_calibration_adequacy(body)`（FORM：execution-class 提案每个真 phase 须有
