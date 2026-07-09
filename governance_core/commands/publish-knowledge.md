@@ -93,17 +93,27 @@ git fetch ../agent-<name> feature/<branch>
 python tools/diff_classify.py --base HEAD --head FETCH_HEAD --paths knowledge/
 ```
 
-输出 JSONL，每行一文件 `{path, status, reason, ...}`。状态语义：
+输出 JSONL，每行一文件 `{path, status, reason, added_in_fm, removed_in_fm,
+direction, ...}`。`direction`（base=master 为 hub、head=FETCH_HEAD 为 clone 时才
+有意义）区分 frontmatter diff 方向：`ahead`（clone 有 hub 缺的 fm 行，
+`added_in_fm>0`）/ `behind`（clone 只是落后，`added_in_fm==0 且 removed_in_fm>0`，
+被删那行正是 hub 刚加的字段）/ `mixed`（两向都有）/ `na`。状态语义：
 
 | status | 处置 |
 |--------|------|
 | `A` | 收（新文件，等价旧 grep '^A' 行为） |
-| `M-fm-only` | 收（diff 完全落在 YAML frontmatter 区，无正文夹带） |
+| `M-fm-only` + `direction: ahead`/`mixed` | 收（clone 有 hub 缺的 frontmatter 行；diff 完全落在 YAML fm 区、无正文夹带） |
+| `M-fm-only` + `direction: behind` | **跳过**：clone 只是落后于 hub（`added_in_fm==0`，被删行是 hub 刚 backfill 的字段）；checkout clone 版本会**静默回滚 hub frontmatter**。clone merge hub 后自动追平（issue #132） |
 | `M-mixed` | **跳过 + WARN**：含 owner agent + path + 首条违例 hunk 行号；要求 owner 拆 commit 分发 |
 | `D` | 跳过（沉默） |
 | `?` | 跳过 + WARN：rename/copy/unmerged 不自动收 |
 
-4.3 对每个被收的文件（`A` 或 `M-fm-only`）：
+> **方向门（issue #132）**：`M-fm-only` **只在 `direction != behind` 时收**。
+> hub 刚跨多文件 backfill 一个 frontmatter 字段、clone 尚未 merge 时，每个受影响
+> 文件都是 `M-fm-only / added_in_fm:0 / removed_in_fm:>0`（`direction: behind`）；
+> 若无条件 checkout clone 版本，会把 hub 刚 authored 的字段回滚掉。
+
+4.3 对每个被收的文件（`A`，或 `M-fm-only` 且 `direction != behind`）：
 
 ```bash
 git checkout FETCH_HEAD -- <path>

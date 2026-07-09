@@ -138,6 +138,27 @@ def _name_status(
     return rows
 
 
+def _fm_direction(added_in_fm: int, removed_in_fm: int) -> str:
+    """Direction of a frontmatter-region diff, base=hub vs head=clone.
+
+    - ``ahead``  : clone has fm line(s) the hub lacks (added_in_fm > 0, no
+      removals) -> genuinely net-new -> collect.
+    - ``behind`` : clone merely lags the hub (added_in_fm == 0, removed_in_fm
+      > 0; the "removed" line is a field the hub just added) -> skip; the clone
+      catches up when it merges the hub (issue #132).
+    - ``mixed``  : both added and removed fm lines -> carries net-new fm content
+      the hub lacks -> collect (the removed line is caught up on merge).
+    - ``na``     : no fm-region change counted.
+    """
+    if added_in_fm > 0 and removed_in_fm > 0:
+        return "mixed"
+    if added_in_fm > 0:
+        return "ahead"
+    if removed_in_fm > 0:
+        return "behind"
+    return "na"
+
+
 def classify_knowledge_diff(
     repo_root: Path,
     base_ref: str,
@@ -153,8 +174,16 @@ def classify_knowledge_diff(
         "reason": str,
         "added_in_fm": int,         # M-* only: count of + lines inside fm
         "removed_in_fm": int,       # M-* only: count of - lines inside fm
-        "first_violation_line": int # M-mixed only: 1-based line in new file
+        "first_violation_line": int,# M-mixed only: 1-based line in new file
+        "direction": str            # frontmatter diff direction; see _fm_direction
       }
+
+    `direction` is meaningful only when base_ref is the hub and head_ref is the
+    clone (as /publish-knowledge Step 4 invokes it: --base HEAD --head
+    FETCH_HEAD). It lets Step 4 skip `behind` files (a clone merely lagging the
+    hub) so a collect never reverts a hub-authored frontmatter field (issue
+    #132). Records without frontmatter counts (A / D / ? / undetectable-fm
+    M-mixed) get "na".
     """
     paths = list(paths)
     results: list[dict] = []
@@ -242,6 +271,18 @@ def classify_knowledge_diff(
                     "removed_in_fm": len(removed_lines),
                 }
             )
+
+    # Derive `direction` uniformly: records carrying fm counts (M-fm-only and
+    # M-mixed-with-counts) get ahead|behind|mixed; all others (A / D / ? /
+    # undetectable-fm M-mixed) get "na". Single point so every record has the
+    # key (issue #132: Step 4 gates M-fm-only collection on direction != behind).
+    for record in results:
+        if "added_in_fm" in record and "removed_in_fm" in record:
+            record["direction"] = _fm_direction(
+                record["added_in_fm"], record["removed_in_fm"]
+            )
+        else:
+            record["direction"] = "na"
     return results
 
 
