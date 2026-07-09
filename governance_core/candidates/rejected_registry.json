@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-07-07T02:30:45Z",
+  "updated": "2026-07-09T04:01:17Z",
   "rejected": [
     {
       "rejected_at": "2026-05-29",
@@ -53,6 +53,19 @@
       ],
       "reason": "Out of governance-core charter. governance-core is a pure governance/harness infrastructure hub; every common-layer skill is governance/meta (memory, proposal, constitution, skill-registry, install). headless-browser-visual-verify is a general rendering/verification engineering technique (headless-Chrome screenshot of SVG/HTML assets) used for asset/showcase authoring -- the same class as the previously-declined external-api-categorical-backfill (issue #120). The mechanism is sound but it is general software engineering, not a governance capability, so it does not fit the common layer. The boundary-guard / sandbox-dir mentions are environmental caveats, not the skill's substance.",
       "advice": "Keep it as a local business-layer skill in trade-agent scope -- retag 'layer: business' (drop 'layer: candidate-common') so the sweep stops re-offering it. The mechanism is well-formed and worth keeping locally. If governance-core's common layer later broadens from a governance/harness exchange into a general engineering-skill exchange, resubmit then."
+    },
+    {
+      "rejected_at": "2026-07-09",
+      "skill_name": "triage-and-trim-bloated-memory-index",
+      "payload_sha256": null,
+      "block_by_name": true,
+      "origin": "trade-agent",
+      "issue_urls": [
+        "https://github.com/napheir/governance-core/issues/131",
+        "https://github.com/napheir/governance-core/issues/129"
+      ],
+      "reason": "Already promoted into the package source on 2026-07-01 via P-0114 (commit fd5939e, released v0.38.6). Payload body is byte-identical to the shipped skill governance_core/skills/triage-and-trim-bloated-memory-index.md; nothing new to promote. Re-filed 5x by the consumer sweep (issues #124/#125/#127/#129/#131).",
+      "advice": "Retag the local skill layer: business (or drop the candidate tag) in trade-agent so /submit-candidate stops re-offering an already-landed capability. block_by_name suppresses further re-mints regardless of payload bytes."
     }
   ]
 }
