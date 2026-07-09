@@ -17,6 +17,18 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-09 — 发布 v0.40.1（P-0120：publish-knowledge Step 4 方向门修复 / #132）
+
+- **bump**：0.40.0 → 0.40.1（`pyproject.toml:7` + `governance_core/__init__.py:6`）。patch ——
+  P-0120 bugfix：`diff_classify` 派生 `direction`（additive）+ `/publish-knowledge` Step 4.2/4.3
+  按 `direction != behind` gate `M-fm-only` collect。
+- **发布**：`gh release create v0.40.1`（target master）→ CI `release.yml` build + OIDC Trusted
+  Publisher（P-0064）。
+- **消费者影响**：升级后 `/publish-knowledge` Step 4 不再把落后 clone 的 `M-fm-only`（`direction:
+  behind`）checkout 回 master —— 修复 hub frontmatter 静默回滚（issue #132）。纯修复 + 新工具字段，
+  无破坏性。
+- **核实**：actual published state 见本 turn 报告（`gh release list` + PyPI `/0.40.1/json`）。
+
 ### 2026-07-09 — 处置 report：dup candidate 止回流 + publish-knowledge Step 4 方向门（P-0120 / #132）
 
 - **candidates #129/#131**：`triage-and-trim-bloated-memory-index` 已 promote（P-0114/`fd5939e`/
