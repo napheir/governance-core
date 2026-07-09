@@ -4,6 +4,7 @@ status: active
 created: 2026-05-07
 updated: 2026-05-07
 owner: core
+carrier_class: reference
 tags: [governance, memory, auto-memory, staleness, art16]
 ---
 

@@ -5,6 +5,7 @@ status: active
 created: 2026-05-01
 updated: 2026-06-24
 owner: core
+carrier_class: reference
 related:
   - agent_rules/shared.deny_commands.txt
   - agent_rules/shared.deny_commands_regex.txt

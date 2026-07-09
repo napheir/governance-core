@@ -4,6 +4,7 @@ status: active
 created: 2026-05-07
 updated: 2026-06-24
 owner: core
+carrier_class: reference
 tags: [governance, constitution, red-lines, sub-constitution, appendix]
 ---
 

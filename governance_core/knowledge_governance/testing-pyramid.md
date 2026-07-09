@@ -4,6 +4,7 @@ status: active
 created: 2026-04-28
 updated: 2026-04-28
 owner: core
+carrier_class: reference
 tags: [governance, testing, audit, p0-p4]
 briefing: pinned
 ---

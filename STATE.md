@@ -17,6 +17,27 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-09 — 修复 #133：backfill carrier_class 到 gc-shipped governance 文档
+
+- **bug #133**：gc 随包发的 `knowledge_governance/*.md` 缺 `carrier_class`，而同包发的
+  `contracts/knowledge_frontmatter_schema.md` 声明其 transitional-required（v1.2.0 warn，v1.3.0
+  hard-fail）→ 消费者 `audit_knowledge.py` Check 12 对 gc 自有文件常驻 WARN 且**改不掉**
+  （install-managed，本地加 = drift 被 `upgrade` 覆盖）。"hub 不合自己发的 schema"。
+- **修**：11 个缺失文件 backfill `carrier_class: reference`（`knowledge/governance/` → `reference`，
+  由 taxonomy §3 + schema §3.4 + 5 个现存文件三重锁定）；`README.md` 无 frontmatter 豁免；插入在
+  `owner:` 行后。幂等脚本 byte-preserving（每文件恰 +1 行）。
+- **classify**：NO_PROPOSAL（机械 backfill 现有 required 字段、audit oracle 验证、无
+  rule/contract/skill/逻辑改动）。
+- **验证**：upgrade 后 audit_knowledge 的 11 个 governance carrier_class WARN 全清（仅剩 2 个
+  `knowledge/design/*` hub 本地 business 文件，非 gc-shipped，超范围）；38/38 script + 147 pytest；
+  `upgrade`+`doctor` exit 0。
+- **未做（建议）**：无回归门防新 governance 文档再漏必填字段（审包源合规需 source↔installed 布局
+  映射）—— 留作后续 follow-up。
+- **涉及**：`governance_core/knowledge_governance/{testing-pyramid, constitution-protection-mechanism,
+  memory-staleness-policy, resource-layer-hardening, sub-constitution-red-lines,
+  test-production-unification, scope-enforcement-mechanism, agent-least-privilege,
+  data-analysis-discipline, artifacts-layout, skill-scenario-clusters}.md`。
+
 ### 2026-07-09 — 发布 v0.40.1（P-0120：publish-knowledge Step 4 方向门修复 / #132）
 
 - **bump**：0.40.0 → 0.40.1（`pyproject.toml:7` + `governance_core/__init__.py:6`）。patch ——

@@ -4,6 +4,7 @@ status: active
 created: 2026-04-28
 updated: 2026-06-24
 owner: core
+carrier_class: reference
 tags: [governance, data-analysis, pipeline-validation, insights-driven]
 ---
 

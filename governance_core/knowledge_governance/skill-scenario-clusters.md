@@ -4,6 +4,7 @@ status: active
 created: 2026-06-16
 updated: 2026-07-08
 owner: core
+carrier_class: reference
 tags: [governance, skills, discovery, session-injection, reuse-classification, p-0103, p-0118]
 ---
 

@@ -5,6 +5,7 @@ status: active
 created: 2026-05-01
 updated: 2026-06-24
 owner: core
+carrier_class: reference
 related:
   - knowledge/governance/agent-least-privilege.md
 ---
