@@ -17,6 +17,16 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-09 — 发布 v0.40.2（#133：shipped governance 文档 carrier_class 合规）
+
+- **bump**：0.40.1 → 0.40.2（`pyproject.toml:7` + `governance_core/__init__.py:6`）。patch ——
+  纯 knowledge frontmatter 合规修复（11 个 shipped governance 文档 backfill `carrier_class: reference`）。
+- **发布**：`gh release create v0.40.2`（target master）→ CI `release.yml` build + OIDC Trusted
+  Publisher（P-0064）。
+- **消费者影响**：升级后 `audit_knowledge.py` 不再对 gc-shipped `knowledge/governance/*.md` 报
+  carrier_class transitional WARN —— 消费者 knowledge audit 干净通过，无需碰 install-managed 文件（#133）。
+- **核实**：actual published state 见本 turn 报告（`gh release list` + PyPI `/0.40.2/json`）。
+
 ### 2026-07-09 — 修复 #133：backfill carrier_class 到 gc-shipped governance 文档
 
 - **bug #133**：gc 随包发的 `knowledge_governance/*.md` 缺 `carrier_class`，而同包发的
