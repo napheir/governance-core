@@ -17,6 +17,16 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-10 — 发布 v0.40.3（#134：session-boundary-guard device-sink 放行）
+
+- **bump**：0.40.2 → 0.40.3（`pyproject.toml:7` + `governance_core/__init__.py:6`）。patch ——
+  纯 hook 误报修复，无行为破坏、无新字段。
+- **发布**：`gh release create v0.40.3`（target master）→ CI `release.yml`（`release: published`
+  触发）build + OIDC Trusted Publisher（P-0064）。
+- **消费者影响**：升级后 `session-boundary-guard` 不再把 `2>/dev/null` / `>/dev/null` / `2>NUL`
+  这类 stderr/stdout 丢弃重定向误判为跨界写而 block 整条命令；真实越界重定向目标照旧 block。
+- **核实**：actual published state 见本 turn 报告（`gh release list` + PyPI `/0.40.3/json`）。
+
 ### 2026-07-10 — 修复 #134：session-boundary-guard 放行 device-sink 丢弃重定向
 
 - **bug #134**：`session-boundary-guard.py` 的 redirect 提取器把 `2>/dev/null` / `>/dev/null` /
