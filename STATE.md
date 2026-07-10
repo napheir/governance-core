@@ -17,6 +17,17 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-10 — 发布 v0.41.0（P-0121 / #135：boundary-guard 覆盖全部写工具）
+
+- **bump**：0.40.3 → 0.41.0（`pyproject.toml:7` + `governance_core/__init__.py:6`）。**minor** ——
+  收紧 enforcement（block 更多），对消费者是行为破坏（gate-all vs 旧三名单）。
+- **发布**：`gh release create v0.41.0`（target master）→ CI `release.yml` build + OIDC Trusted
+  Publisher（P-0064）。
+- **消费者影响**：升级后 `session-boundary-guard` 用 shape-based 路由 gate 全部写工具（PowerShell/
+  NotebookEdit/Monitor/未来 shell/command 形 MCP）；经这些工具的合法跨界写须走
+  `CLAUDE_BOUNDARY_OVERRIDE=1`。Read/Glob/Grep 跨界读不受影响。
+- **核实**：actual published state 见本 turn 报告（`gh release list` + PyPI `/0.41.0/json`）。
+
 ### 2026-07-10 — P-0121 / #135：session-boundary-guard 覆盖全部写工具（shape-based）
 
 - **gap #135**：`session-boundary-guard` 只 gate `{Bash, Edit, Write}` 三个工具名，matcher=`""`
