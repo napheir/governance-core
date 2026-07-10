@@ -390,6 +390,113 @@ def main() -> int:
                 print(f"  [FAIL] {label} (rc={rc}): {err.strip()[:200]}")
                 failed += 1
 
+        # ----- P-0121 (#135): shape-based tool coverage -----
+        # The guard used to gate only {Bash, Edit, Write}; every other
+        # write-capable tool (PowerShell, NotebookEdit, ...) bypassed it. It now
+        # routes by tool_input SHAPE: a `command` field -> command scan; a
+        # WRITE_PATH_TOOLS field -> path check; else fast-exit. Critically, READ
+        # tools (Read/Glob/Grep) share file_path/path and must STAY allowed.
+
+        # PowerShell tool: write cmdlets / redirects to an OUTSIDE path -> block.
+        ps_block_cases = [
+            (f"'data' | Out-File -FilePath {outside_target}",
+             "32. PowerShell Out-File outside -> block"),
+            (f"Set-Content -Path {outside_target} -Value x",
+             "33. PowerShell Set-Content outside -> block"),
+            (f"Remove-Item -Recurse -Force {outside_target}",
+             "34. PowerShell Remove-Item outside -> block"),
+            (f"New-Item -ItemType File -Path {outside_target}",
+             "35. PowerShell New-Item -Path outside -> block"),
+            (f"Get-Content {inside_target} > {outside_target}",
+             "36. PowerShell redirect > outside -> block"),
+        ]
+        for cmd, label in ps_block_cases:
+            rc, err = run_hook(
+                {"tool_name": "PowerShell", "tool_input": {"command": cmd}},
+                cwd=agent_core,
+            )
+            if rc == 2:
+                print(f"  [OK]   {label}")
+            else:
+                print(f"  [FAIL] {label} (rc={rc}, expected 2): {err.strip()[:200]}")
+                failed += 1
+
+        # PowerShell tool: critical path -> block CRITICAL even for a new tool.
+        rc, err = run_hook(
+            {"tool_name": "PowerShell",
+             "tool_input": {"command": f"Set-Content -Path {ssh_path} -Value x"}},
+            cwd=agent_core,
+        )
+        if rc == 2 and "CRITICAL" in err:
+            print("  [OK]   37. PowerShell Set-Content ~/.ssh -> block CRITICAL")
+        else:
+            print(f"  [FAIL] 37. PowerShell critical (rc={rc}): {err.strip()[:200]}")
+            failed += 1
+
+        # PowerShell tool: in-boundary write + device sinks ($null / NUL) -> allow.
+        ps_pass_cases = [
+            (f"'data' | Out-File -FilePath {inside_target}",
+             "38. PowerShell Out-File inside -> allow"),
+            (f"Get-Content {inside_target} > $null",
+             "39. PowerShell > $null (device sink) -> allow"),
+            (f"Get-ChildItem {outside_target} 2>$null",
+             "40. PowerShell read outside + 2>$null (sink) -> allow"),
+            ("Write-Output hi 2>NUL",
+             "41. PowerShell 2>NUL (Windows sink) -> allow"),
+        ]
+        for cmd, label in ps_pass_cases:
+            rc, err = run_hook(
+                {"tool_name": "PowerShell", "tool_input": {"command": cmd}},
+                cwd=agent_core,
+            )
+            if rc == 0:
+                print(f"  [OK]   {label}")
+            else:
+                print(f"  [FAIL] {label} (rc={rc}, expected 0): {err.strip()[:200]}")
+                failed += 1
+
+        # NotebookEdit: notebook_path outside -> block; inside -> allow.
+        rc, err = run_hook(
+            {"tool_name": "NotebookEdit",
+             "tool_input": {"notebook_path": str(elsewhere / "nb.ipynb")}},
+            cwd=agent_core,
+        )
+        if rc == 2:
+            print("  [OK]   42. NotebookEdit notebook_path outside -> block")
+        else:
+            print(f"  [FAIL] 42. NotebookEdit outside (rc={rc}, expected 2): {err.strip()[:200]}")
+            failed += 1
+        rc, err = run_hook(
+            {"tool_name": "NotebookEdit",
+             "tool_input": {"notebook_path": str(agent_core / "nb.ipynb")}},
+            cwd=agent_core,
+        )
+        if rc == 0:
+            print("  [OK]   43. NotebookEdit notebook_path inside -> allow")
+        else:
+            print(f"  [FAIL] 43. NotebookEdit inside (rc={rc}, expected 0): {err.strip()[:200]}")
+            failed += 1
+
+        # READ tools must NOT be gated even for an OUTSIDE path: file_path/path
+        # are shared with writers, but the guard blocks writes only. Regression
+        # guard for the shape-based routing -- it must not block cross-boundary
+        # reads (the reason path tools use an explicit writer set, not shape).
+        read_allow_cases = [
+            ({"tool_name": "Read", "tool_input": {"file_path": str(outside_file)}},
+             "44. Read file_path outside -> allow (read not gated)"),
+            ({"tool_name": "Glob", "tool_input": {"pattern": "*", "path": str(elsewhere)}},
+             "45. Glob path outside -> allow (read not gated)"),
+            ({"tool_name": "Grep", "tool_input": {"pattern": "x", "path": str(elsewhere)}},
+             "46. Grep path outside -> allow (read not gated)"),
+        ]
+        for payload, label in read_allow_cases:
+            rc, err = run_hook(payload, cwd=agent_core)
+            if rc == 0:
+                print(f"  [OK]   {label}")
+            else:
+                print(f"  [FAIL] {label} (rc={rc}, expected 0): {err.strip()[:200]}")
+                failed += 1
+
         # ----- Case 26: CJK path outside boundary under non-UTF-8 stdio -----
         # #123 regression: payload carries a real UTF-8 CJK filename outside the
         # boundary, driven with PYTHONIOENCODING=ascii. The fixed byte-read
@@ -421,7 +528,7 @@ def main() -> int:
     if failed:
         print(f"[FAIL] {failed} case(s) failed")
         return 1
-    print("[PASS] all 31 cases passed")
+    print("[PASS] all 46 cases passed")
     return 0
 
 

@@ -1,8 +1,9 @@
 """Claude Code PreToolUse hook: session-boundary-guard.py
 
-User-global hook that blocks Bash / Edit / Write tool calls whose target
-path falls outside the session's boundary. Implements
-proposals/project_boundary_guard_for_extra_project_writes.md (v2).
+User-global hook that blocks write-capable tool calls whose target path
+falls outside the session's boundary. Implements
+proposals/project_boundary_guard_for_extra_project_writes.md (v2), with
+tool coverage extended to all write-shaped tools (P-0121; #135).
 
 Boundary discovery: imports from peer derive_session_boundary.py if
 present; falls back to inline-equivalent when run as a single-file
@@ -10,7 +11,13 @@ deployment under ~/.claude/hooks/. The bootstrap installer copies BOTH
 files into ~/.claude/hooks/ so import works there.
 
 Behavior:
-  0. Skip non-Bash/Edit/Write tools (fast exit 0).
+  0. Shape-based gating (P-0121). A tool is write-gated if its tool_input
+     carries a `command` string (command tools: Bash / PowerShell / Monitor
+     / future shells / command-shaped MCP) OR a WRITE_PATH_TOOLS field
+     (Edit / Write / NotebookEdit / MultiEdit). Read tools (Read / Glob /
+     Grep) carry neither a command nor a write-path field and fast-exit.
+     Path tools use an explicit writer set, NOT field-presence, because
+     file_path/path are shared with READ tools.
   1. Compute boundary from os.getcwd() using
      derive_session_boundary.derive_boundary().
   2. Honor CLAUDE_BOUNDARY_OVERRIDE=1 env var (must be set BEFORE Claude
@@ -19,9 +26,10 @@ Behavior:
      also cannot easily inject into a sibling hook process).
   3. Critical paths (~/.ssh, ~/.aws, ~/.docker, Windows system dirs,
      ~/.claude/settings.json) are ALWAYS blocked, even with override.
-  4. Edit / Write: check tool_input.file_path against boundary.
-  5. Bash: extract candidate write paths from the command via heuristics
-     (cd targets, redirects, mkdir / cp / mv / rm / git init / etc.) and
+  4. Path-write tools: check the mapped path field against boundary.
+  5. Command tools: extract candidate write paths from the command via
+     heuristics (cd targets, redirects, mkdir / cp / mv / rm / git init,
+     PowerShell Set-Content / Out-File / Remove-Item / New-Item / etc.) and
      check each.
 
 Exit codes:
@@ -95,6 +103,20 @@ CRITICAL_PATH_PATTERNS = [
 DEVICE_SINKS = {
     "/dev/null", "/dev/stdout", "/dev/stderr", "/dev/zero", "/dev/tty",
     "nul",  # Windows null device (matched case-insensitively)
+    "$null",  # PowerShell null device: `> $null`, `2>$null` (P-0121)
+}
+
+# Path-write tools (P-0121): tools whose tool_input names a SINGLE write target
+# via the mapped field. Gated by this EXPLICIT set -- not by field-presence --
+# because file_path/path are also carried by READ tools (Read -> file_path;
+# Glob/Grep -> path), which must NOT be boundary-checked (reads are always
+# allowed; the guard blocks writes only). MultiEdit is included defensively
+# (it is not present in every harness build; an absent tool_name never appears).
+WRITE_PATH_TOOLS = {
+    "Edit": "file_path",
+    "Write": "file_path",
+    "MultiEdit": "file_path",
+    "NotebookEdit": "notebook_path",
 }
 
 # Bash command patterns we extract write-target candidates from.
@@ -130,6 +152,21 @@ BASH_PATH_PATTERNS = [
     # '-Path/-FilePath FILE' or positional first arg.
     (re.compile(r"\bSet-Content\b\s+(?:-Path\s+)?[\"']?([^\s\"'&|;<>]+)", re.IGNORECASE), 1, "Set-Content"),
     (re.compile(r"\bOut-File\b\s+(?:-FilePath\s+)?[\"']?([^\s\"'&|;<>]+)", re.IGNORECASE), 1, "Out-File"),
+    # PowerShell tool (P-0121): write / destructive cmdlets beyond the
+    # Set-Content/Out-File pair above. These run on every command string but
+    # only match PowerShell syntax (harmless on Bash commands). Where a cmdlet
+    # flag can take a VALUE (New-Item -ItemType File, Copy-Item -Destination),
+    # capture the path via the explicit named argument so a positional capture
+    # does not grab the flag value; Remove-Item's flags (-Recurse/-Force) are
+    # switches, so a switch-consuming positional capture is safe. Residual
+    # (accepted -- same class as the Bash residual, defense-in-depth not a hard
+    # boundary): exotic arg orderings, bare positional New-Item, and
+    # [System.IO.File]::WriteAllText / variable-indirected paths are not caught.
+    (re.compile(r"\bAdd-Content\b\s+(?:-Path\s+)?[\"']?([^\s\"'&|;<>]+)", re.IGNORECASE), 1, "Add-Content"),
+    (re.compile(r"\bRemove-Item\b\s+(?:-\w+\s+)*(?:-(?:Path|LiteralPath)\s+)?[\"']?([^\s\"'&|;<>]+)", re.IGNORECASE), 1, "Remove-Item"),
+    (re.compile(r"\bNew-Item\b.*?-(?:Path|LiteralPath|Name)\s+[\"']?([^\s\"'&|;<>]+)", re.IGNORECASE), 1, "New-Item"),
+    (re.compile(r"\b(?:Copy|Move)-Item\b.*?-Destination\s+[\"']?([^\s\"'&|;<>]+)", re.IGNORECASE), 1, "Copy/Move-Item -Destination"),
+    (re.compile(r"\b(?:Copy|Move)-Item\b\s+(?:-\w+\s+)*\S+\s+([^\s&|;<>]+)", re.IGNORECASE), 1, "Copy/Move-Item dest"),
     # gh repo create: triggers git init in cwd implicitly. cwd check is
     # implicit -- if cwd is outside boundary at the moment of invocation,
     # the *cd* extractor catches it; if the user uses `gh repo create
@@ -459,11 +496,35 @@ def main() -> None:
         sys.exit(2)
 
     tool_name = hook_input.get("tool_name", "")
-    if tool_name not in {"Bash", "Edit", "Write"}:
+    tool_input = hook_input.get("tool_input", {})
+    if not isinstance(tool_input, dict):
+        tool_input = {}
+
+    # Shape-based gating (P-0121; #135). A tool is write-gated if its tool_input
+    # carries EITHER a shell command OR a known write-path field:
+    #   * command tools -- any tool_input with a `command` string: Bash,
+    #     PowerShell, Monitor, future shells, command-shaped MCP tools. Only
+    #     write-capable tools carry `command`, and the command scanner flags
+    #     only real write patterns, so read subcommands pass through.
+    #   * path-write tools -- the EXPLICIT WRITE_PATH_TOOLS set (Edit / Write /
+    #     NotebookEdit / MultiEdit). NOT gated by field-presence, because
+    #     file_path/path are also carried by READ tools (Read / Glob / Grep),
+    #     which must stay allowed.
+    # Every other tool (read-only, or no write-shaped input) fast-exits. This
+    # replaces the old {Bash, Edit, Write} tool-NAME allowlist, under which the
+    # PowerShell tool and NotebookEdit wrote completely unscanned.
+    command = tool_input.get("command", "") or ""
+    if not isinstance(command, str):
+        command = ""
+    path_field = WRITE_PATH_TOOLS.get(tool_name)
+    path_target = tool_input.get(path_field, "") if path_field else ""
+
+    if not command and not path_target:
         sys.exit(0)
 
-    # Phase C: repo-health alarm gate. Block all Bash/Edit/Write while
-    # an alarm is set (set by repo-health.py PostToolUse on damage signals).
+    # repo-health alarm gate: block ALL write-capable tool calls while an alarm
+    # is set (set by repo-health.py PostToolUse on damage signals). Coverage now
+    # extends to PowerShell / NotebookEdit, not just Bash/Edit/Write.
     check_repo_health_alarm()
 
     cwd = os.getcwd()
@@ -476,24 +537,19 @@ def main() -> None:
         )
         boundary = Boundary(path=Path(cwd).resolve(), rule="cwd", source=None)
 
-    tool_input = hook_input.get("tool_input", {})
-
-    if tool_name in {"Edit", "Write"}:
-        target = tool_input.get("file_path", "")
-        if not target:
-            sys.exit(0)
+    # Path-write tools (Edit / Write / NotebookEdit / MultiEdit): check the
+    # single write target named by the tool's path field.
+    if path_target:
         check_target(
-            target,
+            path_target,
             boundary,
-            command_for_audit=f"{tool_name}: {target}",
-            label=f"{tool_name} file_path",
+            command_for_audit=f"{tool_name}: {path_target}",
+            label=f"{tool_name} {path_field}",
         )
         sys.exit(0)
 
-    # Bash
-    command = tool_input.get("command", "")
-    if not command:
-        sys.exit(0)
+    # Command tools (Bash / PowerShell / Monitor / ...): scan the command
+    # string for write-target candidates.
     # Read-only commands: skip path extraction entirely. Avoids the
     # cross-clone `ls` false-positive class.
     if is_read_only_bash(command):

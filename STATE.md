@@ -17,6 +17,28 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-10 — P-0121 / #135：session-boundary-guard 覆盖全部写工具（shape-based）
+
+- **gap #135**：`session-boundary-guard` 只 gate `{Bash, Edit, Write}` 三个工具名，matcher=`""`
+  对所有工具触发但对其余工具名 fast-exit —— PowerShell 工具 / NotebookEdit / Monitor 全部
+  绕过边界检查、无 enforcement。
+- **修（P-0121，approved）**：`main()` 由 tool-NAME allowlist 改为 **shape-based 路由**：①有
+  `command` 字段 → command-scan（Bash/PowerShell/Monitor/未来 shell/command 形 MCP，无名单）；
+  ②`WRITE_PATH_TOOLS={Edit,Write,NotebookEdit,MultiEdit}` 显式集 → path-check。**路径工具刻意
+  不按 field-shape 判**——`file_path`/`path` 被 READ 工具（Read/Glob/Grep）共用，shape-only 会
+  误 block 跨界**读**。新增 PowerShell 写 cmdlet（Remove-Item/New-Item/Copy-Item/Move-Item/
+  Add-Content）+ `$null` device sink。
+- **收紧权衡**：经 PowerShell 工具静默成功的合法跨界写现在须走 `CLAUDE_BOUNDARY_OVERRIDE=1`
+  （audited；critical 永不豁免）——explicit+logged 的更好姿态。
+- **非目标（ADR 边界）**：subprocess/脚本内写（需 OS 级 sandbox，resource-layer 轨）；path 形
+  MCP 写工具（field-shape 无法与读工具区分，defer）。
+- **验证**：boundary-guard 46/46（新增 32-46：PowerShell block/allow + `$null`/NUL sink +
+  NotebookEdit + **Read/Glob/Grep 跨界读照旧 allow** 回归门）+ peer 全过。
+- **部署注意**：enforcing copy 是 user-global `~/.claude/hooks/`，`upgrade --project-root .` 不碰
+  它（见 [[session-boundary-guard-enforced-from-user-global]]）——本 session 生效需另行重装 user
+  层 hook（跨项目、待 user 确认）。
+- **涉及**：`governance_core/tools/{session-boundary-guard.py, test_session_boundary_guard.py}`。
+
 ### 2026-07-10 — 发布 v0.40.3（#134：session-boundary-guard device-sink 放行）
 
 - **bump**：0.40.2 → 0.40.3（`pyproject.toml:7` + `governance_core/__init__.py:6`）。patch ——
