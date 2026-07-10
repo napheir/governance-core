@@ -17,6 +17,23 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-10 — P-0122：session-boundary-guard quote-aware redirect（消除引号内 `>` 误报）
+
+- **残留（#134/P-0121 记在案）**：redirect 正则把任意 `>` 当重定向符，引号内的 `>`（commit
+  message `-m "x > /path"`、内联脚本 `python -c "a >> b"`）被误当写目标 → 误 block。本 session
+  每个带 `>` 的 commit 都得绕 `-F` 文件。
+- **修（P-0122，approved）**：新增 `_quoted_char_mask` 纯helper（左到右追踪单/双引号态），
+  `extract_bash_paths` 仅对 `redirect` label 跳过"`>` 操作符落在**平衡引号**内"的匹配。引号不平衡
+  → 不信 mask、按重定向处理（fail-safe 过度 block，不 under-block）。verb 类 pattern（cp/mv/
+  Remove-Item…）不受影响（需真 verb，不会对任意引号内 `>` 误报）。
+- **权衡（已在 ADR 记录）**：引号内 subshell 重定向（`bash -c 'echo > /out'`）不再被抓——但那是
+  subprocess 内写，**本就是 guard 的 documented non-goal**（#135 Gap B），不失任何已保证的覆盖。
+- **验证**：boundary-guard 51/51（新增 47 引号内 commit-msg `>` 放行、48 内联 `>>` 放行、49 真实
+  未引号重定向照旧 block、50 引号 TARGET 照旧 block、51 引号不平衡 fail-safe）+ peer 全过。
+- **live 自证**：本条 commit 的 message 内联含 `>` 且未用 `-F` —— 部署后的 quote-aware enforcing
+  copy 放行了它（若旧版会 block）。
+- **涉及**：`governance_core/tools/{session-boundary-guard.py, test_session_boundary_guard.py}`。
+
 ### 2026-07-10 — 测试卫生：pytest 不再爬 gitignore 的 artifacts/
 
 - **问题**：`pytest`（repo root）会收集 gitignore 的 `artifacts/candidate-review/**` 里的废弃

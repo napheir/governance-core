@@ -497,6 +497,53 @@ def main() -> int:
                 print(f"  [FAIL] {label} (rc={rc}, expected 0): {err.strip()[:200]}")
                 failed += 1
 
+        # ----- P-0122: quote-aware redirect detection -----
+        # A `>` INSIDE a quoted string (commit message, inline-script literal) is
+        # literal data, not a shell redirect -> must not false-block. A real,
+        # UNQUOTED `>` redirect still blocks; a quoted TARGET (unquoted `>`) still
+        # blocks; an unbalanced-quote parse fails safe (still scanned). Fixes the
+        # residual noted in #134 / P-0121.
+        quote_pass_cases = [
+            (f'git commit -m "fix: pipe cmd > {outside_target} in the notes"',
+             "47. quoted > in commit message -> allow"),
+            ('python3 -c "y = a >> 1"',
+             "48. quoted >> in inline script literal -> allow"),
+            # Escaped INNER quotes (the real commit-message shape that bit
+            # P-0122 during dogfood): the \" must not spuriously toggle quote
+            # state, or the > reads as unquoted and false-blocks.
+            (f'git commit -m "note: run \\"x > {outside_target} y\\" ok"',
+             "52. escaped inner quotes around a quoted > -> allow"),
+        ]
+        for cmd, label in quote_pass_cases:
+            rc, err = run_hook(
+                {"tool_name": "Bash", "tool_input": {"command": cmd}},
+                cwd=agent_core,
+            )
+            if rc == 0:
+                print(f"  [OK]   {label}")
+            else:
+                print(f"  [FAIL] {label} (rc={rc}, expected 0): {err.strip()[:200]}")
+                failed += 1
+
+        quote_block_cases = [
+            (f"echo data > {outside_target}",
+             "49. real unquoted redirect > outside -> block"),
+            (f'echo data > "{outside_target}"',
+             "50. unquoted > with quoted TARGET outside -> block"),
+            (f'echo "oops unterminated > {outside_target}',
+             "51. unbalanced quote (fail-safe, still scanned) -> block"),
+        ]
+        for cmd, label in quote_block_cases:
+            rc, err = run_hook(
+                {"tool_name": "Bash", "tool_input": {"command": cmd}},
+                cwd=agent_core,
+            )
+            if rc == 2:
+                print(f"  [OK]   {label}")
+            else:
+                print(f"  [FAIL] {label} (rc={rc}, expected 2): {err.strip()[:200]}")
+                failed += 1
+
         # ----- Case 26: CJK path outside boundary under non-UTF-8 stdio -----
         # #123 regression: payload carries a real UTF-8 CJK filename outside the
         # boundary, driven with PYTHONIOENCODING=ascii. The fixed byte-read
@@ -528,7 +575,7 @@ def main() -> int:
     if failed:
         print(f"[FAIL] {failed} case(s) failed")
         return 1
-    print("[PASS] all 46 cases passed")
+    print("[PASS] all 52 cases passed")
     return 0
 
 

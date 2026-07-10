@@ -291,12 +291,67 @@ def hits_critical_path(target: str | Path) -> str | None:
     return None
 
 
+def _quoted_char_mask(command: str) -> tuple[list[bool], bool]:
+    """Mark which characters of `command` sit inside a shell quote (P-0122).
+
+    Left-to-right scan tracking single/double quote state (single quotes are
+    literal inside double quotes and vice-versa; POSIX non-nesting). Returns
+    ``(mask, balanced)``:
+      * ``mask[i]`` is True iff char ``i`` is inside a quote at the moment the
+        scan reaches it. A ``>`` whose position is masked True is quoted DATA
+        (e.g. a commit message ``-m "x > y"`` or an inline ``python -c`` regex
+        literal), NOT a shell redirect operator.
+      * ``balanced`` is True iff every quote closed (final state not inside any
+        quote). When False the parse is ambiguous, so callers must NOT trust the
+        mask -- fail-safe: treat ``>`` as a redirect (current over-blocking).
+
+    Backslash escapes ARE modeled outside single quotes (POSIX: no escaping
+    inside single quotes), so `-m "... \"x > y\" ..."` -- an escaped inner quote,
+    the common shape of a commit message -- does not spuriously toggle the quote
+    state. ``$'...'`` and other exotic forms are not modeled; an odd/ambiguous
+    parse simply yields ``balanced=False`` and the caller keeps the old behavior.
+    """
+    mask = [False] * len(command)
+    in_single = in_double = False
+    escaped = False
+    for i, ch in enumerate(command):
+        mask[i] = in_single or in_double
+        if escaped:
+            # Previous char was an unquoted/dquoted backslash -- this char is
+            # literal and cannot toggle quote state.
+            escaped = False
+            continue
+        if ch == "\\" and not in_single:
+            escaped = True
+        elif ch == "'" and not in_double:
+            in_single = not in_single
+        elif ch == '"' and not in_single:
+            in_double = not in_double
+    return mask, not (in_single or in_double)
+
+
 def extract_bash_paths(command: str) -> list[tuple[str, str]]:
     """Return [(path, label)] candidates from a Bash command string."""
     found: list[tuple[str, str]] = []
     seen: set[str] = set()
+    # Quote-mask (P-0122): a `>` operator inside a balanced quoted string is
+    # literal data (commit message `-m "x > y"`, inline `python -c` regex
+    # literal), NOT a shell redirect. Trusted only when quotes are balanced --
+    # an ambiguous parse falls back to treating `>` as a redirect (over-block).
+    quote_mask, quotes_balanced = _quoted_char_mask(command)
     for regex, idx, label in BASH_PATH_PATTERNS:
         for m in regex.finditer(command):
+            # Only the redirect pattern is affected: a `>` whose operator
+            # position is inside quotes is not a real redirect (verb patterns
+            # like cp/mv/Remove-Item need a real verb, so they do not
+            # false-positive on an arbitrary quoted `>`).
+            if (
+                label == "redirect"
+                and quotes_balanced
+                and m.start() < len(quote_mask)
+                and quote_mask[m.start()]
+            ):
+                continue
             try:
                 p = m.group(idx)
             except IndexError:
