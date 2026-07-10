@@ -17,6 +17,15 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-10 — 发布 v0.41.1（P-0122：quote-aware redirect 消除引号内 `>` 误报）
+
+- **bump**：0.41.0 → 0.41.1（`pyproject.toml:7` + `governance_core/__init__.py:6`）。patch ——
+  纯误报收窄（引号内 `>` 不再当重定向），不破坏、不开真实写路径。
+- **发布**：`gh release create v0.41.1`（target master）→ CI `release.yml` + OIDC Trusted Publisher。
+- **消费者影响**：升级后 boundary-guard 不再把 commit message / 内联脚本里引号内的 `>` 误判为跨界
+  写而 block 命令；真实未引号重定向照旧 block；引号不平衡 fail-safe。
+- **核实**：actual published state 见本 turn 报告（`gh release list` + PyPI `/0.41.1/json`）。
+
 ### 2026-07-10 — P-0122：session-boundary-guard quote-aware redirect（消除引号内 `>` 误报）
 
 - **残留（#134/P-0121 记在案）**：redirect 正则把任意 `>` 当重定向符，引号内的 `>`（commit
