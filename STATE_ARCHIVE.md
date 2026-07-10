@@ -6,6 +6,23 @@
 
 ---
 
+### 2026-07-09 — 处置 report：dup candidate 止回流 + publish-knowledge Step 4 方向门（P-0120 / #132）
+
+- **candidates #129/#131**：`triage-and-trim-bloated-memory-index` 已 promote（P-0114/`fd5939e`/
+  v0.38.6），consumer sweep 第 5 次重复提交（#124/#125/#127→#129/#131）。close(not planned) +
+  dup 评论；`reject_candidate.py --legacy-rstrip` 登进 `rejected_registry.json`（`block_by_name`，
+  含两 issue url）—— 唯一能触达 consumer sweep 的 hub 杠杆，止住回流（手工 close 评论到不了 sweep）。
+- **bug #132（P-0120）**：`/publish-knowledge` Step 4 对 `M-fm-only` 无条件 collect +
+  `git checkout FETCH_HEAD`；clone 落后 hub 时（`added_in_fm==0`）静默回滚 hub 刚 backfill 的
+  frontmatter 字段。修：`diff_classify.py` 派生 `direction`（ahead/behind/mixed/na）；Step 4.2 表 +
+  4.3 改为 `direction != behind` 才收；mixed→收（approver 定案）。
+- **涉及文件**：`governance_core/tools/diff_classify.py`、`commands/publish-knowledge.md`、
+  新 `tools/test_diff_classify.py`（该工具原 **0 测试覆盖**）、`candidates/rejected_registry.json`。
+- **测试**：13/13 direction + 38/38 script-style + 147 pytest；`upgrade`+`doctor` exit 0。additive、
+  可整体 revert，不碰 contracts/。
+- **未发布**：source-only 落地；release（版本 bump + `gh release`）留人工确认（core-A3）。
+
+
 ### 2026-07-01 — 发布 v0.38.9（#123 boundary-guard + #119 intentional-drift）
 
 - **发布**：`gh release create v0.38.9`（target master）→ CI release run `28497552876`

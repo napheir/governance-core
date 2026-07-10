@@ -361,11 +361,23 @@ def main() -> int:
 
         # fd-dup redirect (2>&1) is not a file write -> must stay read-only;
         # and an in-boundary write redirect after a read-only verb is allowed.
+        # Device-sink discards (2>/dev/null, >/dev/null, 2>NUL) are OS
+        # pseudo-files, never real cross-boundary writes -> must allow (#134;
+        # on Windows /dev/null would otherwise resolve to C:/dev/null and block
+        # the whole command).
         redirect_pass_cases = [
             (f"cat {inside_target} > {inside_target}.bak",
              "24. cat > inside (redirect in-boundary) -> allow"),
             (f"grep x {inside_target} 2>&1",
              "25. grep ... 2>&1 (fd-dup, not a file write) -> allow"),
+            (f"grep x {inside_target} 2>/dev/null",
+             "28. grep ... 2>/dev/null (device sink discard) -> allow"),
+            (f"cat {inside_target} >/dev/null 2>&1",
+             "29. cat >/dev/null 2>&1 (device sink) -> allow"),
+            (f"cat {outside_target} 2>/dev/null",
+             "30. read outside + 2>/dev/null (sink, no write target) -> allow"),
+            ("echo hi 2>NUL",
+             "31. echo hi 2>NUL (Windows device sink) -> allow"),
         ]
         for cmd, label in redirect_pass_cases:
             rc, err = run_hook(
@@ -409,7 +421,7 @@ def main() -> int:
     if failed:
         print(f"[FAIL] {failed} case(s) failed")
         return 1
-    print("[PASS] all 27 cases passed")
+    print("[PASS] all 31 cases passed")
     return 0
 
 

@@ -83,6 +83,20 @@ CRITICAL_PATH_PATTERNS = [
     "/.claude/settings.local.json",
 ]
 
+# Discard / device sinks -- never real files on disk. A redirect to one of
+# these (`2>/dev/null`, `>/dev/null`, `2>NUL`) is a stdout/stderr discard,
+# NOT a cross-boundary write. Matched on the RAW token BEFORE path resolution
+# (normalize_path_for_match would mangle `/dev/null` -> `C:/dev/null` on
+# Windows and then read it as "outside boundary" -- the false positive this
+# fixes). This narrows a false positive only; it opens no real write path
+# (device sinks are not in CRITICAL_PATH_PATTERNS and cannot receive a real
+# file). fd-dup redirects (`2>&1`) are already excluded upstream by the `&`
+# in the capture class -- see is_read_only_bash / the redirect regex.
+DEVICE_SINKS = {
+    "/dev/null", "/dev/stdout", "/dev/stderr", "/dev/zero", "/dev/tty",
+    "nul",  # Windows null device (matched case-insensitively)
+}
+
 # Bash command patterns we extract write-target candidates from.
 # Each entry is (regex, group_index_for_path, label).
 #
@@ -258,6 +272,11 @@ def extract_bash_paths(command: str) -> list[tuple[str, str]]:
             # Strip surrounding quotes if any leaked through
             p = p.strip("'\"")
             if not p:
+                continue
+            # Redirect to a device sink (`2>/dev/null` etc.) is a discard, not a
+            # cross-boundary write. Skip on the RAW token before it becomes a
+            # checked target -- resolution would mangle it and read as outside.
+            if p.lower() in DEVICE_SINKS:
                 continue
             seen.add(p)
             found.append((p, label))

@@ -17,6 +17,24 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-10 — 修复 #134：session-boundary-guard 放行 device-sink 丢弃重定向
+
+- **bug #134**：`session-boundary-guard.py` 的 redirect 提取器把 `2>/dev/null` / `>/dev/null` /
+  `2>NUL` 里的 sink 当写目标。Windows 上 `normalize_path_for_match("/dev/null")` 相对当前盘符
+  解析成 `C:/dev/null`（越界）→ **整条 Bash 命令被 block**。高频误报：任何 `grep ... 2>/dev/null`、
+  `cmd >/dev/null 2>&1` 都被拒。（`2>&1` fd-dup 早已被 capture class 的 `&` 排除，此次只补 device-sink。）
+- **修**：新增 `DEVICE_SINKS` 集合（`/dev/null` `/dev/stdout` `/dev/stderr` `/dev/zero` `/dev/tty` `nul`），
+  在 `extract_bash_paths` 里对**未经路径解析的 RAW token**大小写不敏感匹配后 skip。只收窄误报，
+  不开任何真实写路径：sink 不在 `CRITICAL_PATH_PATTERNS`、真实越界重定向目标（`cmd > /outside`、
+  `> ~/.ssh/...`）照旧 block。
+- **单一权威源收敛**：user 已手动热修 enforcing copy `~/.claude/hooks/session-boundary-guard.py`
+  解自己燃眉之急并提 #134 让我落到包源；我把包源对齐到 #134 提案原文，改后包源 ≡ user-global
+  enforcing copy ≡ repo autonomy `tools/`（`governance-core upgrade --project-root .` 重装两次）。
+- **classify**：NO_PROPOSAL（单 agent scope 内、非宪法/契约的窄误报修复；issue 即设计+审查记录）。
+- **验证**：boundary-guard 31/31（新增 28-31 device-sink 放行 + 22/23 真实越界照旧 block）+ peer
+  derive_session_boundary 全通过。
+- **涉及**：`governance_core/tools/session-boundary-guard.py`、`governance_core/tools/test_session_boundary_guard.py`。
+
 ### 2026-07-09 — 发布 v0.40.2（#133：shipped governance 文档 carrier_class 合规）
 
 - **bump**：0.40.1 → 0.40.2（`pyproject.toml:7` + `governance_core/__init__.py:6`）。patch ——
@@ -59,22 +77,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   behind`）checkout 回 master —— 修复 hub frontmatter 静默回滚（issue #132）。纯修复 + 新工具字段，
   无破坏性。
 - **核实**：actual published state 见本 turn 报告（`gh release list` + PyPI `/0.40.1/json`）。
-
-### 2026-07-09 — 处置 report：dup candidate 止回流 + publish-knowledge Step 4 方向门（P-0120 / #132）
-
-- **candidates #129/#131**：`triage-and-trim-bloated-memory-index` 已 promote（P-0114/`fd5939e`/
-  v0.38.6），consumer sweep 第 5 次重复提交（#124/#125/#127→#129/#131）。close(not planned) +
-  dup 评论；`reject_candidate.py --legacy-rstrip` 登进 `rejected_registry.json`（`block_by_name`，
-  含两 issue url）—— 唯一能触达 consumer sweep 的 hub 杠杆，止住回流（手工 close 评论到不了 sweep）。
-- **bug #132（P-0120）**：`/publish-knowledge` Step 4 对 `M-fm-only` 无条件 collect +
-  `git checkout FETCH_HEAD`；clone 落后 hub 时（`added_in_fm==0`）静默回滚 hub 刚 backfill 的
-  frontmatter 字段。修：`diff_classify.py` 派生 `direction`（ahead/behind/mixed/na）；Step 4.2 表 +
-  4.3 改为 `direction != behind` 才收；mixed→收（approver 定案）。
-- **涉及文件**：`governance_core/tools/diff_classify.py`、`commands/publish-knowledge.md`、
-  新 `tools/test_diff_classify.py`（该工具原 **0 测试覆盖**）、`candidates/rejected_registry.json`。
-- **测试**：13/13 direction + 38/38 script-style + 147 pytest；`upgrade`+`doctor` exit 0。additive、
-  可整体 revert，不碰 contracts/。
-- **未发布**：source-only 落地；release（版本 bump + `gh release`）留人工确认（core-A3）。
 
 ### 2026-07-08 — 发布 v0.40.0（P-0119：签字验收门 + execution-class 校准轨）
 
