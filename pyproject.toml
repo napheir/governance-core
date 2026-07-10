@@ -43,6 +43,15 @@ governance-core = "governance_core.cli:main"
 where = ["."]
 include = ["governance_core*"]
 
+[tool.pytest.ini_options]
+# Keep pytest out of gitignored / non-source trees. `artifacts/` holds ephemeral
+# candidate-review payload copies (each carrying its own test_*.py) plus build
+# outputs and release notes; pytest would otherwise collect those payload tests
+# and report them as false failures (they run out of their intended context).
+# The other entries reproduce pytest's built-in defaults, which are DROPPED once
+# norecursedirs is set explicitly.
+norecursedirs = [".*", "build", "dist", "*.egg-info", "artifacts", "node_modules", "CVS", "_darcs", "venv"]
+
 [tool.setuptools.package-data]
 governance_core = [
     "clauses/*.md",

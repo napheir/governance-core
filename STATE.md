@@ -17,6 +17,19 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-10 — 测试卫生：pytest 不再爬 gitignore 的 artifacts/
+
+- **问题**：`pytest`（repo root）会收集 gitignore 的 `artifacts/candidate-review/**` 里的废弃
+  candidate payload（各自带 `test_*.py`）→ 14 个假失败 + 与源码测试的 basename 碰撞。
+- **修**：`pyproject.toml` 加 `[tool.pytest.ini_options] norecursedirs`（含 `artifacts` + 复原
+  pytest 默认排除项）。纯 dev 配置，不影响 wheel/消费者，无版本 bump。
+- **验证**：artifacts 假失败清零（15→8 failed）。剩余 8 个是**既有**包源布局假失败（hook/config
+  测试在 `governance_core/tools/` 布局下 config 解析失败；经 autonomy 层 `tools/` 跑 21/21 全过）——
+  排除 artifacts 移除了 basename 碰撞、把这批一直存在的布局假失败暴露出来，非本次引入。
+- **遗留（未纳入本次）**：`pytest`-from-package-source 对 hook/config 测试的布局假失败是更深的
+  "规范测试入口"问题（见 memory gc-test-suite-run-from-autonomy-layer），单列。
+- **涉及**：`pyproject.toml`。
+
 ### 2026-07-10 — 发布 v0.41.0（P-0121 / #135：boundary-guard 覆盖全部写工具）
 
 - **bump**：0.40.3 → 0.41.0（`pyproject.toml:7` + `governance_core/__init__.py:6`）。**minor** ——
