@@ -17,6 +17,17 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-15 — 发布 v0.42.0（P-0123：`upstreamed` 终态 / issue #136）
+
+- **bump**：0.41.1 → 0.42.0（`pyproject.toml:7` + `governance_core/__init__.py:6`）。minor ——
+  additive：新终态 enum `upstreamed` + 条件字段 `upstreamed_to`/`upstreamed_at` + Check 17，
+  backward-compatible（无文件在 bump 前用该状态，无需 grandfather），契约 SemVer 同步 v1.3.0。
+- **发布**：`gh release create v0.42.0`（target master）→ CI `release.yml` + OIDC Trusted Publisher（P-0064）。
+- **消费者影响**：升级后 proposal 可到达 `upstreamed` 终态记录 hub provenance —— consumer proposal
+  的能力上送到 hub 后不再只能在"永久 audit FAIL / 永不终结 / 丢 provenance"三条坏路里选。
+  `superseded` 语义不变；写入时 fail-fast 校验 `upstreamed_to`。
+- **核实**：actual published state 见本 turn 报告（`gh release list` + PyPI `/0.42.0/json`）。
+
 ### 2026-07-15 — P-0123：`upstreamed` 终态（issue #136，consumer proposal 上送到 hub）
 
 - **问题**（issue #136）：candidate/uplink 管线把 consumer proposal 的能力上送到 hub 后，
