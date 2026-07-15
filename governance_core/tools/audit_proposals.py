@@ -17,7 +17,7 @@ Validates:
            + implemented_at; rejected requires rejection_reason; etc.)
   Check 5: implemented_in is git rev-parse-resolvable
   Check 6: superseded_by points to existing proposal that has matching
-           supersedes back-reference
+           supersedes back-reference (LOCAL supersession only)
   Check 7: dates are YYYY-MM-DD and chronological (created <= *_at)
   Check 8: three-way id consistency (filename p-NNNN- ↔ frontmatter id ↔
            body H1 `# Proposal P-NNNN:` within first 50 lines)
@@ -41,8 +41,12 @@ Validates:
   Check 16: in-flight non-terminal EXECUTION-CLASS proposals created on/after
             the P-0119 cutover carry calibrated per-phase gates (gate: +
             calibration:; shares the approve BLOCK predicate) — WARN only (P-0119)
+  Check 17: status=upstreamed carries an `upstreamed_to` matching the external-ref
+            grammar (schema §5.6), format-validated via the SHARED
+            proposal_lib.validate_upstreamed_ref predicate and NOT resolved
+            (cross-repo replacement; issue #136 / P-0123)
 
-Schema: contracts/proposal_frontmatter_schema.md v1.2.0
+Schema: contracts/proposal_frontmatter_schema.md v1.3.0
 
 Usage:
     python tools/audit_proposals.py            # validate, exit 1 on error
@@ -63,7 +67,7 @@ from pathlib import Path
 
 VALID_STATUS = {
     "draft", "pending", "approved", "in-progress",
-    "implemented", "superseded", "rejected",
+    "implemented", "superseded", "upstreamed", "rejected",
 }
 
 VALID_AGENTS = {"core", "rules", "trade", "data", "research"}
@@ -76,6 +80,7 @@ REQUIRED_BY_STATUS = {
     "in-progress": {"started_at"},
     "implemented": {"implemented_in", "implemented_at"},
     "superseded": {"superseded_by"},
+    "upstreamed": {"upstreamed_to", "upstreamed_at"},
     "rejected": {"rejected_at", "rejection_reason"},
 }
 
@@ -240,7 +245,7 @@ def _validate_one(rel_path: str, full_path: Path, repo_root: Path,
 
     # Check 7: date format + ordering
     date_fields = ("created", "approved_at", "started_at", "implemented_at",
-                   "rejected_at")
+                   "rejected_at", "upstreamed_at")
     dates = {}
     for f in date_fields:
         if f in fm:
@@ -261,6 +266,26 @@ def _validate_one(rel_path: str, full_path: Path, repo_root: Path,
     # Check 8: three-way id consistency (v1.1.0 only)
     if is_new_scheme:
         errors.extend(_check_three_way_id(full_path.name, fm, text))
+
+    # Check 17 (P-0123, issue #136): upstreamed_to external-ref format.
+    # Format-validate via the SHARED proposal_lib predicate (same verdict +
+    # message the writer's fail-fast raises), then STOP — never stat a local
+    # file, never seek a back-reference (the replacement lives in another repo
+    # by construction; cross-repo resolution is a deliberate non-goal, schema
+    # §5.6). Local `superseded` (Check 6) is untouched.
+    if status == "upstreamed" and "upstreamed_to" in fm:
+        try:
+            sys.path.insert(0, str(Path(__file__).resolve().parent))
+            from proposal_lib import validate_upstreamed_ref
+        except Exception:
+            errors.append(
+                "Check 17: cannot import validate_upstreamed_ref predicate "
+                "from proposal_lib (upstreamed_to left unvalidated)"
+            )
+        else:
+            ok, reason = validate_upstreamed_ref(fm["upstreamed_to"])
+            if not ok:
+                errors.append(f"Check 17: {reason}")
 
     return errors
 

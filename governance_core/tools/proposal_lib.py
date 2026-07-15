@@ -231,10 +231,10 @@ def write_atomic(path: Path, content: str) -> None:
 
 VALID_STATUS = {
     "draft", "pending", "approved", "in-progress",
-    "implemented", "superseded", "rejected",
+    "implemented", "superseded", "upstreamed", "rejected",
 }
 
-TERMINAL_STATUS = {"implemented", "rejected", "superseded"}
+TERMINAL_STATUS = {"implemented", "rejected", "superseded", "upstreamed"}
 
 ALLOWED_TRANSITIONS = {
     "draft": {"pending"},
@@ -242,6 +242,37 @@ ALLOWED_TRANSITIONS = {
     "approved": {"in-progress", "implemented", "superseded"},
     "in-progress": {"implemented", "superseded"},
 }
+# `superseded` and `upstreamed` may be reached from ANY state (a proposal can
+# be replaced locally, or upstreamed into the hub, at any point). Both are
+# handled by the from-any-state branch in transition_proposal(), so they are
+# intentionally absent from the per-state maps above.
+
+# Issue #136 / P-0123: external supersession reference grammar for
+# `upstreamed_to` (schema §5.6). A URL, or `<repo-slug>:<path>`. Recorded +
+# format-checked, NEVER resolved (cross-repo resolution is a deliberate
+# non-goal). The SAME predicate backs both the writer (transition --to
+# upstreamed, fail-fast) and the validator (audit_proposals Check 17) so their
+# verdict + message never diverge -- mirrors the current_state_adequacy /
+# design_contract_adequacy shared-predicate pattern.
+_UPSTREAMED_REF_RE = re.compile(r"^(?:https?://\S+|[a-z0-9][a-z0-9_-]*:[^\s:]\S*)$")
+
+
+def validate_upstreamed_ref(ref: str) -> tuple[bool, str]:
+    """Return (ok, reason) for an `upstreamed_to` external reference.
+
+    Accepts a `<repo-slug>:<path>` form (e.g.
+    `governance-core:proposals/_archive/2026/p-0122-x.md`) or an http(s) URL.
+    On failure `reason` names BOTH accepted forms + a concrete example, so the
+    owner fixes it in one pass instead of repeatedly bumping the audit
+    (issue #136: the owner must not have to trial-and-error the grammar).
+    """
+    if ref and _UPSTREAMED_REF_RE.match(ref):
+        return True, ""
+    return False, (
+        f"upstreamed_to must be '<repo-slug>:<path>' "
+        f"(e.g. governance-core:proposals/_archive/2026/p-0122-x.md) "
+        f"or an http(s):// URL; got {ref!r}"
+    )
 
 
 def _today() -> str:
@@ -1144,6 +1175,7 @@ def transition_proposal(
     rejection_reason: str = "",
     commit_hash: str = "",
     superseded_by: str = "",
+    upstreamed_to: str = "",
     allow_empty_current_state: bool = False,
     allow_thin_spec: bool = False,
     allow_unsigned_criteria: bool = False,
@@ -1168,8 +1200,8 @@ def transition_proposal(
         fm, body = parse_proposal(path)
         prev = fm.get("status", "draft")
 
-        # Validate transition (supersede can come from any state)
-        if new_status == "superseded":
+        # Validate transition (supersede + upstream can come from any state)
+        if new_status in ("superseded", "upstreamed"):
             pass
         elif prev not in ALLOWED_TRANSITIONS or new_status not in ALLOWED_TRANSITIONS[prev]:
             raise ValueError(
@@ -1253,6 +1285,21 @@ def transition_proposal(
             if not superseded_by:
                 raise ValueError("superseded requires --superseded-by <path>")
             fm["superseded_by"] = superseded_by
+        elif new_status == "upstreamed":
+            # Issue #136 / P-0123: the replacement lives in another repo (the
+            # hub). Fail-fast at write time with the SAME actionable message the
+            # validator (Check 17) would give, so the owner never bumps a later
+            # audit FAIL to learn the grammar.
+            if not upstreamed_to:
+                raise ValueError(
+                    "upstreamed requires --upstreamed-to <ref> "
+                    "('<repo-slug>:<path>' or an http(s):// URL)"
+                )
+            ok, reason = validate_upstreamed_ref(upstreamed_to)
+            if not ok:
+                raise ValueError(reason)
+            fm["upstreamed_to"] = upstreamed_to
+            fm["upstreamed_at"] = today
 
         new_body = append_state_log(body, prev, new_status, note)
         # Normalize: strip leading whitespace from body to prevent
@@ -1339,6 +1386,7 @@ def archive_proposal(proposal_id: str, force_agent: bool = False) -> tuple[Path,
         "implemented": "implemented_at",
         "rejected": "rejected_at",
         "superseded": "approved_at",  # superseded may lack a *_at; use approved_at as proxy
+        "upstreamed": "upstreamed_at",
     }[status]
     date_str = fm.get(date_field, _today())
     year = date_str[:4] if _DATE_RE.match(date_str) else _today()[:4]
@@ -1419,6 +1467,7 @@ def _cmd_transition(args):
         rejection_reason=args.reason or "",
         commit_hash=args.commit or "",
         superseded_by=args.superseded_by or "",
+        upstreamed_to=args.upstreamed_to or "",
         allow_empty_current_state=args.allow_empty_current_state,
         allow_thin_spec=args.allow_thin_spec,
         allow_unsigned_criteria=args.allow_unsigned_criteria,
@@ -1718,6 +1767,10 @@ def main(argv=None) -> int:
     p.add_argument("--reason", default="", help="Rejection reason (required for --to rejected)")
     p.add_argument("--commit", default="", help="Commit hash (required for --to implemented; default HEAD)")
     p.add_argument("--superseded-by", default="", help="Replacement proposal path (required for --to superseded)")
+    p.add_argument("--upstreamed-to", default="",
+                   help="External ref to the replacement in the hub (required "
+                        "for --to upstreamed): '<repo-slug>:<path>' or an "
+                        "http(s):// URL")
     p.add_argument("--allow-empty-current-state", action="store_true",
                    help="Override the P-0108 research gate on --to approved "
                         "(legacy/greenfield escape hatch; justify in --note)")

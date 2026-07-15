@@ -1,6 +1,6 @@
 # Contract: proposals/**/*.md Frontmatter Schema
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: active
 **Owner**: core
 **Consumers**: all agents (write proposals, read status), `tools/audit_proposals.py` (validation), `.claude/hooks/session-context.py` (filter pending list), `.claude/commands/proposal.md` (skill that mutates status)
@@ -14,6 +14,15 @@ location semantics).
 
 ## Version history
 
+- **1.3.0** (2026-07-15, P-0123, issue #136): Add terminal status `upstreamed`
+  (§3.1) plus its state-conditional fields `upstreamed_to` + `upstreamed_at`
+  (§4.4a) and the external-reference format rule for `upstreamed_to` (§5.6).
+  Models a proposal whose replacement was upstreamed into another repository
+  (the governance-core hub) — a state the candidate/uplink pipeline creates but
+  that `superseded` (local-only, must-exist, back-referenced) cannot express.
+  Backward-compatible (new enum value + new conditional fields; no file uses the
+  status before the bump, so no grandfathering needed). `superseded` semantics
+  are unchanged.
 - **1.2.0** (2026-07-08, P-0119 Phase 0): Add optional `execution` field
   (§4.7) marking an execution-class proposal whose `### Phase` gates are
   machine-run by `/proposal run`. Backward-compatible (absent = a normal
@@ -75,7 +84,8 @@ exit non-zero) — except for legacy proposals matched by §6 exemption rules.
 | `approved` | user-approved, ready to implement | `in-progress` or `implemented` |
 | `in-progress` | implementation underway (optional, short tasks may skip) | `implemented` |
 | `implemented` | landed, commit recorded; terminal | `superseded` (rare) |
-| `superseded` | replaced by a newer proposal; terminal | — |
+| `superseded` | replaced by a newer proposal **in this repo**; terminal | — |
+| `upstreamed` | replacement was upstreamed into another repo (the governance-core hub) via the candidate/uplink pipeline; terminal (v1.3.0+) | — |
 | `rejected` | user rejected with reason; terminal | — |
 
 Unknown values are a hard audit failure.
@@ -116,6 +126,20 @@ status is set**, otherwise omitted.
 | Field | Type | Required | Notes |
 |-------|------|----------|-------|
 | `superseded_by` | string | yes | relative path to replacement proposal (e.g., `proposals/new_design.md`) |
+
+### 4.4a `upstreamed` (added v1.3.0, issue #136)
+
+Cross-repo sibling of `superseded`: the replacement lives in **another
+repository** (the governance-core hub), not this one, so a local
+`superseded_by` path is unresolvable by construction.
+
+| Field | Type | Required | Notes |
+|-------|------|----------|-------|
+| `upstreamed_to` | string | yes | external reference to the replacement in the hub. Two accepted forms: `<repo-slug>:<path>` (e.g. `governance-core:proposals/_archive/2026/p-0122-quote_aware_redirect.md`) **or** an `https://` / `http://` URL (PR / issue / commit / file). **Recorded and format-checked, never resolved** — cross-repo resolution is a deliberate non-goal (§5.6). |
+| `upstreamed_at` | ISO date | yes | date the upstreamed transition was stamped |
+
+Unlike `superseded`, there is **no** back-reference / must-exist check: the
+validator cannot stat the hub's tree. See §5.6 for the format rule and §7.
 
 ### 4.5 `rejected`
 
@@ -186,6 +210,38 @@ NOT exist in both in-flight and archive paths simultaneously. Legacy
 proposals in `agent-core/proposals/*.md` (top level) are exempt during
 the v1.1.0 transition window (see §6).
 
+### 5.6 External supersession refs (`upstreamed_to`, v1.3.0+)
+
+`upstreamed_to` records where a proposal's replacement went **in another
+repository** (the hub). It is **format-validated and recorded, never
+resolved** — cross-repo bidirectional verification is a deliberate non-goal
+(a single-repo validator cannot stat the hub's tree, nor the hub the
+consumer's).
+
+Two accepted forms (anything else is a hard audit failure — the escape
+hatch must not launder a typo'd local path):
+
+```yaml
+upstreamed_to: governance-core:proposals/_archive/2026/p-0122-quote_aware_redirect.md
+upstreamed_to: https://github.com/napheir/governance-core/pull/135
+```
+
+- **`<repo-slug>:<path>`** — repo slug is lowercase alnum/`_`/`-` starting
+  with a letter or digit; `<path>` is any non-space, non-empty string.
+- **URL** — `http://` or `https://` followed by non-space.
+
+Grammar (single regex, enforced by ONE shared predicate at both the writer
+`proposal_lib.transition_proposal` and validator `audit_proposals` Check 17,
+so a bad ref fails fast at write time with the same message it would fail
+audit with):
+
+```
+^(https?://\S+|[a-z0-9][a-z0-9_-]*:[^\s:]\S*)$
+```
+
+Forbidden (all rejected): a bare repo-relative path (`proposals/x.md` — no
+colon, no scheme), an absolute path, a whitespace-containing ref.
+
 ---
 
 ## 6. Exemptions
@@ -212,13 +268,17 @@ The following files are NOT subject to this schema:
 
 ## 7. Lifecycle invariants
 
-- `implemented`, `superseded`, `rejected` are terminal — only a NEW
-  proposal can effectively reverse the decision (no direct status
+- `implemented`, `superseded`, `upstreamed`, `rejected` are terminal — only
+  a NEW proposal can effectively reverse the decision (no direct status
   rewind)
 - `implemented_in` is immutable once set (records a fact)
 - A proposal with `superseded_by: X` requires `X` to exist with
   `supersedes: [<this proposal>]` in its own frontmatter (auditor
   Check 6 — bidirectional consistency)
+- A proposal with `upstreamed_to: X` requires `X` to match the §5.6 format
+  (auditor Check 17) but does **not** require `X` to resolve — the target
+  lives in another repo (deliberate non-goal; the ref is provenance, not a
+  verified link)
 
 ---
 

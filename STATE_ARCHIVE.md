@@ -6,6 +6,84 @@
 
 ---
 
+### 2026-07-07 — Candidate curation：4 open issue 清空（3 dup + 1 拒）
+
+- **审查**：`/curate-candidate`。open candidate = #124/#125/#127
+  `triage-and-trim-bloated-memory-index` + #126 `headless-browser-visual-verify`。
+- **#124/#125/#127（关 dup）**：三者 payload body 与包源
+  `governance_core/skills/triage-and-trim-bloated-memory-index.md` **逐字相同**
+  —— 该 skill 已于 2026-07-01 经 **P-0114**（commit `fd5939e`, v0.38.6）promote 入源。
+  属"已 promote candidate 被 consumer sweep 重复 re-file"，`gh issue close --reason
+  "not planned"` + dup 评论（根因：consumer 侧仍挂 `layer: candidate-common`，建议 retag）。
+- **#126（拒 + advisory）**：headless-Chrome 截图验证 SVG/HTML = 通用渲染/工程技巧，
+  非 governance/meta，超出 charter（同 2026-07-01 #120 判例）。
+  `maintainer/reject_candidate.py --issue 126 --also-close`，advice：retag `layer:business`
+  本地保留。`block_by_name=false`（只按 payload sha 拦，泛化重写版仍可再邀）。
+- **改动**：`governance_core/candidates/rejected_registry.json` +1 条（committed ledger）。
+  无能力新增 → 无 /proposal、无版本 bump。candidate 队列现为空。
+
+### 2026-07-10 — 发布 v0.41.0（P-0121 / #135：boundary-guard 覆盖全部写工具）
+
+- **bump**：0.40.3 → 0.41.0（`pyproject.toml:7` + `governance_core/__init__.py:6`）。**minor** ——
+  收紧 enforcement（block 更多），对消费者是行为破坏（gate-all vs 旧三名单）。
+- **发布**：`gh release create v0.41.0`（target master）→ CI `release.yml` build + OIDC Trusted
+  Publisher（P-0064）。
+- **消费者影响**：升级后 `session-boundary-guard` 用 shape-based 路由 gate 全部写工具（PowerShell/
+  NotebookEdit/Monitor/未来 shell/command 形 MCP）；经这些工具的合法跨界写须走
+  `CLAUDE_BOUNDARY_OVERRIDE=1`。Read/Glob/Grep 跨界读不受影响。
+- **核实**：actual published state 见本 turn 报告（`gh release list` + PyPI `/0.41.0/json`）。
+
+### 2026-07-10 — P-0121 / #135：session-boundary-guard 覆盖全部写工具（shape-based）
+
+- **gap #135**：`session-boundary-guard` 只 gate `{Bash, Edit, Write}` 三个工具名，matcher=`""`
+  对所有工具触发但对其余工具名 fast-exit —— PowerShell 工具 / NotebookEdit / Monitor 全部
+  绕过边界检查、无 enforcement。
+- **修（P-0121，approved）**：`main()` 由 tool-NAME allowlist 改为 **shape-based 路由**：①有
+  `command` 字段 → command-scan（Bash/PowerShell/Monitor/未来 shell/command 形 MCP，无名单）；
+  ②`WRITE_PATH_TOOLS={Edit,Write,NotebookEdit,MultiEdit}` 显式集 → path-check。**路径工具刻意
+  不按 field-shape 判**——`file_path`/`path` 被 READ 工具（Read/Glob/Grep）共用，shape-only 会
+  误 block 跨界**读**。新增 PowerShell 写 cmdlet（Remove-Item/New-Item/Copy-Item/Move-Item/
+  Add-Content）+ `$null` device sink。
+- **收紧权衡**：经 PowerShell 工具静默成功的合法跨界写现在须走 `CLAUDE_BOUNDARY_OVERRIDE=1`
+  （audited；critical 永不豁免）——explicit+logged 的更好姿态。
+- **非目标（ADR 边界）**：subprocess/脚本内写（需 OS 级 sandbox，resource-layer 轨）；path 形
+  MCP 写工具（field-shape 无法与读工具区分，defer）。
+- **验证**：boundary-guard 46/46（新增 32-46：PowerShell block/allow + `$null`/NUL sink +
+  NotebookEdit + **Read/Glob/Grep 跨界读照旧 allow** 回归门）+ peer 全过。
+- **部署注意**：enforcing copy 是 user-global `~/.claude/hooks/`，`upgrade --project-root .` 不碰
+  它（见 [[session-boundary-guard-enforced-from-user-global]]）——本 session 生效需另行重装 user
+  层 hook（跨项目、待 user 确认）。
+- **涉及**：`governance_core/tools/{session-boundary-guard.py, test_session_boundary_guard.py}`。
+
+### 2026-07-10 — 发布 v0.40.3（#134：session-boundary-guard device-sink 放行）
+
+- **bump**：0.40.2 → 0.40.3（`pyproject.toml:7` + `governance_core/__init__.py:6`）。patch ——
+  纯 hook 误报修复，无行为破坏、无新字段。
+- **发布**：`gh release create v0.40.3`（target master）→ CI `release.yml`（`release: published`
+  触发）build + OIDC Trusted Publisher（P-0064）。
+- **消费者影响**：升级后 `session-boundary-guard` 不再把 `2>/dev/null` / `>/dev/null` / `2>NUL`
+  这类 stderr/stdout 丢弃重定向误判为跨界写而 block 整条命令；真实越界重定向目标照旧 block。
+- **核实**：actual published state 见本 turn 报告（`gh release list` + PyPI `/0.40.3/json`）。
+
+### 2026-07-10 — 修复 #134：session-boundary-guard 放行 device-sink 丢弃重定向
+
+- **bug #134**：`session-boundary-guard.py` 的 redirect 提取器把 `2>/dev/null` / `>/dev/null` /
+  `2>NUL` 里的 sink 当写目标。Windows 上 `normalize_path_for_match("/dev/null")` 相对当前盘符
+  解析成 `C:/dev/null`（越界）→ **整条 Bash 命令被 block**。高频误报：任何 `grep ... 2>/dev/null`、
+  `cmd >/dev/null 2>&1` 都被拒。（`2>&1` fd-dup 早已被 capture class 的 `&` 排除，此次只补 device-sink。）
+- **修**：新增 `DEVICE_SINKS` 集合（`/dev/null` `/dev/stdout` `/dev/stderr` `/dev/zero` `/dev/tty` `nul`），
+  在 `extract_bash_paths` 里对**未经路径解析的 RAW token**大小写不敏感匹配后 skip。只收窄误报，
+  不开任何真实写路径：sink 不在 `CRITICAL_PATH_PATTERNS`、真实越界重定向目标（`cmd > /outside`、
+  `> ~/.ssh/...`）照旧 block。
+- **单一权威源收敛**：user 已手动热修 enforcing copy `~/.claude/hooks/session-boundary-guard.py`
+  解自己燃眉之急并提 #134 让我落到包源；我把包源对齐到 #134 提案原文，改后包源 ≡ user-global
+  enforcing copy ≡ repo autonomy `tools/`（`governance-core upgrade --project-root .` 重装两次）。
+- **classify**：NO_PROPOSAL（单 agent scope 内、非宪法/契约的窄误报修复；issue 即设计+审查记录）。
+- **验证**：boundary-guard 31/31（新增 28-31 device-sink 放行 + 22/23 真实越界照旧 block）+ peer
+  derive_session_boundary 全通过。
+- **涉及**：`governance_core/tools/session-boundary-guard.py`、`governance_core/tools/test_session_boundary_guard.py`。
+
+
 ### 2026-07-09 — 处置 report：dup candidate 止回流 + publish-knowledge Step 4 方向门（P-0120 / #132）
 
 - **candidates #129/#131**：`triage-and-trim-bloated-memory-index` 已 promote（P-0114/`fd5939e`/

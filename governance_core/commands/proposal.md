@@ -30,7 +30,8 @@ ledger snapshot）。Agent 不直接 Edit frontmatter / 不直接动 body 之外
 | `/proposal run <id> [--execute]` | 执行 execution-class 提案的 per-phase gate（dry-run 默认） | （只读 / 执行） |
 | `proposal_lib.py reconcile --id X --commit H` | as-built 覆盖差（advisory，complete step-0） | （只读） |
 | `/proposal reject <id> --reason "..."` | user 明确否决 | pending → rejected |
-| `/proposal supersede <id> --by <new-path>` | 被新方案替代 | (任意) → superseded |
+| `/proposal supersede <id> --by <new-path>` | 被新方案替代（**本仓库内**） | (任意) → superseded |
+| `/proposal upstream <id> --to-hub <ref>` | 替代方案已上送到 hub（**另一仓库**） | (任意) → upstreamed |
 | `/proposal list [--include-terminal]` | 列出 in-flight + (可选) archive | （只读） |
 | `/proposal show <id>` | 显示 frontmatter + body 预览 | （只读） |
 | `/proposal path <id>` | 解析 id 到当前文件路径 | （只读） |
@@ -211,6 +212,28 @@ in-progress 的 execution-class** 提案（frontmatter 带 `execution:`）的 pe
 
 **双向一致性**（audit Check 6）：lib 不自动写新 proposal 的 `supersedes` 反向字段（避免误改无关 proposal）；agent **必须**手动在新 proposal frontmatter 加 `supersedes: [proposals/<old-rel>]`，然后审计会校验互引。
 
+### `upstream <id> --to-hub <ref>`（issue #136 / P-0123）
+
+调 `python tools/proposal_lib.py transition --id P-NNNN --to upstreamed --upstreamed-to <ref>`。
+
+**用途**：一个 consumer proposal 的能力经 candidate/uplink 管线上送到 hub、替代方案
+落在**另一个仓库**（governance-core hub）里。此时该 proposal 真正终结，但
+`superseded`（本仓库内、必须存在、必须反向引用）表达不了。`upstreamed` 是它的
+跨仓库姊妹终态：记录 provenance（hub 引用），audit 干净，可正常归档。
+
+`<ref>` 两种可接受形式（schema §5.6）：
+- `<repo-slug>:<path>` —— 如 `governance-core:proposals/_archive/2026/p-0122-x.md`
+- `http(s)://` URL —— hub 的 PR / issue / commit / file 链接
+
+**只记录、不解析**：跨仓库引用被 format 校验（audit Check 17）但**不**会去 stat
+本地文件、**不**要求反向引用（另一仓库不可达，是刻意的 non-goal）。语法在
+**写入时**即 fail-fast 校验（`transition` 直接拒绝坏 ref，报同一条含示例的消息），
+不会留到 audit 才发现。
+
+**terminal**：`upstreamed` 是终态，转移可从任意状态发起（consumer 可能在
+draft/pending/approved/in-progress/implemented 任一状态上送）；归档同 complete/reject
+第 2 步询问 user。
+
 ### `list [--include-terminal]`
 
 调 `python tools/proposal_lib.py list [--include-terminal]`：
@@ -284,6 +307,8 @@ Commit message 含 `Implements: P-NNNN` 或 `Per proposal P-NNNN` 时，wrap-up 
 - ❌ Agent 自批 approve / reject（违反安全约束）
 - ❌ `complete` 时不传 hash 也不在能解析的 HEAD 状态（lib 会拒）
 - ❌ 把 supersede 当 reject 用（supersede = 被新方案替代，reject = 被否决）
+- ❌ 把 supersede 与 upstream 混用（supersede = 替代在**本仓库**、必须存在+反向引用；upstream = 替代在**hub 另一仓库**、只记录不解析）
+- ❌ 给 `upstream` 传裸本地路径（如 `proposals/x.md`）当 `--to-hub`（写入时即被拒；须 `<repo>:<path>` 或 URL）
 - ❌ 跨 agent 写他人 `shared_state/proposals/<X>/`（hook 阻断）
 - ❌ classify 直接跳过、agent 自行判断是否要 proposal（人脑判断 ≠ skill 一致性）
 

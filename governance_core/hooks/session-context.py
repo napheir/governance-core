@@ -443,8 +443,10 @@ def _check_proposals(root, role):
          `p-NNNN-` already-migrated entries which live in shared_state)
 
     Filters by frontmatter status: visible = {pending, approved, in-progress}.
-    draft, implemented, superseded, rejected are hidden (would pollute
-    SessionStart banner; implemented/terminal grow forever).
+    draft, implemented, superseded, upstreamed, rejected are hidden (would
+    pollute SessionStart banner; terminal states grow forever). This is an
+    allowlist, so any new terminal status (e.g. `upstreamed`, P-0123) is hidden
+    automatically without a code change here.
     """
     visible_statuses = {"pending", "approved", "in-progress"}
 
