@@ -133,8 +133,15 @@ BASH_PATH_PATTERNS = [
     (re.compile(r"\bcd\s+([^\s&|;<>]+)"), 1, "cd"),
     # mkdir [-p] PATH
     (re.compile(r"\bmkdir(?:\s+-\w+)*\s+([^\s&|;<>]+)"), 1, "mkdir"),
-    # > PATH or >> PATH (redirect)
-    (re.compile(r">>?\s*([^\s&|;<>]+)"), 1, "redirect"),
+    # > PATH or >> PATH (redirect). The negated class also excludes `(`, `)`
+    # and backtick: a bare (unquoted) redirect target cannot legitimately
+    # contain them in POSIX shell -- they open/close a subshell or command
+    # substitution -- so a `2>/dev/null` at the tail of `$(... 2>/dev/null)`
+    # or `` `... 2>/dev/null` `` must NOT swallow the closing `)` / backtick
+    # into the captured path (which would defeat the DEVICE_SINKS exact-match
+    # and false-block the discard). Quoted targets are handled by the P-0122
+    # quote-mask; this only tightens the bare capture (#137, P-0125).
+    (re.compile(r">>?\s*([^\s&|;<>()`]+)"), 1, "redirect"),
     # cp [-flags] SRC DEST  (catch DEST = group 1 of last \S+)
     (re.compile(r"\bcp\s+(?:-\w+\s+)*\S+\s+([^\s&|;<>]+)"), 1, "cp"),
     # mv [-flags] SRC DEST

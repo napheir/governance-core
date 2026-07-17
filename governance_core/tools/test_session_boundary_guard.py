@@ -544,6 +544,50 @@ def main() -> int:
                 print(f"  [FAIL] {label} (rc={rc}, expected 2): {err.strip()[:200]}")
                 failed += 1
 
+        # ----- P-0125 (#137): device sink at a command-substitution / backtick
+        # close. A `2>/dev/null` whose redirect sits at the END of `$( ... )` or
+        # `` ` ... ` `` used to swallow the closing `)` / backtick into the
+        # captured path (`/dev/null)`), defeating the DEVICE_SINKS exact-match and
+        # false-blocking the discard. The bare redirect capture class now excludes
+        # `(` / `)` / backtick (they can only be shell metacharacters in an
+        # unquoted target), so the sink token is captured clean and skipped. A real
+        # write inside a subshell still blocks -- the closer is dropped but the
+        # (still-outside) path is checked.
+        cmdsubst_pass_cases = [
+            ("y=$(echo hi 2>/dev/null)",
+             "53. device sink in $(...) -> allow"),
+            (f"foo=`grep x {inside_target} 2>/dev/null`",
+             "54. device sink in backticks -> allow"),
+            ("y=$(echo hi >$null)",
+             "55. pwsh $null sink in $(...) -> allow"),
+            ("y=$(echo hi 2>NUL)",
+             "56. Windows NUL sink in $(...) -> allow"),
+        ]
+        for cmd, label in cmdsubst_pass_cases:
+            rc, err = run_hook(
+                {"tool_name": "Bash", "tool_input": {"command": cmd}},
+                cwd=agent_core,
+            )
+            if rc == 0:
+                print(f"  [OK]   {label}")
+            else:
+                print(f"  [FAIL] {label} (rc={rc}, expected 0): {err.strip()[:200]}")
+                failed += 1
+
+        # Real write inside a subshell: the `)` is dropped from the target, but the
+        # (still-outside) path is boundary-checked and blocked -- the fix does NOT
+        # weaken a real cross-boundary write.
+        rc, err = run_hook(
+            {"tool_name": "Bash",
+             "tool_input": {"command": f"(cat {inside_target} > {outside_target})"}},
+            cwd=agent_core,
+        )
+        if rc == 2:
+            print("  [OK]   57. real write inside subshell (cmd > outside) -> block")
+        else:
+            print(f"  [FAIL] 57. subshell real-write (rc={rc}, expected 2): {err.strip()[:200]}")
+            failed += 1
+
         # ----- Case 26: CJK path outside boundary under non-UTF-8 stdio -----
         # #123 regression: payload carries a real UTF-8 CJK filename outside the
         # boundary, driven with PYTHONIOENCODING=ascii. The fixed byte-read
@@ -575,7 +619,7 @@ def main() -> int:
     if failed:
         print(f"[FAIL] {failed} case(s) failed")
         return 1
-    print("[PASS] all 52 cases passed")
+    print("[PASS] all 57 cases passed")
     return 0
 
 
