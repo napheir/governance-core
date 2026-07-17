@@ -17,6 +17,24 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-17 — P-0125：boundary-guard cmdsubst/backtick device-sink 残尾（issue #137）
+
+- **问题**（issue #137）：P-0121/P-0122 的 device-sink 修复留了严格残尾 —— redirect 捕获类
+  `[^\s&|;<>]+` 不排除 `)` `(` 反引号，于是 `$(... 2>/dev/null)` / `` `... 2>/dev/null` `` 尾部的
+  discard 把闭合元字符吞进目标（`/dev/null)`），`DEVICE_SINKS` 精确匹配落空 → 误挡（exit 2）。
+  `$(... 2>/dev/null)` 是极常见 shell 形态，误报持续复发。
+- **诊断**：读 `session-boundary-guard.py:137`（redirect regex）+ `:371`（sink exact-match）；用真实
+  hook 复现 `Target: /dev/null)`。判为 PROPOSAL_REQUIRED（改安全 hook 捕获行为，同 P-0122 血脉）。
+- **改动**（全在包源 `governance_core/`，单行 + 测试）：
+  - `tools/session-boundary-guard.py:137`：redirect 捕获类 `[^\s&|;<>]+` → `[^\s&|;<>()`]+`。裸重定向
+    目标在 POSIX 下合法上不含 `(``)`反引号（元字符/语法错误），收窄不漏挡真实写。
+  - `tools/test_session_boundary_guard.py`：加 cmdsubst/backtick sink allow + subshell 真实写回归
+    （52 → 57 例）。
+- **验证**：全套 57 例绿 + peer 绿；`upgrade` 重装自治层 + 重拷 user-global enforcing 副本（`upgrade`
+  不碰它，它才生效）；live-dogfood 本 session Bash 跑 `$(echo hi 2>/dev/null)` + 反引号 sink 放行，
+  subshell 真实跨界写仍 exit 2 拦截（且 `Target:` 不再带尾 `)`）。
+- **收尾**：commit `e9a32b7`（fix）+ `87f2d8b`（archive P-0125）；issue #137 已关闭。发布待用户确认。
+
 ### 2026-07-15 — 发布 v0.42.0（P-0123：`upstreamed` 终态 / issue #136）
 
 - **bump**：0.41.1 → 0.42.0（`pyproject.toml:7` + `governance_core/__init__.py:6`）。minor ——
@@ -90,96 +108,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - **遗留（未纳入本次）**：`pytest`-from-package-source 对 hook/config 测试的布局假失败是更深的
   "规范测试入口"问题（见 memory gc-test-suite-run-from-autonomy-layer），单列。
 - **涉及**：`pyproject.toml`。
-
-### 2026-07-09 — 发布 v0.40.2（#133：shipped governance 文档 carrier_class 合规）
-
-- **bump**：0.40.1 → 0.40.2（`pyproject.toml:7` + `governance_core/__init__.py:6`）。patch ——
-  纯 knowledge frontmatter 合规修复（11 个 shipped governance 文档 backfill `carrier_class: reference`）。
-- **发布**：`gh release create v0.40.2`（target master）→ CI `release.yml` build + OIDC Trusted
-  Publisher（P-0064）。
-- **消费者影响**：升级后 `audit_knowledge.py` 不再对 gc-shipped `knowledge/governance/*.md` 报
-  carrier_class transitional WARN —— 消费者 knowledge audit 干净通过，无需碰 install-managed 文件（#133）。
-- **核实**：actual published state 见本 turn 报告（`gh release list` + PyPI `/0.40.2/json`）。
-
-### 2026-07-09 — 修复 #133：backfill carrier_class 到 gc-shipped governance 文档
-
-- **bug #133**：gc 随包发的 `knowledge_governance/*.md` 缺 `carrier_class`，而同包发的
-  `contracts/knowledge_frontmatter_schema.md` 声明其 transitional-required（v1.2.0 warn，v1.3.0
-  hard-fail）→ 消费者 `audit_knowledge.py` Check 12 对 gc 自有文件常驻 WARN 且**改不掉**
-  （install-managed，本地加 = drift 被 `upgrade` 覆盖）。"hub 不合自己发的 schema"。
-- **修**：11 个缺失文件 backfill `carrier_class: reference`（`knowledge/governance/` → `reference`，
-  由 taxonomy §3 + schema §3.4 + 5 个现存文件三重锁定）；`README.md` 无 frontmatter 豁免；插入在
-  `owner:` 行后。幂等脚本 byte-preserving（每文件恰 +1 行）。
-- **classify**：NO_PROPOSAL（机械 backfill 现有 required 字段、audit oracle 验证、无
-  rule/contract/skill/逻辑改动）。
-- **验证**：upgrade 后 audit_knowledge 的 11 个 governance carrier_class WARN 全清（仅剩 2 个
-  `knowledge/design/*` hub 本地 business 文件，非 gc-shipped，超范围）；38/38 script + 147 pytest；
-  `upgrade`+`doctor` exit 0。
-- **未做（建议）**：无回归门防新 governance 文档再漏必填字段（审包源合规需 source↔installed 布局
-  映射）—— 留作后续 follow-up。
-- **涉及**：`governance_core/knowledge_governance/{testing-pyramid, constitution-protection-mechanism,
-  memory-staleness-policy, resource-layer-hardening, sub-constitution-red-lines,
-  test-production-unification, scope-enforcement-mechanism, agent-least-privilege,
-  data-analysis-discipline, artifacts-layout, skill-scenario-clusters}.md`。
-
-### 2026-07-09 — 发布 v0.40.1（P-0120：publish-knowledge Step 4 方向门修复 / #132）
-
-- **bump**：0.40.0 → 0.40.1（`pyproject.toml:7` + `governance_core/__init__.py:6`）。patch ——
-  P-0120 bugfix：`diff_classify` 派生 `direction`（additive）+ `/publish-knowledge` Step 4.2/4.3
-  按 `direction != behind` gate `M-fm-only` collect。
-- **发布**：`gh release create v0.40.1`（target master）→ CI `release.yml` build + OIDC Trusted
-  Publisher（P-0064）。
-- **消费者影响**：升级后 `/publish-knowledge` Step 4 不再把落后 clone 的 `M-fm-only`（`direction:
-  behind`）checkout 回 master —— 修复 hub frontmatter 静默回滚（issue #132）。纯修复 + 新工具字段，
-  无破坏性。
-- **核实**：actual published state 见本 turn 报告（`gh release list` + PyPI `/0.40.1/json`）。
-
-### 2026-07-08 — 发布 v0.40.0（P-0119：签字验收门 + execution-class 校准轨）
-
-- **bump**：0.39.0 → 0.40.0（`pyproject.toml:7` + `governance_core/__init__.py:6`）。minor ——
-  P-0119 additive 加第三/四道 approve form-gate + `/proposal run` runner。
-- **发布**：`gh release create v0.40.0`（target master）→ CI `release.yml` build + OIDC Trusted
-  Publisher（P-0064）。
-- **消费者影响**：升级后 approve 多两道 form 门：③签字验收（每个 `## Approval Criteria` 项须带
-  check token `cmd:`/`agent-rubric:`/`human-verify:`，**迁移期 WARN**，cutover 2026-07-08
-  grandfather）；④execution-class 校准门（仅 frontmatter 带 `execution:` 的提案，BLOCK）。新
-  `/proposal run` 子命令（dry-run 默认）。均 additive，普通提案只多一个 WARN。
-- **核实**：actual published state 见本 turn 报告（`gh run` + PyPI `/0.40.0/json`，按版本端点为准）。
-
-### 2026-07-08 — P-0119 Phase 2：execution-class 校准硬门 + /proposal run runner
-
-- **校准门**：`gate_calibration_adequacy(body)`（FORM：execution-class 提案每个真 phase 须有
-  `gate: <check-token>` + `calibration: neg→FAIL; golden→PASS`）；approve 对 `execution:` 提案
-  硬 BLOCK + `--allow-uncalibrated-gate`；audit Check 16（WARN，共享谓词，cutover grandfather，
-  非-execution 免检）。
-- **runner `/proposal run <id> [--execute]`**：跑 approved/in-progress 的 execution-class 提案
-  per-phase `gate:`。**默认 dry-run**（只列不跑）；`--execute` 才跑 `cmd:` gate。非 approved /
-  非 execution-class → 拒绝。安全：cmd 任意、repo root 同步执行、approve=授权、dry-run-default。
-- **文档**：`commands/proposal.md` 补 approve 四门说明 + `run` 章节 + 子命令表行。
-- **测试**：`test_proposal_gates.py` +8（校准门 / phase 提取 / gate token），共 18；既有 gate
-  测试 68 无回归；audit 0/0。
-- **P-0119 全 phase（0-2）完成**；Phase 3（签字门 WARN→BLOCK）留待一个 rotation 后翻转。
-- **改动**：`governance_core/{tools/proposal_lib.py, tools/audit_proposals.py,
-  tools/test_proposal_gates.py, commands/proposal.md}`。
-
-### 2026-07-08 — P-0119 Phase 0-1：签字验收门（第三道 approve form-gate）
-
-- **背景**：trade-agent handoff `proposal-signed-acceptance-gates.md` —— 在现有两门
-  （Current State/Design）上加第三道签字门 + execution-class 校准轨。§1 引用核对对齐 main
-  （唯一漂移：Design gate 在 `proposal_lib.py:829` 非 brief 说的 `:486`）；§5 todo 桥本仓无
-  （不引入）；§7 命名定 `execution: gates` + `/proposal run`。P-0119 approved（全 4 phase）。
-- **Phase 0（契约）**：新 `contracts/proposal_gate_schema.md`（check/gate/calibration grammar）；
-  `proposal_frontmatter_schema.md` 加 optional `execution` 字段 → v1.2.0。
-- **Phase 1（通用签字门）**：`proposal_lib.approval_criteria_adequacy(body)`（FORM：每个 Approval
-  Criteria 项须带一个 check token `cmd:`/`agent-rubric:`/`human-verify:`）；`_v2_scaffold` 项模板
-  token 化；approve 路径追加**迁移期 WARN**（stderr，非 BLOCK，Phase 3 再翻）+
-  `--allow-unsigned-criteria`；`audit_proposals` Check 15（WARN，共享谓词，cutover 2026-07-08
-  grandfather）。
-- **dogfood**：Check 15 立刻 WARN 了 P-0119 自身 3 个未签通用项 → 补 token 后 audit 0/0；本提案
-  Approval Criteria 全按签字格式（自证）。
-- **测试**：`test_proposal_gates.py` 10 例全过；既有 gate 测试（design_contract/rigor/classify）
-  60 例无回归。
-- **待续**：Phase 2（execution-class 校准硬门 + `/proposal run` runner，含 arbitrary-cmd 安全面）、
-  Phase 3（签字门 WARN→BLOCK，rotation 后）。
-- **改动**：`governance_core/{contracts/proposal_gate_schema.md(新), contracts/proposal_frontmatter_schema.md,
-  tools/proposal_lib.py, tools/audit_proposals.py, tools/test_proposal_gates.py(新)}`。
