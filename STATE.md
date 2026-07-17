@@ -17,6 +17,16 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-07-17 — 发布 v0.42.1（P-0125：boundary-guard cmdsubst/backtick device-sink / issue #137）
+
+- **bump**：0.42.0 → 0.42.1（`pyproject.toml:7` + `governance_core/__init__.py:6`）。patch ——
+  纯误报收窄（cmdsubst/backtick 尾部 device-sink 不再被误挡），不破坏、不开真实写路径。
+- **发布**：`gh release create v0.42.1`（target master）→ CI `release.yml` run 29554033647 success
+  → OIDC Trusted Publisher（P-0064）。push 一度受本地代理（:7890）连接重置阻塞，恢复后成功。
+- **消费者影响**：升级后 boundary-guard 不再把 `$(... 2>/dev/null)` / `` `... 2>/dev/null` `` 里
+  的 discard 误判为跨界写而 block；真实 subshell 写照旧 block；引号内 `>` 仍由 P-0122 quote-mask 处理。
+- **核实**：PyPI `/governance-core/json` → `latest: 0.42.1`，wheel + sdist 均在（非本地意图）。
+
 ### 2026-07-17 — P-0125：boundary-guard cmdsubst/backtick device-sink 残尾（issue #137）
 
 - **问题**（issue #137）：P-0121/P-0122 的 device-sink 修复留了严格残尾 —— redirect 捕获类
@@ -33,7 +43,7 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - **验证**：全套 57 例绿 + peer 绿；`upgrade` 重装自治层 + 重拷 user-global enforcing 副本（`upgrade`
   不碰它，它才生效）；live-dogfood 本 session Bash 跑 `$(echo hi 2>/dev/null)` + 反引号 sink 放行，
   subshell 真实跨界写仍 exit 2 拦截（且 `Target:` 不再带尾 `)`）。
-- **收尾**：commit `e9a32b7`（fix）+ `87f2d8b`（archive P-0125）；issue #137 已关闭。发布待用户确认。
+- **收尾**：commit `e9a32b7`（fix）+ `87f2d8b`（archive P-0125）；issue #137 已关闭。已发布 v0.42.1（见上条）。
 
 ### 2026-07-15 — 发布 v0.42.0（P-0123：`upstreamed` 终态 / issue #136）
 
