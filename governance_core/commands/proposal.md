@@ -10,7 +10,7 @@ owner: core
 ledger snapshot）。Agent 不直接 Edit frontmatter / 不直接动 body 之外的字段。
 
 存储与状态机契约：
-- `contracts/proposal_frontmatter_schema.md` v1.1.0（id / agent / status / 三方一致 / mutex）
+- `contracts/proposal_frontmatter_schema.md` v1.4.0（id / agent / status / 三方一致 / mutex）
 - 物理位置：`shared_state/proposals/<agent>/p-NNNN-<slug>.md`（in-flight，不进 git）
 - 归档位置：`proposals/_archive/<YYYY>/p-NNNN-<slug>.md`（terminal 后进 git）
 - 配置：`config/proposals_config.json`（路径 / lock / agents 枚举）
@@ -32,6 +32,7 @@ ledger snapshot）。Agent 不直接 Edit frontmatter / 不直接动 body 之外
 | `/proposal reject <id> --reason "..."` | user 明确否决 | pending → rejected |
 | `/proposal supersede <id> --by <new-path>` | 被新方案替代（**本仓库内**） | (任意) → superseded |
 | `/proposal upstream <id> --to-hub <ref>` | 替代方案已上送到 hub（**另一仓库**） | (任意) → upstreamed |
+| `/proposal link <id> --related <ref>` | 加 `related` 交叉引用（`P-NNNN` 会被校验） | （不转移状态） |
 | `/proposal list [--include-terminal]` | 列出 in-flight + (可选) archive | （只读） |
 | `/proposal show <id>` | 显示 frontmatter + body 预览 | （只读） |
 | `/proposal path <id>` | 解析 id 到当前文件路径 | （只读） |
@@ -234,6 +235,20 @@ in-progress 的 execution-class** 提案（frontmatter 带 `execution:`）的 pe
 draft/pending/approved/in-progress/implemented 任一状态上送）；归档同 complete/reject
 第 2 步询问 user。
 
+### `link <id> --related <ref> [--related <ref> ...]`（P-0128 Phase A）
+
+调 `python tools/proposal_lib.py link --id P-NNNN --related <ref>`：给 proposal 的
+frontmatter `related` 追加交叉引用。这是 `related` 的**唯一写入口**（frontmatter 不手改）。
+
+- `<ref>` 是**全局 proposal id**（`P-NNNN`）时会被校验：必须能在 in-flight / archive /
+  legacy 或 id ledger 里解析到，且不能是自己；形似 id 但写错的（`P-12`、`p-0123`）直接拒绝。
+  其余形式（相对路径、knowledge 条目）按原样保存、不校验。
+- **写入时 fail-fast**：任一 ref 不合格则整条命令不写入；与 audit Check 18 共用同一谓词，
+  写入口接受的引用不会在 audit 失败。
+- **单向**：只改本 proposal，不动被引用方，也不要求对方反向引用（对方可能已归档或属于别的
+  agent）。幂等：重复 link 同一 ref 不产生变更。成功追加时写一行 State Log。
+- 典型用途：实施方 proposal 指回它所承接的调研 / 建议 proposal，让链条可机械追溯。
+
 ### `list [--include-terminal]`
 
 调 `python tools/proposal_lib.py list [--include-terminal]`：
@@ -302,7 +317,7 @@ Commit message 含 `Implements: P-NNNN` 或 `Per proposal P-NNNN` 时，wrap-up 
 
 ## 反模式
 
-- ❌ 直接 Edit shared_state/proposals/ 文件的 frontmatter
+- ❌ 直接 Edit shared_state/proposals/ 文件的 frontmatter（含手写 `related:` —— 用 `link`）
 - ❌ 直接 Edit 文件的 `## State Log` 段（破坏 audit trail）
 - ❌ Agent 自批 approve / reject（违反安全约束）
 - ❌ `complete` 时不传 hash 也不在能解析的 HEAD 状态（lib 会拒）

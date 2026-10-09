@@ -275,6 +275,30 @@ def validate_upstreamed_ref(ref: str) -> tuple[bool, str]:
     )
 
 
+# `related` by global id (schema §4.6, P-0128 Phase A). A `related` element is
+# either a global proposal id or free-form (relative path / knowledge entry).
+# The classifier is the ONE shared predicate: the writer (`link`) and the
+# auditor (Check 18) both use it, so a ref the writer accepts never fails audit.
+_RELATED_ID_ATTEMPT_RE = re.compile(r"^[Pp][-_ ]?\d+$")
+
+
+def classify_related_ref(ref: str) -> str:
+    """Classify one `related` element: 'id' | 'malformed-id' | 'other'.
+
+    'id'           -- a well-formed global proposal id (`P-NNNN`, same grammar
+                      as the frontmatter `id` field).
+    'malformed-id' -- looks like an id attempt but is not well-formed
+                      (`P-12`, `p-0123`, `P0123`); always a typo.
+    'other'        -- anything else; keeps the pre-1.4.0 free-form meaning
+                      (relative path, knowledge entry) and is not validated.
+    """
+    if _ID_RE.match(ref):
+        return "id"
+    if _RELATED_ID_ATTEMPT_RE.match(ref):
+        return "malformed-id"
+    return "other"
+
+
 def _today() -> str:
     return _dt.date.today().isoformat()
 
@@ -1311,6 +1335,74 @@ def transition_proposal(
     return path, prev, new_status
 
 
+def _proposal_id_exists(proposal_id: str) -> bool:
+    """True iff `proposal_id` names a proposal in any region or the id ledger.
+
+    The ledger counts as existence because in a multi-clone project the
+    proposal file may live in another clone this process cannot see (the
+    same two sources audit Check 18 resolves against).
+    """
+    if find_by_id(proposal_id) is not None:
+        return True
+    return any(e["id"] == proposal_id for e in _read_ledger()["entries"]
+               if isinstance(e, dict) and "id" in e)
+
+
+def link_proposal(proposal_id: str, related: list[str]) -> tuple[Path, list[str]]:
+    """Add `related` cross-references to a proposal's frontmatter (P-0128).
+
+    The only sanctioned writer of `related` (frontmatter is never hand-edited).
+    Each ref is classified with `classify_related_ref`: a global id must
+    resolve (any region or the id ledger) and must not be the proposal's own
+    id; a malformed id is rejected; free-form refs are stored as given.
+    Fail-fast -- nothing is written unless every ref is acceptable.
+    Single-directional: the target proposal is not touched.
+
+    Returns (path, added) where `added` lists the refs that were not already
+    present. Appends one State Log line when anything was added. Filelock
+    held during the read-modify-write.
+    """
+    path = find_by_id(proposal_id)
+    if path is None:
+        raise FileNotFoundError(f"Proposal {proposal_id} not found")
+    if not related:
+        raise ValueError("link requires at least one --related reference")
+    for ref in related:
+        kind = classify_related_ref(ref)
+        if kind == "malformed-id":
+            raise ValueError(
+                f"related {ref!r} looks like a proposal id but is not "
+                f"`P-NNNN` (capital P, hyphen, at least four digits)")
+        if kind == "id" and ref == proposal_id:
+            raise ValueError(f"related {ref} is the proposal's own id")
+        if kind == "id" and not _proposal_id_exists(ref):
+            raise ValueError(
+                f"related {ref} resolves to no proposal (not in in-flight / "
+                f"archive / legacy, not in the id ledger)")
+
+    lock = filelock.FileLock(str(_lock_path()), timeout=_lock_timeout())
+    with lock:
+        fm, body = parse_proposal(path)
+        existing = fm["related"] if "related" in fm else []
+        if not isinstance(existing, list):
+            existing = [existing] if existing else []
+        added = []
+        for ref in related:
+            if ref not in existing and ref not in added:
+                added.append(ref)
+        if added:
+            fm["related"] = existing + added
+            entry = f"- {_today()}: linked related {', '.join(added)}"
+            if _STATE_LOG_HEADER in body:
+                new_body = body.rstrip() + "\n" + entry + "\n"
+            else:
+                new_body = (body.rstrip() + "\n\n" + _STATE_LOG_HEADER
+                            + "\n\n" + entry + "\n")
+            write_atomic(path, serialize_frontmatter(fm) + "\n"
+                         + new_body.lstrip("\n"))
+    return path, added
+
+
 def _resolve_head_hash() -> str:
     result = subprocess.run(
         ["git", "log", "-1", "--format=%h"],
@@ -1474,6 +1566,17 @@ def _cmd_transition(args):
         allow_uncalibrated_gate=args.allow_uncalibrated_gate,
     )
     print(f"[OK] {args.id}: {prev} → {new}")
+    print(f"     path: {path.relative_to(REPO_ROOT.parent)}")
+    return 0
+
+
+def _cmd_link(args):
+    """CLI: add `related` cross-references to a proposal (P-0128 Phase A)."""
+    path, added = link_proposal(args.id, args.related)
+    if added:
+        print(f"[OK] {args.id}: related += {', '.join(added)}")
+    else:
+        print(f"[OK] {args.id}: related unchanged (already linked)")
     print(f"     path: {path.relative_to(REPO_ROOT.parent)}")
     return 0
 
@@ -1803,6 +1906,13 @@ def main(argv=None) -> int:
     p.add_argument("--dry-run", action="store_true",
                    help="Print what would be written without modifying ledger file")
     p.set_defaults(func=_cmd_migrate_ledger)
+
+    p = sub.add_parser("link", help="Add `related` cross-references "
+                                    "(global P-NNNN ids are validated)")
+    p.add_argument("--id", required=True)
+    p.add_argument("--related", required=True, action="append",
+                   help="P-NNNN id or free-form ref; repeatable")
+    p.set_defaults(func=_cmd_link)
 
     p = sub.add_parser("path", help="Print absolute path for P-NNNN")
     p.add_argument("--id", required=True)

@@ -1,6 +1,6 @@
 # Contract: proposals/**/*.md Frontmatter Schema
 
-**Version**: 1.3.0
+**Version**: 1.4.0
 **Status**: active
 **Owner**: core
 **Consumers**: all agents (write proposals, read status), `tools/audit_proposals.py` (validation), `.claude/hooks/session-context.py` (filter pending list), `.claude/commands/proposal.md` (skill that mutates status)
@@ -14,6 +14,11 @@ location semantics).
 
 ## Version history
 
+- **1.4.0** (2026-10-09, P-0128 Phase A, candidate #139): `related` elements
+  may be a **global proposal id** (`P-NNNN`) in addition to a free-form
+  reference (§4.6, §5.7). An id element must resolve (auditor Check 18) and is
+  single-directional. Additive: existing free-form `related` values keep their
+  meaning and stay unvalidated. Written via `proposal_lib.py link`.
 - **1.3.0** (2026-07-15, P-0123, issue #136): Add terminal status `upstreamed`
   (§3.1) plus its state-conditional fields `upstreamed_to` + `upstreamed_at`
   (§4.4a) and the external-reference format rule for `upstreamed_to` (§5.6).
@@ -153,7 +158,7 @@ validator cannot stat the hub's tree. See §5.6 for the format rule and §7.
 | Field | Type | Notes |
 |-------|------|-------|
 | `supersedes` | list[string] | relative paths to proposals this one replaces (mirror of others' `superseded_by`) |
-| `related` | list[string] | conceptually linked proposals or knowledge entries |
+| `related` | list[string] | conceptually linked proposals or knowledge entries. Each element is either a **global proposal id** `P-NNNN` (v1.4.0+, validated — see §5.7) or a free-form reference (relative path / knowledge entry, not validated). Written with `proposal_lib.py link --id <P-NNNN> --related <ref>`; inline list form `related: [P-0123, ...]`. |
 
 ### 4.7 Execution class (added v1.2.0, P-0119)
 
@@ -244,6 +249,24 @@ colon, no scheme), an absolute path, a whitespace-containing ref.
 
 ---
 
+### 5.7 `related` by global id (v1.4.0+)
+
+- An element matching the `id` grammar (`P-NNNN`: capital `P`, hyphen, at least
+  four digits) is a **proposal id reference**. It must resolve to a proposal in
+  the in-flight, archive or legacy region **or** in the id ledger
+  (`_id_ledger.json`) -- the ledger counts because in a multi-clone project the
+  referenced proposal may live in a clone the auditor cannot see.
+- An element that looks like an id attempt but is malformed (`P-12`, `p-0123`,
+  `P0123`) is an error, not a free-form reference.
+- A proposal must not list its own id.
+- **Single-directional**: the referenced proposal is NOT required to reference
+  back (it may be archived or owned by another agent). Same deliberate
+  non-goal as `upstreamed_to` (§5.6).
+- Any other element keeps the pre-1.4.0 meaning and is not validated.
+- The writer (`proposal_lib.py link`) and the auditor (Check 18) share one
+  predicate (`proposal_lib.classify_related_ref`), so a reference the writer
+  accepts never fails the audit.
+
 ## 6. Exemptions
 
 The following files are NOT subject to this schema:
@@ -279,6 +302,8 @@ The following files are NOT subject to this schema:
   (auditor Check 17) but does **not** require `X` to resolve — the target
   lives in another repo (deliberate non-goal; the ref is provenance, not a
   verified link)
+- A `related` element in id form requires that id to resolve (auditor
+  Check 18) but does **not** require a back-reference (§5.7)
 
 ---
 

@@ -17,6 +17,26 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-10-09 — P-0128 Phase A：`related` 接受全局 id + audit Check 18（0.44.0，未发布）
+
+- **批准**：owner 2026-10-09 批 P-0128 并接受各倾向（Phase B 等消费者 diff；`link` 子命令；
+  ledger-only id 可解析；Phase A 单独发）。P-0128 现为 `in-progress`（Phase B 未做）。
+- **契约**：`proposal_frontmatter_schema.md` v1.3.0 → **v1.4.0**（§4.6 + 新 §5.7 + §7 不变量）。
+  增量兼容：自由文本 `related` 含义不变、不校验。
+- **写入口**：`proposal_lib.py link --id P-NNNN --related <ref>`（可重复）——`related` 的唯一
+  writer；写入时 fail-fast（须能解析 / 非自身 / 非畸形 id），幂等，追加一行 State Log，不动被引用方。
+- **审计**：Check 18（FAIL）—— id 形式的 `related` 须在 in-flight/archive/legacy 或 id ledger 中
+  解析到；自引用、畸形 id（`P-12`/`p-0123`）也 FAIL；单向、不要求反向引用。writer 与 auditor
+  共用 `proposal_lib.classify_related_ref`。
+- **文档**：`commands/proposal.md`（`link` 子命令）、`docs/core-manual.md` §4。
+- **验证**：新增 `tools/test_audit_proposals_related.py` 31 passed；pytest `tools/` 191 passed；
+  全部脚本套件零失败；`upgrade` + `doctor` exit 0；wheel 干净。**live dogfood**：
+  `link --id P-0128 --related P-0126` 成功、重复执行无变更、`P-9126` / `p-0126` 被拒（rc=1）；
+  真实语料 audit 0/62 failures。
+- **bump**：0.43.1 → 0.44.0。**未发布**（0.44.0 的发布未获确认；owner 只确认了 0.43.1）。
+- **0.43.1 已发布并核实**：`gh release create v0.43.1` → CI `release` success → PyPI JSON
+  `latest: 0.43.1`，wheel + sdist 均在。master 已 push（`abd3d4b`）。
+
 ### 2026-10-09 — intake 自动关闭 byte-identical 重复件（P-0127 Open Question，owner 裁定：是）
 
 - owner 2026-10-09 裁定四项待决：① 批 P-0128 并接受各 Open Question 的倾向；② push + 发布

@@ -78,6 +78,14 @@ This repo runs its own proposal pipeline:
   are still placeholder (escape hatch `--allow-thin-spec`). Simple proposals are
   unaffected. `create` now auto-emits the `proposal_suggest` ①②③ recall. The gate
   is form-only; audit Check 14 (WARN) shares its predicate. Details in the skill.
+- P-0128 Phase A related-by-id (v0.44.0, schema v1.4.0): a `related` element may
+  be a global proposal id. `proposal_lib.py link --id P-NNNN --related P-MMMM`
+  is the only writer (validates at write time: must resolve in a region or the
+  id ledger, not self, not malformed); audit Check 18 FAILs an id that does not
+  resolve. Single-directional — the target is never touched and need not
+  reference back. Free-form `related` values are unchanged. Phase B
+  (`handoff_to` + open-handoff audit, multi-agent) is pending the consumer's
+  reference diff on #139.
 
 ## 5. Constitution changes
 

@@ -45,8 +45,12 @@ Validates:
             grammar (schema §5.6), format-validated via the SHARED
             proposal_lib.validate_upstreamed_ref predicate and NOT resolved
             (cross-repo replacement; issue #136 / P-0123)
+  Check 18: every `related` element in global-id form (`P-NNNN`) resolves to
+            a proposal in the corpus or the id ledger, is not the proposal's
+            own id, and is well-formed; single-directional, no back-reference
+            required (shares proposal_lib.classify_related_ref; P-0128 Phase A)
 
-Schema: contracts/proposal_frontmatter_schema.md v1.3.0
+Schema: contracts/proposal_frontmatter_schema.md v1.4.0
 
 Usage:
     python tools/audit_proposals.py            # validate, exit 1 on error
@@ -644,6 +648,78 @@ def _check_gate_calibration_adequacy(in_flight: list, repo_root: Path) -> list:
     return warnings
 
 
+def _ledger_ids(repo_root: Path) -> set:
+    """Return the P-NNNN ids recorded in the id ledger (empty if unreadable).
+
+    Check 18 treats the ledger as a second source of "this id exists": in a
+    multi-clone project the origin proposal may live in another clone whose
+    files this audit cannot see, while the shared ledger still records it.
+    An absent / unparseable ledger is Check 10's concern, not this one's.
+    """
+    import json as _json
+    from governance_core.config import load_proposals_config
+    try:
+        ledger_path = Path(load_proposals_config(repo_root)["id_ledger_path"])
+        ledger = _json.loads(ledger_path.read_text(encoding="utf-8"))
+        return {e["id"] for e in ledger["entries"]
+                if isinstance(e, dict) and "id" in e}
+    except Exception:  # noqa: BLE001 -- best-effort second source
+        return set()
+
+
+def _check_related_ids(regions: dict, repo_root: Path) -> list:
+    """Check 18 (P-0128 Phase A): `related` proposal ids must resolve.
+
+    A `related` element in global-id form (`P-NNNN`) must name a proposal
+    that exists in the scanned corpus (in-flight | archive | legacy) or in
+    the id ledger, and must not be the proposal's own id. An element that
+    looks like an id attempt but is not well-formed (`P-12`, `p-0123`) is a
+    typo and fails too. Any other element (relative path, knowledge entry)
+    keeps its free-form meaning and is not validated. Single-directional:
+    the target is NOT required to reference back (same non-goal as
+    `upstreamed_to`, schema §5.6). Predicates shared with the writer
+    (`proposal_lib link`), so audit and write-time verdicts cannot drift.
+    """
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from proposal_lib import classify_related_ref
+    except Exception:
+        return ["Check 18: cannot import classify_related_ref predicate "
+                "from proposal_lib (related ids left unvalidated)"]
+
+    files = [p for group in regions.values() for p in group]
+    known = _ledger_ids(repo_root)
+    for p in files:
+        m = _FILENAME_ID_RE.match(p.name)
+        if m:
+            known.add(f"P-{int(m.group(1)):04d}")
+
+    errors = []
+    for p in files:
+        try:
+            fm, err = _parse_frontmatter(p.read_text(encoding="utf-8"))
+        except OSError:
+            continue
+        if err or "related" not in fm or not isinstance(fm["related"], list):
+            continue
+        own = fm["id"] if "id" in fm else ""
+        for ref in fm["related"]:
+            kind = classify_related_ref(ref)
+            if kind == "malformed-id":
+                errors.append(
+                    f"Check 18: {p.name}: related {ref!r} looks like a "
+                    f"proposal id but is not `P-NNNN` (capital P, hyphen, at least four digits)")
+            elif kind == "id" and ref == own:
+                errors.append(
+                    f"Check 18: {p.name}: related {ref} is the proposal's own id")
+            elif kind == "id" and ref not in known:
+                errors.append(
+                    f"Check 18: {p.name}: related {ref} resolves to no "
+                    f"proposal (not in in-flight / archive / legacy, not in "
+                    f"the id ledger)")
+    return errors
+
+
 def _collect_files(repo_root: Path) -> dict:
     """Return {region: [path, ...]} for the 3 scan regions.
 
@@ -755,6 +831,11 @@ def main() -> int:
     for e in x_branch_errors:
         fail_count += 1
         sys.stdout.write(f"FAIL [x-branch]: {e}\n")
+
+    # Check 18: related-by-id resolution (P-0128 Phase A)
+    for e in _check_related_ids(regions, repo_root):
+        fail_count += 1
+        sys.stdout.write(f"FAIL [related]: {e}\n")
 
     # Check 12: archive author heuristic (WARN only, P-0057 Phase 3 C3)
     warnings = _check_archive_author_match(regions["archive"], repo_root)
