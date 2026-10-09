@@ -90,6 +90,46 @@
       ],
       "reason": "Out of governance-core charter and domain-specific. screen-cross-market-arbitrage-opportunity is a business-feasibility research method (cost-structure decomposition, intermediary margin base, substitute channels, transportability, unit-economics model, acquisition modes). Nothing in it concerns governance or the agent harness, so 'layer: candidate-common' is a mis-tag: the common layer means generic to any governance-core consumer's GOVERNANCE, not generic within the consumer's own business domain.",
       "advice": "Keep it as a local business-layer skill -- retag 'layer: business' (drop 'layer: candidate-common') so the sweep stops re-offering it. Tagging test before marking a learned skill candidate-common: would this skill change how a project with a completely different business runs its hooks / proposals / memory / skills / constitution? If the answer is no, it is business-layer."
+    },
+    {
+      "rejected_at": "2026-10-09",
+      "skill_name": "verify-guard-fires-in-its-target-context",
+      "payload_sha256": "7a08a1add4ccc65aaeebfca44d39a174510be7bac54f89be24286276b514244f",
+      "block_by_name": false,
+      "origin": "trade-agent",
+      "issue_urls": [
+        "https://github.com/napheir/governance-core/issues/142"
+      ],
+      "reason": "Already promoted into the package source via P-0126 (v0.43.0) as governance_core/skills/verify-guard-fires-in-its-target-context.md. This payload (revised text, the promoted version) is byte-identical to a copy the hub has already curated; nothing new to promote.",
+      "advice": "No action needed for this exact content. The entry is digest-keyed (block_by_name false): a genuinely revised version of the skill has a different digest and can still be offered. Sync the skill file across clones so a stale copy is not re-swept."
+    },
+    {
+      "rejected_at": "2026-10-09",
+      "skill_name": "verify-guard-fires-in-its-target-context",
+      "payload_sha256": "bca99f7ca0dd4db83bb7bf21b050821e52c87e11237bb073b2364fd8702f2f0e",
+      "block_by_name": false,
+      "origin": "trade-agent",
+      "issue_urls": [
+        "https://github.com/napheir/governance-core/issues/141",
+        "https://github.com/napheir/governance-core/issues/144",
+        "https://github.com/napheir/governance-core/issues/146"
+      ],
+      "reason": "Already promoted into the package source via P-0126 (v0.43.0) as governance_core/skills/verify-guard-fires-in-its-target-context.md. This payload (earlier shorter text, superseded by the promoted revision) is byte-identical to a copy the hub has already curated; nothing new to promote.",
+      "advice": "No action needed for this exact content. The entry is digest-keyed (block_by_name false): a genuinely revised version of the skill has a different digest and can still be offered. Sync the skill file across clones so a stale copy is not re-swept."
+    },
+    {
+      "rejected_at": "2026-10-09",
+      "skill_name": "gate-on-change-content-not-target-path",
+      "payload_sha256": "a2d01c0321be675933fdcf8c7b2554c78d5e1fe308ec6d4571cdbb8fae85739a",
+      "block_by_name": false,
+      "origin": "trade-agent",
+      "issue_urls": [
+        "https://github.com/napheir/governance-core/issues/140",
+        "https://github.com/napheir/governance-core/issues/143",
+        "https://github.com/napheir/governance-core/issues/145"
+      ],
+      "reason": "Already promoted into the package source via P-0126 (v0.43.0) as governance_core/skills/gate-on-change-content-not-target-path.md. This payload (the promoted version) is byte-identical to a copy the hub has already curated; nothing new to promote.",
+      "advice": "No action needed for this exact content. The entry is digest-keyed (block_by_name false): a genuinely revised version of the skill has a different digest and can still be offered. Sync the skill file across clones so a stale copy is not re-swept."
     }
   ]
 }

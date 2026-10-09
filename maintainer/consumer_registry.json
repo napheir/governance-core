@@ -192,6 +192,24 @@
       "decision": "promoted",
       "note": "Promoted as common-layer guide via P-0114 (frontmatter learned->guide, body verbatim). Policy-half of the skill-graduation seam; cross-links #122 funnel loaded-counter (instrument-half).",
       "reviewed_at": "2026-07-01T03:49:21Z"
+    },
+    {
+      "id": "cand-trade-agent-20260820-verify-guard-fires-in-its-target-context",
+      "origin": "trade-agent",
+      "kind": "skill",
+      "title": "verify-guard-fires-in-its-target-context",
+      "decision": "promoted",
+      "note": "P-0126: promoted from #142 (revised text) as common-layer guide; frontmatter learned->guide, workflow verbatim, dated consumer anecdote + sync-tool wording genericized, one note added for user-global enforcing copies. Dups #141/#144/#146 closed. v0.43.0",
+      "reviewed_at": "2026-10-09T01:50:05Z"
+    },
+    {
+      "id": "cand-trade-agent-20260820-gate-on-change-content-not-target-path",
+      "origin": "trade-agent",
+      "kind": "skill",
+      "title": "gate-on-change-content-not-target-path",
+      "decision": "promoted",
+      "note": "P-0126: promoted from #140 as common-layer guide; frontmatter learned->guide, workflow verbatim, consumer measurement genericized. Dups #143/#145 closed. v0.43.0",
+      "reviewed_at": "2026-10-09T01:50:05Z"
     }
   ]
 }
