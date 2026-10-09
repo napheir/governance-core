@@ -20,10 +20,13 @@ After completing a complex, multi-step workflow, use this command to capture it 
 2. **Classify the layer** (P-0065): decide whether the skill is a
    **common-layer candidate** (generic — reusable by any governance-core
    consumer) or **business** (specific to this project). Use the
-   generic-vs-project axis in the `lesson-classification` skill. When in
-   doubt, choose `candidate-common` — a misclassification only costs one
-   extra review at governance-core, whereas a missed candidate never
-   surfaces. The choice becomes the `--layer` argument below and is written
+   generic-vs-project axis in the `lesson-classification` skill — two
+   questions, in order: (1) charter — is it about running the governance /
+   agent harness itself (hooks, proposals, memory, skills, constitution,
+   audits, install/upgrade)? If not, it is `business` even when the recipe
+   is domain-agnostic; (2) genericity — would a consumer with a different
+   business use it unchanged? Unsure about (1) → `business`; unsure only
+   about (2) → `candidate-common`. The choice becomes the `--layer` argument below and is written
    to the skill's `layer:` frontmatter; the candidate pipeline reads it.
 
 3. **Extract the skill**: Use the extractor module. It ships in the

@@ -169,6 +169,123 @@ def section_main_branches(failed: list[str], set_env) -> None:
         ci.add_labels, ci.comment = orig_add, orig_comment
 
 
+def _payload_body(meta: dict, payload: str, crlf: bool = False) -> str:
+    """A full candidate issue body: candidate.json block + one payload block."""
+    rel = meta["source_paths"][0]
+    body = ("## Candidate\n\n### candidate.json\n```json\n"
+            + json.dumps(meta, indent=2) + "\n```\n\n### " + rel + "\n```\n"
+            + payload + "\n```\n")
+    return body.replace("\n", "\r\n") if crlf else body
+
+
+def section_duplicates(failed: list[str], set_env) -> None:
+    """P-0127: digest-from-body duplicate detection (pure + main branches)."""
+    meta = _valid_meta(origin="acme", title="some_generic_thing")
+    text_v1, text_v2 = "# thing\nfirst text", "# thing\nrevised text"
+    d1 = ci.body_payload_digest(_payload_body(meta, text_v1))
+    d2 = ci.body_payload_digest(_payload_body(meta, text_v2))
+    empty_reg = {"rejected": []}
+    reg = {"rejected": [{
+        "skill_name": "some_generic_thing", "payload_sha256": d1,
+        "block_by_name": False, "reason": "already promoted", "advice": "none"}]}
+
+    def prior(number: int, digest: str, state: str = "OPEN",
+              title: str = "some_generic_thing") -> dict:
+        return {"number": number, "state": state, "title": title,
+                "digest": digest, "issue_url": f"u/{number}",
+                "candidate_id": f"cand-{number}"}
+
+    def classify(number: int, digest: str, registry: dict,
+                 priors: list[dict]) -> dict | None:
+        return ci.classify_duplicate(
+            issue_number=number, title="some_generic_thing", digest=digest,
+            rejected_registry=registry, prior_issues=priors)
+
+    _check(d1 != d2 and len(d1) == 64,
+           "26. body_payload_digest: content-sensitive sha256", failed)
+    _check(ci.body_payload_digest(_payload_body(meta, text_v1, crlf=True)) == d1,
+           "27. body_payload_digest: CRLF body == LF digest", failed)
+    _check(ci.body_payload_digest(_payload_body(
+               _valid_meta(origin="acme", title="some_generic_thing",
+                           id="cand-acme-20991231-thing"), text_v1)) == d1,
+           "28. body_payload_digest: re-minted id does not change digest", failed)
+
+    v = classify(50, d1, empty_reg, [prior(40, d1, "CLOSED"), prior(45, d1)])
+    _check(v is not None and v["verdict"] == "duplicate" and v["of"] == [40, 45],
+           "29. same digest as prior issues (open or closed) -> duplicate", failed)
+    v = classify(50, d2, empty_reg, [prior(40, d1)])
+    _check(v is not None and v["verdict"] == "revision" and v["of"] == [40],
+           "30. same title, new digest, prior OPEN -> revision", failed)
+    _check(classify(50, d2, empty_reg, [prior(40, d1, "CLOSED")]) is None,
+           "31. same title, new digest, prior CLOSED -> no verdict", failed)
+    _check(classify(50, d1, empty_reg, [prior(50, d1), prior(60, d1)]) is None,
+           "32. self + HIGHER-numbered twins are not prior -> no verdict", failed)
+    v = classify(50, d1, reg, [prior(40, d1)])
+    _check(v is not None and v["verdict"] == "dup-of-rejected"
+           and "already promoted" in v["detail"],
+           "33. exact registry digest wins over prior-issue match", failed)
+    _check(classify(50, d2, reg, []) is None,
+           "34. registry name-only match (new digest) -> no verdict", failed)
+    _check(classify(50, d1, empty_reg,
+                    [prior(40, d2, title="another_thing")]) is None,
+           "35. unrelated prior issue -> no verdict", failed)
+
+    # main() branches -- gh, registry and hub listing stubbed at the boundary
+    calls: dict[str, list] = {"labels": [], "comments": []}
+    orig = (ci.add_labels, ci.comment, ci._ledger.list_hub_candidate_issues,
+            ci._rejected.load_rejected_registry)
+    ci.add_labels = lambda repo, issue, *labs: calls["labels"].extend(labs)
+    ci.comment = lambda repo, issue, body: calls["comments"].append(body)
+    ci._rejected.load_rejected_registry = lambda: empty_reg
+    hub: dict[str, list] = {"issues": []}
+    ci._ledger.list_hub_candidate_issues = (
+        lambda origin, repo="": hub["issues"])
+
+    def run(number: int, payload: str) -> int:
+        calls["labels"].clear()
+        calls["comments"].clear()
+        set_env(GH_REPO="o/r", ISSUE_NUMBER=str(number),
+                ISSUE_TITLE="[candidate] skill: some_generic_thing (from acme)",
+                ISSUE_BODY=_payload_body(meta, payload, crlf=True))
+        return ci.main()
+
+    try:
+        hub["issues"] = [prior(40, d1)]
+        rc = run(50, text_v1)
+        _check(rc == 0 and calls["labels"] == ["candidate", "duplicate"]
+               and "#40" in calls["comments"][0],
+               "36. main() byte-identical re-file -> candidate+duplicate, "
+               "never valid/auto-eligible", failed)
+
+        rc = run(50, text_v2)
+        _check(rc == 0 and calls["labels"] == ["candidate", "valid",
+                                               "auto-eligible", "revision"]
+               and "revision:" in calls["comments"][0],
+               "37. main() revised re-file of an open issue -> normal labels "
+               "+ revision", failed)
+
+        hub["issues"] = []
+        ci._rejected.load_rejected_registry = lambda: reg
+        rc = run(50, text_v1)
+        _check(rc == 0 and calls["labels"] == ["candidate", "dup-of-rejected"]
+               and "already promoted" in calls["comments"][0],
+               "38. main() exact registry digest -> candidate+dup-of-rejected",
+               failed)
+
+        def boom(origin, repo=""):
+            raise RuntimeError("hub listing exploded")
+        ci._rejected.load_rejected_registry = lambda: empty_reg
+        ci._ledger.list_hub_candidate_issues = boom
+        rc = run(50, text_v1)
+        _check(rc == 0 and calls["labels"] == ["candidate", "valid",
+                                               "auto-eligible"],
+               "39. main() dedup failure is fail-open -> labels as before "
+               "P-0127", failed)
+    finally:
+        (ci.add_labels, ci.comment, ci._ledger.list_hub_candidate_issues,
+         ci._rejected.load_rejected_registry) = orig
+
+
 def main() -> int:
     import os
     failed: list[str] = []
@@ -183,6 +300,7 @@ def main() -> int:
     section_feedback_detection(failed)
     section_surface_config(failed)
     section_main_branches(failed, set_env)
+    section_duplicates(failed, set_env)
     for k in ("GH_REPO", "ISSUE_NUMBER", "ISSUE_TITLE", "ISSUE_BODY"):
         os.environ.pop(k, None)
 
@@ -190,7 +308,7 @@ def main() -> int:
     if failed:
         print(f"[FAIL] {len(failed)} case(s) failed")
         return 1
-    print("[PASS] all 25 cases passed")
+    print("[PASS] all 39 cases passed")
     return 0
 
 

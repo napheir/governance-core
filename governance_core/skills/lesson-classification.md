@@ -73,20 +73,31 @@ pipeline (P-0065).
 
 | layer | meaning |
 |-------|---------|
-| `candidate-common` | Generic — a different governance-core consumer project would benefit from this skill essentially unchanged. Eligible for uplink to governance-core as a common-layer candidate. |
-| `business` | Project-specific — depends on this project's business domain, agent topology, or bespoke infrastructure. Stays local. |
+| `candidate-common` | A **governance / harness** skill that is generic — a different governance-core consumer project would benefit from it essentially unchanged. Eligible for uplink to governance-core as a common-layer candidate. |
+| `business` | Everything else: project-specific (depends on this project's business domain, agent topology, or bespoke infrastructure) **or** not about governance at all (general engineering / domain method). Stays local. |
 
-**Test**: *Would another governance-core consumer — a different project,
-different domain — use this skill unchanged (modulo `.governance/config.json`
-values)?*
+**Test** — two questions, in this order (P-0127):
 
-- Yes, and it carries no hard dependency on this project's business → `candidate-common`.
-- No, it only makes sense inside this project's domain → `business`.
+1. **Charter**: *Is the skill about running the governance / agent harness
+   itself — hooks and guards, proposals, memory, skills, the constitution,
+   audits, install / upgrade, agent collaboration?*
+   - No → `business`. Stop here. A sound, domain-agnostic **engineering**
+     recipe (a refactoring pattern, a data-pipeline technique, a research or
+     feasibility method) is still `business`: governance-core curates
+     governance capabilities, not general engineering skills.
+2. **Genericity**: *Would a governance-core consumer with a completely
+   different business use it unchanged (modulo `.governance/config.json`
+   values)?*
+   - Yes → `candidate-common`.
+   - No, it only makes sense inside this project's domain or topology → `business`.
 
-**When unsure, choose `candidate-common`.** A misclassified `business` skill
-costs one extra review when it reaches governance-core; a misclassified
-`candidate-common` skill that should have been generic simply never surfaces
-for reuse. Over-reporting is cheap, under-reporting is silent.
+**When unsure**: unsure about question 1 → `business`; unsure only about
+question 2 → `candidate-common`. Over-reporting is not free: a mis-tagged skill
+is re-offered by every sweep from every clone until it is retagged, and each
+copy costs a hub review. (The earlier rule — "when unsure, choose
+`candidate-common`" — produced a run of out-of-charter candidates that were all
+rejected with the same advice.) A skill you believe was wrongly kept local can
+always be offered deliberately with `/submit-candidate`.
 
 This axis is consumed by `/extract-skill` (`--layer`) and by the P-0065
 candidate envelope (`kind: skill`). It does not change *where the skill is

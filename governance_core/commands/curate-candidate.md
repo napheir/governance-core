@@ -42,6 +42,16 @@ python tools/candidate.py review
 Lists local `candidates/` envelopes + open GitHub `candidate` issues, with each
 candidate's prior decision (if any).
 
+**Collapse duplicates first** (P-0127). Hub intake labels a byte-identical
+re-file `duplicate` (same payload digest as an earlier issue) or
+`dup-of-rejected` (exact digest already in `rejected_registry.json` — rejected
+*or* already promoted), and a same-title / new-content re-file of an open issue
+`revision`. Flagged duplicates carry no `valid` / `auto-eligible` label and are
+left open: close them in bulk (`gh issue list --label duplicate`), then curate
+the unique set. For a `revision` pair, compare the texts — the higher issue
+number is not necessarily the better text (a stale clone can re-file an older
+version after the revision).
+
 ### 2. Classify each candidate
 
 - **Layer** — generic common-layer vs consumer-domain-specific. Use the

@@ -256,9 +256,86 @@ def _dedup_cases() -> list[bool]:
     return results
 
 
+def _hub_check_cases() -> list[bool]:
+    """P-0127: sweep consults the hub whenever something is pending.
+
+    Key-free and offline: `discover_uplinked_from_hub` and `shutil.which` are
+    replaced on the modules `candidate` resolves them through, so the helper's
+    real code path runs with only the process boundary stubbed.
+    """
+    results: list[bool] = []
+    real_discover = candidate._ledger.discover_uplinked_from_hub
+    real_which = candidate.shutil.which
+    calls: list[str] = []
+
+    def _hub(entries: list[dict]):
+        def _fake(origin: str, repo: str = "") -> list[dict]:
+            calls.append(origin)
+            return entries
+        return _fake
+
+    def _run(pending, entries, led_path, gh: bool = True):
+        calls.clear()
+        candidate._ledger.discover_uplinked_from_hub = _hub(entries)
+        candidate.shutil.which = lambda name: "gh" if gh else None
+        buf = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                kept = candidate._drop_pending_seen_on_hub(
+                    pending, led_path, "acme", "o/r")
+        finally:
+            candidate._ledger.discover_uplinked_from_hub = real_discover
+            candidate.shutil.which = real_which
+        return kept, buf.getvalue()
+
+    tmp = Path(tempfile.mkdtemp(prefix="gc_sweep_hubcheck_"))
+    try:
+        led_path = tmp / "_uplinked.json"
+        # A NON-empty ledger -- the case the old empty-ledger-only self-heal
+        # never re-checked (another clone uplinked `dig-b` meanwhile).
+        ledger.record_uplink(led_path, "dig-a", "cand-acme-1-a", "https://h/1")
+        pa, pb, pc = Path("env-a2"), Path("env-b"), Path("env-c")
+        hub = [{"digest": "dig-b", "candidate_id": "cand-acme-2-b",
+                "issue_url": "https://h/2"}]
+
+        kept, text = _run([(pb, "dig-b"), (pc, "dig-c")], hub, led_path)
+        results.append(_case(
+            "hub-check: non-empty ledger + pending already on hub -> dropped",
+            lambda: kept == [(pc, "dig-c")]
+            and "already on the hub (https://h/2)" in text))
+        results.append(_case(
+            "hub-check: recovered digest recorded in the local ledger",
+            lambda: ledger.is_uplinked(ledger.load_ledger(led_path), "dig-b")
+            and "restored 1 prior uplink" in text))
+
+        kept, _ = _run([(pc, "dig-c")], hub, led_path)
+        results.append(_case(
+            "hub-check: pending the hub has never seen -> kept",
+            lambda: kept == [(pc, "dig-c")] and calls == ["acme"]))
+
+        kept, _ = _run([(pc, "dig-c")], [], led_path)
+        results.append(_case(
+            "hub-check: hub listing empty (offline) -> pending unchanged",
+            lambda: kept == [(pc, "dig-c")]))
+
+        kept, _ = _run([(pc, "dig-c")], hub, led_path, gh=False)
+        results.append(_case(
+            "hub-check: no gh on PATH -> hub not queried, pending unchanged",
+            lambda: kept == [(pc, "dig-c")] and calls == []))
+
+        kept, _ = _run([], hub, led_path)
+        results.append(_case(
+            "hub-check: nothing pending -> hub not queried",
+            lambda: kept == [] and calls == []))
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+    return results
+
+
 def main() -> int:
     """Run the ledger + dedup + sweep groups; exit non-zero on any failure."""
-    results = _ledger_cases() + _dedup_cases() + _sweep_cases()
+    results = (_ledger_cases() + _dedup_cases() + _hub_check_cases()
+               + _sweep_cases())
     passed, total = sum(results), len(results)
     out(f"\n{passed}/{total} candidate-sweep cases passed")
     return 0 if passed == total else 1

@@ -253,6 +253,43 @@ def _discover_cases() -> list[bool]:
             lambda: rebuilt == []))
     finally:
         _ledger.subprocess.run = real_run
+
+    # 6. P-0127: list_hub_candidate_issues keeps number / state / title, and
+    #    discover_uplinked_from_hub is a projection of it (same digests).
+    listed_issues = [
+        {"number": 10, "state": "CLOSED",
+         "title": "[candidate] skill: skill-a (from trade-agent)",
+         "body": body_a, "url": "https://example/10"},
+        {"number": 11, "state": "OPEN",
+         "title": "[candidate] skill: skill-b (from trade-agent)",
+         "body": body_b.replace("\n", "\r\n"), "url": "https://example/11"},
+        {"number": 12, "state": "OPEN", "title": "[candidate] broken",
+         "body": "no candidate.json here", "url": "https://example/12"},
+    ]
+    _ledger.subprocess.run = _make_gh_mock(
+        json.dumps(listed_issues).encode("utf-8"))
+    try:
+        listed = _ledger.list_hub_candidate_issues("trade-agent")
+        projected = _ledger.discover_uplinked_from_hub("trade-agent")
+        results.append(_case(
+            "list: unparseable issue skipped, 2 of 3 returned",
+            lambda: [i["number"] for i in listed] == [10, 11]))
+        results.append(_case(
+            "list: state + title (candidate.json title) carried through",
+            lambda: listed[0]["state"] == "CLOSED"
+            and listed[1]["state"] == "OPEN"
+            and listed[0]["title"] == "skill-a"))
+        results.append(_case(
+            "list: CRLF body hashes to the LF payload digest",
+            lambda: listed[1]["digest"]
+            == _ledger._hash_payload([("skill-b.md", payload_b)])))
+        results.append(_case(
+            "discover: projection of list (same digests, ledger shape)",
+            lambda: [e["digest"] for e in projected]
+            == [i["digest"] for i in listed]
+            and set(projected[0]) == {"digest", "candidate_id", "issue_url"}))
+    finally:
+        _ledger.subprocess.run = real_run
     return results
 
 

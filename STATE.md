@@ -17,6 +17,30 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-10-09 — P-0127：candidate 流水线两端去重 + candidate-common 判据（0.43.1，未发布）
+
+- **根因**（读码确认）：① `candidate.py` sweep 只在本地账本**全空**时才查 hub（旧 `:253`），而账本
+  `.governance/candidate-outbox/_uplinked.json` 是 gitignored、每 clone 一份 → 多 clone 各自重提；
+  ② hub intake 的 `net-new` 只查目标路径是否已跟踪，从不比对 payload digest；③
+  `lesson-classification` / `extract-skill` 写着"拿不准选 candidate-common"，无治理层判据。
+- **消费者侧**：`ledger.list_hub_candidate_issues`（保留 number/state/title，`discover_uplinked_from_hub`
+  成其投影）；`cmd_sweep` 改为**只要有 pending 就查 hub**（`_drop_pending_seen_on_hub`），hub 已有的
+  digest 写回账本并跳过；无 pending 不发网络请求；无 `gh` / 离线退化为原行为。
+- **hub 侧**：`maintainer/candidate_intake.py` 从 issue body 重算 digest（共享 parser），判
+  `dup-of-rejected`（registry 精确 digest，含已 promote）/ `duplicate`（同 digest 的更小号 issue）/
+  `revision`（同名、内容不同、原件仍 open）。重复件不给 `valid`/`auto-eligible`。**只打标签 + 评论，
+  不自动关闭**（关闭超出已批规划，列为 Open Question 留给 owner）。失败一律 fail-open。
+- **判据**：两问顺序制 —— Q1 charter（是否关于治理/harness 本身）否→`business`；Q2 通用性。拿不准
+  Q1→`business`，仅拿不准 Q2→`candidate-common`。
+- **文档**：`docs/core-manual.md` §11（sweep hub-check、intake 标签表、hub 必备标签）；
+  `curate-candidate` 加"先合并重复"。repo 新建标签 `revision`。
+- **验证**：recovery 20/20（+4）、sweep 22/22（+6）、intake 39/39（+14）、curate_gate 14/14、pytest
+  160 passed、39 个 `tools/test_*.py` 脚本跑零失败；`upgrade` + `doctor` exit 0；wheel 干净。
+  **回放**真实积压 #138–#147 body：#143 #145 → duplicate of #140；#144 #146 → duplicate of #141；
+  #142 → revision of #141；其余 new —— 与人工判定一致。intake 的线上实证要等下一个真实 candidate。
+- **bump**：0.43.0 → 0.43.1。**未发布**（core-A3 待人工确认）；消费者要升级后 sweep 侧才生效，hub
+  侧 intake 随 push 到 master 即生效。
+
 ### 2026-10-09 — P-0126：candidate 积压清理 + promote 两个 guard 类 guide（0.43.0，未发布）
 
 - **积压**：10 个 open candidate issue 实为 5 个独立 candidate（verify-guard ×4、gate-on-change ×3

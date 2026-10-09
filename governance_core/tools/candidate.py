@@ -120,6 +120,41 @@ def _dedup_pending_by_digest(
     return kept, skipped
 
 
+def _drop_pending_seen_on_hub(
+        pending: list[tuple[Path, str]], led_path: Path, origin: str,
+        repo: str) -> list[tuple[Path, str]]:
+    """Return `pending` minus envelopes whose payload the hub already holds.
+
+    Records every hub-recovered uplink in the ledger at `led_path` (idempotent
+    on digest), so the next sweep in this clone skips them without a network
+    call. A no-op when `pending` is empty, `gh` is not on PATH, or the hub
+    listing comes back empty (offline / auth failure) -- never raises.
+    """
+    if not pending or not shutil.which("gh"):
+        return pending
+    recovered = _ledger.discover_uplinked_from_hub(origin, repo=repo)
+    if not recovered:
+        return pending
+    known_before = len(_ledger.load_ledger(led_path)["uplinked"])
+    for entry in recovered:
+        _ledger.record_uplink(led_path, entry["digest"],
+                              entry["candidate_id"], entry["issue_url"])
+    led = _ledger.load_ledger(led_path)
+    restored = len(led["uplinked"]) - known_before
+    if restored:
+        sys.stdout.write(f"[candidate] sweep: ledger self-heal restored "
+                         f"{restored} prior uplink record(s) from the hub\n")
+    urls = {entry["digest"]: entry["issue_url"] for entry in led["uplinked"]}
+    kept: list[tuple[Path, str]] = []
+    for env, digest in pending:
+        if digest in urls:
+            sys.stdout.write(f"[candidate] sweep: skipping {env.name} -- "
+                             f"already on the hub ({urls[digest]})\n")
+            continue
+        kept.append((env, digest))
+    return kept
+
+
 def cmd_collect(args: argparse.Namespace) -> int:
     """Collect net-new candidate-common learned skills into the outbox."""
     root = Path(args.project_root).resolve()
@@ -243,24 +278,6 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     led_path = _ledger.ledger_path(root)
     led = _ledger.load_ledger(led_path)
 
-    # P-0076 Phase 1: ledger self-heal. If the consumer-side ledger is
-    # empty (lost / wiped / never written) but the outbox has envelopes,
-    # try to rebuild ledger entries from the hub's candidate issue history
-    # before declaring everything net-new. This avoids re-uplinking the
-    # same payloads as fresh candidates just because `_uplinked.json`
-    # vanished (the issue that triggered P-0076).
-    if envelopes and not led["uplinked"] and shutil.which("gh"):
-        recovered = _ledger.discover_uplinked_from_hub(
-            origin, repo=args.repo or _uplink.UPSTREAM_REPO)
-        for entry in recovered:
-            _ledger.record_uplink(led_path, entry["digest"],
-                                  entry["candidate_id"], entry["issue_url"])
-        if recovered:
-            sys.stdout.write(f"[candidate] sweep: ledger self-heal restored "
-                             f"{len(recovered)} prior uplink record(s) from "
-                             f"the hub\n")
-            led = _ledger.load_ledger(led_path)
-
     # P-0076 Phase 2: consult the shipped rejected_registry.json. If an
     # envelope's payload was previously rejected by the hub, surface the
     # reason+advice so the consumer's owner can stop re-uplinking it.
@@ -293,6 +310,16 @@ def cmd_sweep(args: argparse.Namespace) -> int:
             name_warnings.append((env, rej))
         if not _ledger.is_uplinked(led, digest):
             pending.append((env, digest))
+
+    # P-0076 Phase 1 / P-0127: hub check before uplink. The ledger is
+    # per-clone and gitignored, so "absent from this ledger" does not mean
+    # "never uplinked" -- another clone (or a wiped ledger) may already have
+    # filed the same payload. Whenever something is pending, rebuild ledger
+    # entries from the hub's candidate issue history and drop every pending
+    # envelope the hub has already seen. One read-only `gh` call, only when
+    # there is something to send; degrades to ledger-only dedup without `gh`.
+    pending = _drop_pending_seen_on_hub(
+        pending, led_path, origin, args.repo or _uplink.UPSTREAM_REPO)
 
     for env, rej in blocked:
         advisory = _rejected.format_advisory(

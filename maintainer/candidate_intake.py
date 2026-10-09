@@ -14,12 +14,22 @@ disk and no write to the hub. It only:
     (net-new + kind + layer + security-surface), and
   - applies labels + posts one acknowledgement comment.
 
-The payload-dependent checks (full structural validation, secret re-scan,
-rejected-digest dedup) need the payload files on disk, which only exist at
-PROMOTE-time -- a rare, hub-side, human/Phase-2-gated moment. They are NOT done
-here; they belong in P-0082 Phase 2's `curate_gate.py`. This script never
-promotes, so it carries no privilege-escalation surface. The label and
-eligibility outputs are advisory: a human (or the Phase 2 routine) decides.
+The payload-dependent checks (full structural validation, secret re-scan)
+need the payload files on disk, which only exist at PROMOTE-time -- a rare,
+hub-side, human/Phase-2-gated moment. They are NOT done here; they belong in
+P-0082 Phase 2's `curate_gate.py`. This script never promotes, so it carries
+no privilege-escalation surface. The label and eligibility outputs are
+advisory: a human (or the Phase 2 routine) decides.
+
+Duplicate detection (P-0127) IS done here, because it needs only bytes the
+issue body already carries: the payload digest is recomputed from the body
+with the shared parser (`ledger.parse_payload_from_issue_body`) and compared
+with the shipped `rejected_registry.json` and with the hub's earlier candidate
+issues from the same origin. A byte-identical re-file is labeled
+`dup-of-rejected` / `duplicate` (and withheld from `valid` / `auto-eligible`);
+a same-title, different-content re-file of a still-open issue is labeled
+`revision`. Intake only labels and comments -- it never closes an issue -- and
+any failure in this step is logged and ignored (fail-open).
 
 Target-path resolution (surface hit + net-new) is best-effort in Phase 1 and
 purely informational -- Phase 2 re-derives it authoritatively before any
@@ -36,6 +46,8 @@ import sys
 from pathlib import Path
 
 from governance_core.candidates import envelope as _envelope
+from governance_core.candidates import ledger as _ledger
+from governance_core.candidates import rejected as _rejected
 from governance_core.tools._classify_match import match as _glob_match
 
 logging.basicConfig(level=logging.INFO, format="[intake] %(message)s")
@@ -197,6 +209,92 @@ def compute_eligibility(
 
 
 # ---------------------------------------------------------------------------
+# Duplicate detection (P-0127) -- digest from the issue body, no payload on disk
+# ---------------------------------------------------------------------------
+def body_payload_digest(body: str) -> str:
+    """Return the payload digest of a candidate issue body.
+
+    Same parser and hash the consumer ledger and `reject_candidate.py` use, so
+    the value is comparable with `_uplinked.json` and `rejected_registry.json`.
+    Raises `ValueError` / `json.JSONDecodeError` on a body the shared parser
+    cannot read (the caller treats that as "no verdict").
+    """
+    meta, payload = _ledger.parse_payload_from_issue_body(body)
+    return _ledger.body_digest(meta, payload)
+
+
+def classify_duplicate(
+    *,
+    issue_number: int,
+    title: str,
+    digest: str,
+    rejected_registry: dict,
+    prior_issues: list[dict],
+) -> dict | None:
+    """Pure duplicate verdict for one opened candidate issue (NO I/O).
+
+    `title` is the candidate.json title (the skill name for skill candidates).
+    `prior_issues` is `ledger.list_hub_candidate_issues` output; only issues
+    numbered LOWER than `issue_number` count as prior, so two identical issues
+    opened together cannot flag each other. Returns None, or a dict with
+    `verdict` ("dup-of-rejected" | "duplicate" | "revision"), `of` (prior
+    issue numbers, ascending) and `detail` (comment text). Precedence:
+
+      1. exact digest match in the shipped rejected registry -> dup-of-rejected
+         (covers rejected AND already-promoted content; carries its advice);
+      2. a prior issue with the same digest                  -> duplicate;
+      3. a prior OPEN issue with the same title, new content -> revision.
+    """
+    for name in (title, title + ".md"):
+        rej = _rejected.is_rejected(name, digest, rejected_registry)
+        if rej is not None and rej["match"] == "exact":
+            entry = rej["entry"]
+            return {"verdict": "dup-of-rejected", "of": [],
+                    "detail": (f"**Reason**: {entry['reason']}\n\n"
+                               f"**Advice**: {entry['advice']}")}
+
+    prior = sorted((i for i in prior_issues if i["number"] < issue_number),
+                   key=lambda i: i["number"])
+    same_digest = [i["number"] for i in prior if i["digest"] == digest]
+    if same_digest:
+        refs = ", ".join(f"#{n}" for n in same_digest)
+        return {"verdict": "duplicate", "of": same_digest,
+                "detail": (f"The payload is byte-identical to {refs} (same "
+                           f"payload digest `{digest[:12]}`); only the "
+                           f"date-stamped id differs. Curation happens on "
+                           f"#{same_digest[0]}.")}
+    revised = [i["number"] for i in prior
+               if i["title"] == title and i["state"] == "OPEN"]
+    if revised:
+        refs = ", ".join(f"#{n}" for n in revised)
+        return {"verdict": "revision", "of": revised,
+                "detail": (f"Same title as open {refs} with different "
+                           f"content (payload digest `{digest[:12]}`). The "
+                           f"curator picks which text to keep.")}
+    return None
+
+
+def detect_duplicate(repo: str, issue: str, meta: dict, body: str) -> dict | None:
+    """Best-effort duplicate verdict for the opened issue; None on any failure.
+
+    Fail-open by design: duplicate detection is an optimization on top of the
+    labeling contract, so a parse error, an unreadable registry or a failed
+    hub listing must leave intake behaving exactly as it did before P-0127.
+    """
+    try:
+        digest = body_payload_digest(body)
+        return classify_duplicate(
+            issue_number=int(issue), title=meta["title"], digest=digest,
+            rejected_registry=_rejected.load_rejected_registry(),
+            prior_issues=_ledger.list_hub_candidate_issues(
+                meta["origin"], repo=repo))
+    except Exception as exc:  # noqa: BLE001 -- fail-open, see docstring
+        log.info("duplicate detection skipped for issue %s: %s: %s",
+                 issue, type(exc).__name__, exc)
+        return None
+
+
+# ---------------------------------------------------------------------------
 # Orchestration
 # ---------------------------------------------------------------------------
 def main() -> int:
@@ -256,6 +354,23 @@ def main() -> int:
     labels, eligibility = compute_eligibility(
         metadata_valid=metadata_valid, net_new=net_new,
         surface_hit=surface_hit, kind=kind, layer=layer)
+
+    # 3. duplicate detection (P-0127) -- only for metadata-valid candidates
+    dup = detect_duplicate(repo, issue, meta, body) if metadata_valid else None
+    if dup is not None and dup["verdict"] in ("dup-of-rejected", "duplicate"):
+        add_labels(repo, issue, "candidate", dup["verdict"])
+        comment(repo, issue,
+                f"**Intake (deterministic): `{dup['verdict']}`** -- nothing "
+                f"new to curate.\n\n{dup['detail']}\n\n"
+                "_Not labeled `valid` / `auto-eligible`, so the curation "
+                "routine will not promote it. Left open for a maintainer to "
+                "close; if the earlier decision should be revisited, say so "
+                "in a comment._")
+        log.info("candidate %s -> %s %s", cid, dup["verdict"], dup["of"])
+        return 0
+    if dup is not None:
+        labels = [*labels, "revision"]
+        verdicts.append(f"revision: {dup['detail']}")
 
     add_labels(repo, issue, *labels)
     comment(repo, issue,

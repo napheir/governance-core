@@ -209,29 +209,30 @@ def parse_payload_from_issue_body(body: str) -> tuple[dict, dict[str, bytes]]:
     return meta, payload
 
 
-def discover_uplinked_from_hub(origin: str,
-                               repo: str = "napheir/governance-core",
-                               ) -> list[dict[str, Any]]:
-    """Rebuild uplink ledger entries from the hub's candidate issue history.
+def list_hub_candidate_issues(origin: str,
+                              repo: str = "napheir/governance-core",
+                              ) -> list[dict[str, Any]]:
+    """List the hub's candidate issues for `origin`, each with its digest.
 
     Queries open + closed `[candidate] ... (from <origin>)` issues via
     `gh issue list --state all`. For each issue: parse the body to recover
-    the candidate metadata + payload bytes, recompute `_hash_payload([
-    (basename, bytes), ...])`, return one entry per issue ready to feed
-    `record_uplink`.
+    the candidate metadata + payload bytes and recompute `_hash_payload([
+    (basename, bytes), ...])`. Returns one dict per parseable issue with
+    `number`, `state`, `issue_url`, `candidate_id`, `title`, `digest`.
 
-    Recovery is best-effort: any single issue that fails to parse or whose
-    body schema does not match (e.g. pre-0.8.0 issues that may have had
-    payload trailing whitespace stripped by an earlier uplink.py) is logged
-    at INFO and skipped. The caller treats the absence of an entry as
-    "ledger unknown" and the regular sweep dedup path still applies.
+    Shared by the consumer sweep (P-0076 ledger recovery, P-0127 hub check
+    before every uplink) and the hub intake duplicate detection (P-0127) --
+    one query, one parser, one digest.
 
-    Returns `[]` if `gh` is unavailable or the call fails (network /
-    auth), so recovery never blocks wrap-up.
+    Best-effort: any single issue that fails to parse or whose body schema
+    does not match (e.g. pre-0.8.0 issues that may have had payload trailing
+    whitespace stripped by an earlier uplink.py) is logged at INFO and
+    skipped. Returns `[]` if `gh` is unavailable or the call fails (network /
+    auth), so the caller never blocks on it.
     """
     search = f"[candidate] (from {origin})"
     argv = ["gh", "issue", "list", "--repo", repo, "--state", "all",
-            "--search", search, "--json", "number,title,body,url",
+            "--search", search, "--json", "number,title,body,url,state",
             "--limit", "200"]
     try:
         result = subprocess.run(argv, capture_output=True, check=True)
@@ -249,11 +250,12 @@ def discover_uplinked_from_hub(origin: str,
         logger.info("[ledger-recovery] gh output not JSON: %s", exc)
         return []
 
-    rebuilt: list[dict[str, Any]] = []
+    listed: list[dict[str, Any]] = []
     for issue in issues:
         body = issue["body"] if "body" in issue else ""
         url = issue["url"] if "url" in issue else ""
         number = issue["number"] if "number" in issue else "?"
+        state = issue["state"] if "state" in issue else ""
         try:
             meta, payload = parse_payload_from_issue_body(body)
         except (ValueError, json.JSONDecodeError) as exc:
@@ -264,16 +266,41 @@ def discover_uplinked_from_hub(origin: str,
             logger.info("[ledger-recovery] issue #%s skipped (no id in "
                         "candidate.json)", number)
             continue
-        # P-0077: drift bodies carry `payload_sha256` from the consumer
-        # directly; the diff cannot be rehashed to reproduce the original
-        # payload bytes. Net-new bodies still rehash via `_hash_payload`.
-        if "payload_form" in meta and meta["payload_form"] == "diff":
-            digest = meta["payload_sha256"]
-        else:
-            digest = _hash_payload(list(payload.items()))
-        rebuilt.append({
-            "digest": digest,
-            "candidate_id": meta["id"],
+        listed.append({
+            "number": number,
+            "state": state,
             "issue_url": url,
+            "candidate_id": meta["id"],
+            "title": meta["title"] if "title" in meta else "",
+            "digest": body_digest(meta, payload),
         })
-    return rebuilt
+    return listed
+
+
+def body_digest(meta: dict, payload: dict[str, bytes]) -> str:
+    """Return the payload digest for a parsed candidate issue body.
+
+    P-0077: drift bodies carry `payload_sha256` from the consumer directly;
+    the diff cannot be rehashed to reproduce the original payload bytes.
+    Net-new bodies rehash via `_hash_payload`.
+    """
+    if "payload_form" in meta and meta["payload_form"] == "diff":
+        return meta["payload_sha256"]
+    return _hash_payload(list(payload.items()))
+
+
+def discover_uplinked_from_hub(origin: str,
+                               repo: str = "napheir/governance-core",
+                               ) -> list[dict[str, Any]]:
+    """Rebuild uplink ledger entries from the hub's candidate issue history.
+
+    A projection of `list_hub_candidate_issues` onto the ledger record shape
+    (`digest`, `candidate_id`, `issue_url`), ready to feed `record_uplink`.
+    Recovery is best-effort and returns `[]` when `gh` is unavailable or the
+    call fails, so it never blocks wrap-up; the caller treats the absence of
+    an entry as "ledger unknown" and the regular sweep dedup path applies.
+    """
+    return [{"digest": issue["digest"],
+             "candidate_id": issue["candidate_id"],
+             "issue_url": issue["issue_url"]}
+            for issue in list_hub_candidate_issues(origin, repo=repo)]

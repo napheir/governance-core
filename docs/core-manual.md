@@ -457,13 +457,18 @@ with a learned skill that was already uplinked but no record proving
 so. The next sweep would treat every existing envelope as net-new and
 flood the hub with duplicates.
 
-To prevent that, `cmd_sweep` self-heals at the start of every run when
-the ledger is empty + the outbox is non-empty + `gh` is available:
-`ledger.discover_uplinked_from_hub(origin, repo)` queries `gh issue
-list --state all --search "[candidate] (from <origin>)"`, parses each
-issue body's `### payload/<name>` fenced block, rehashes via
-`_hash_payload`, and writes the rebuilt entries into `_uplinked.json`.
-The healthy consumer (ledger intact) never triggers it.
+To prevent that, `cmd_sweep` consults the hub before uplinking. Since
+P-0127 it does so **whenever at least one envelope is pending** and `gh`
+is available (previously only when the ledger was completely empty,
+which missed the multi-clone case: the ledger is per-clone, so a skill
+uplinked from clone A looked pending again in clone B and was re-filed).
+`ledger.discover_uplinked_from_hub(origin, repo)` -- a projection of
+`ledger.list_hub_candidate_issues` -- queries `gh issue list --state all
+--search "[candidate] (from <origin>)"`, parses each issue body's
+`### payload/<name>` fenced block, rehashes via `_hash_payload`, and the
+rebuilt entries are written into `_uplinked.json`. Pending envelopes the
+hub already holds are dropped with `sweep: skipping <env> -- already on
+the hub (<url>)`. A sweep with nothing pending makes no network call.
 
 Recovery is fail-safe: any `gh` failure, JSON-decode error, or
 malformed issue body logs at INFO and returns empty so the existing
@@ -528,6 +533,33 @@ gh label create "kind/mechanism" --color C5DEF5 -R <hub-repo>
 
 `uplink.uplink_envelope` recognizes the "label not found" stderr
 pattern and prints the same `gh label create` block as a hint.
+
+The intake job (`maintainer/candidate_intake.py`) additionally applies
+`valid` / `invalid` / `auto-eligible` / `needs-human` / `feedback`, and
+since P-0127 the duplicate labels below. `gh issue edit --add-label`
+fails on a missing label, so a fresh hub needs these too:
+
+```bash
+gh label create "duplicate"       --color CFD3D7 -R <hub-repo>
+gh label create "dup-of-rejected" --color CFD3D7 -R <hub-repo>
+gh label create "revision"        --color FBCA04 -R <hub-repo>
+```
+
+### Intake duplicate detection (P-0127)
+
+On `issues.opened` the intake job recomputes the payload digest from the
+issue body (same parser + hash as the consumer ledger) and labels:
+
+| label | meaning | other labels |
+|---|---|---|
+| `dup-of-rejected` | exact digest already in `rejected_registry.json` (rejected *or* already promoted); the comment carries the entry's reason + advice | no `valid` / `auto-eligible` |
+| `duplicate` | byte-identical to a lower-numbered candidate issue from the same origin (open or closed); the comment names it | no `valid` / `auto-eligible` |
+| `revision` | same title as a still-open issue, different content | normal labels kept |
+
+Intake never closes an issue; close flagged duplicates in bulk
+(`gh issue list --label duplicate`). Detection is fail-open: if the
+digest, the registry or the hub listing cannot be read, intake labels
+exactly as before.
 
 ### Reject feedback registry (P-0076 Phase 2)
 
