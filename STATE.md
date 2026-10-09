@@ -17,6 +17,21 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-10-09 — P-0128 起草（pending）：candidate #139 handoff linkage 机制
+
+- **判断**：#139 在 charter 内、通用、论证扎实（实读确认：`related` 现为自由文本，
+  `audit_proposals.py` 从不读它；Check 止于 17）。但改 `contracts/proposal_frontmatter_schema.md`
+  且 bundle 只有 brief 无代码；hub 单 agent（`agent_rules/` 仅 `shared.*`，`load_allow_map` 恒空）
+  无法 dogfood handoff 半边。
+- **P-0128（pending，未自批 —— needs-human + 契约变更）**：Phase A `related` 接受 `P-NNNN` +
+  Check 18（hub 可验）；Phase B `handoff_to` + `handoff_targets` + Check 19/20 + session surface
+  （等消费者参考 diff）。4 条 Open Question 待 owner 裁定（是否等 diff、`link` 子命令、ledger-only
+  id、Phase A 单独发）。
+- **#139**：已评论（recommend promote 分两期 + 索要参考实现 diff 与测试）并标 `advised`，保持 open。
+- **待 owner 决策汇总**：① 批 P-0128；② 发布 0.43.1（含 P-0126/P-0127）+ push master（intake 改动
+  push 后才生效）；③ 是否重新启用 `gc-curation-routine`（启用前同步 prompt）；④ intake 是否对
+  byte-identical 重复件自动关闭。
+
 ### 2026-10-09 — P-0127：candidate 流水线两端去重 + candidate-common 判据（0.43.1，未发布）
 
 - **根因**（读码确认）：① `candidate.py` sweep 只在本地账本**全空**时才查 hub（旧 `:253`），而账本
