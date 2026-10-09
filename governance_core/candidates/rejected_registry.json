@@ -1,6 +1,6 @@
 {
   "schema": 1,
-  "updated": "2026-07-09T04:01:17Z",
+  "updated": "2026-10-09T01:47:04Z",
   "rejected": [
     {
       "rejected_at": "2026-05-29",
@@ -66,6 +66,30 @@
       ],
       "reason": "Already promoted into the package source on 2026-07-01 via P-0114 (commit fd5939e, released v0.38.6). Payload body is byte-identical to the shipped skill governance_core/skills/triage-and-trim-bloated-memory-index.md; nothing new to promote. Re-filed 5x by the consumer sweep (issues #124/#125/#127/#129/#131).",
       "advice": "Retag the local skill layer: business (or drop the candidate tag) in trade-agent so /submit-candidate stops re-offering an already-landed capability. block_by_name suppresses further re-mints regardless of payload bytes."
+    },
+    {
+      "rejected_at": "2026-10-09",
+      "skill_name": "contract-preserving-empirical-engine-swap",
+      "payload_sha256": "1b6fc53b83ff25dc2251a862110daf9e1f468d26bceb260dd169bf6f0dac733f",
+      "block_by_name": false,
+      "origin": "trade-agent",
+      "issue_urls": [
+        "https://github.com/napheir/governance-core/issues/138"
+      ],
+      "reason": "Out of governance-core charter. governance-core is a pure governance/harness infrastructure hub; every common-layer skill is governance/meta (memory, proposal, constitution, skill-registry, install, hooks). contract-preserving-empirical-engine-swap is a general software-refactoring recipe (swap an estimator backend for a real-data replay engine behind an unchanged API contract, park the old engine behind a lazy-imported legacy toggle) -- the same class as the previously declined external-api-categorical-backfill (issue 120) and headless-browser-visual-verify (issue 126). The mechanism is sound, but it is application engineering, not a governance capability. It also cites the consumer's own Art.6 / Art.7.1, which do not exist with that meaning in the hub constitution.",
+      "advice": "Keep it as a local business-layer skill in trade-agent scope -- retag 'layer: business' (drop 'layer: candidate-common') so the sweep stops re-offering it. Its one governance-shaped kernel (audit the reported premise against real data before coding) is already covered by the shipped skill audit-subsystem-health-before-proposing-change. If the common layer later broadens into a general engineering-skill exchange, resubmit then."
+    },
+    {
+      "rejected_at": "2026-10-09",
+      "skill_name": "screen-cross-market-arbitrage-opportunity",
+      "payload_sha256": "b55aefd92dbfbdba6cd28976c10f24e182d1a9cce5d69b5dc84ea59a724f830a",
+      "block_by_name": false,
+      "origin": "trade-agent",
+      "issue_urls": [
+        "https://github.com/napheir/governance-core/issues/147"
+      ],
+      "reason": "Out of governance-core charter and domain-specific. screen-cross-market-arbitrage-opportunity is a business-feasibility research method (cost-structure decomposition, intermediary margin base, substitute channels, transportability, unit-economics model, acquisition modes). Nothing in it concerns governance or the agent harness, so 'layer: candidate-common' is a mis-tag: the common layer means generic to any governance-core consumer's GOVERNANCE, not generic within the consumer's own business domain.",
+      "advice": "Keep it as a local business-layer skill -- retag 'layer: business' (drop 'layer: candidate-common') so the sweep stops re-offering it. Tagging test before marking a learned skill candidate-common: would this skill change how a project with a completely different business runs its hooks / proposals / memory / skills / constitution? If the answer is no, it is business-layer."
     }
   ]
 }
