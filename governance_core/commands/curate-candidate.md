@@ -47,8 +47,9 @@ re-file `duplicate` (same payload digest as an earlier issue) or
 `dup-of-rejected` (exact digest already in `rejected_registry.json` — rejected
 *or* already promoted), and a same-title / new-content re-file of an open issue
 `revision`. Flagged duplicates carry no `valid` / `auto-eligible` label and are
-left open: close them in bulk (`gh issue list --label duplicate`), then curate
-the unique set. For a `revision` pair, compare the texts — the higher issue
+closed by intake as "not planned", so the open queue is already the unique
+set (a flagged issue still open means the close call failed — close it by
+hand). For a `revision` pair, compare the texts — the higher issue
 number is not necessarily the better text (a stale clone can re-file an older
 version after the revision).
 

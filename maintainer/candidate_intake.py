@@ -28,8 +28,10 @@ with the shipped `rejected_registry.json` and with the hub's earlier candidate
 issues from the same origin. A byte-identical re-file is labeled
 `dup-of-rejected` / `duplicate` (and withheld from `valid` / `auto-eligible`);
 a same-title, different-content re-file of a still-open issue is labeled
-`revision`. Intake only labels and comments -- it never closes an issue -- and
-any failure in this step is logged and ignored (fail-open).
+`revision`. A byte-identical duplicate is also CLOSED as "not planned" (owner
+decision 2026-10-09, P-0127 follow-up): identical bytes carry nothing to curate,
+and reopening is one click. A `revision` is never closed. Any failure in this
+step is logged and ignored (fail-open).
 
 Target-path resolution (surface hit + net-new) is best-effort in Phase 1 and
 purely informational -- Phase 2 re-derives it authoritatively before any
@@ -79,6 +81,19 @@ def add_labels(repo: str, issue: str, *labels: str) -> None:
 def comment(repo: str, issue: str, body_md: str) -> None:
     """Post a single acknowledgement comment on the issue."""
     gh("issue", "comment", issue, "--repo", repo, "--body", body_md)
+
+
+def close_duplicate(repo: str, issue: str) -> None:
+    """Close a byte-identical duplicate as "not planned"; never raises.
+
+    Best-effort: the labels and the explanatory comment are already posted, so
+    a failed close only leaves the issue open for a maintainer (the pre-close
+    behaviour) rather than failing the intake job.
+    """
+    try:
+        gh("issue", "close", issue, "--repo", repo, "--reason", "not planned")
+    except (subprocess.CalledProcessError, FileNotFoundError) as exc:
+        log.info("could not close duplicate issue %s: %s", issue, exc)
 
 
 # ---------------------------------------------------------------------------
@@ -362,10 +377,10 @@ def main() -> int:
         comment(repo, issue,
                 f"**Intake (deterministic): `{dup['verdict']}`** -- nothing "
                 f"new to curate.\n\n{dup['detail']}\n\n"
-                "_Not labeled `valid` / `auto-eligible`, so the curation "
-                "routine will not promote it. Left open for a maintainer to "
-                "close; if the earlier decision should be revisited, say so "
-                "in a comment._")
+                "_Closed as a byte-identical duplicate (not labeled `valid` "
+                "/ `auto-eligible`). If the earlier decision should be "
+                "revisited, reopen this issue with a comment saying why._")
+        close_duplicate(repo, issue)
         log.info("candidate %s -> %s %s", cid, dup["verdict"], dup["of"])
         return 0
     if dup is not None:

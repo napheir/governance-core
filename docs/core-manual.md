@@ -556,10 +556,12 @@ issue body (same parser + hash as the consumer ledger) and labels:
 | `duplicate` | byte-identical to a lower-numbered candidate issue from the same origin (open or closed); the comment names it | no `valid` / `auto-eligible` |
 | `revision` | same title as a still-open issue, different content | normal labels kept |
 
-Intake never closes an issue; close flagged duplicates in bulk
-(`gh issue list --label duplicate`). Detection is fail-open: if the
-digest, the registry or the hub listing cannot be read, intake labels
-exactly as before.
+Intake closes `duplicate` and `dup-of-rejected` issues as "not planned"
+right after labeling and commenting (byte-identical content carries
+nothing to curate; reopen with a comment to revisit). A `revision` is
+never closed. Detection is fail-open: if the digest, the registry or the
+hub listing cannot be read, intake labels exactly as before and closes
+nothing; a failed close leaves the labeled issue open.
 
 ### Reject feedback registry (P-0076 Phase 2)
 

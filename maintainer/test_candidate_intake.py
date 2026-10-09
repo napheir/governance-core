@@ -20,6 +20,7 @@ Run from repo root (lives in maintainer/; parent.parent is the repo root):
 from __future__ import annotations
 
 import json
+import subprocess
 import sys
 from pathlib import Path
 
@@ -231,9 +232,11 @@ def section_duplicates(failed: list[str], set_env) -> None:
            "35. unrelated prior issue -> no verdict", failed)
 
     # main() branches -- gh, registry and hub listing stubbed at the boundary
-    calls: dict[str, list] = {"labels": [], "comments": []}
+    calls: dict[str, list] = {"labels": [], "comments": [], "closed": []}
     orig = (ci.add_labels, ci.comment, ci._ledger.list_hub_candidate_issues,
             ci._rejected.load_rejected_registry)
+    orig_close, orig_gh = ci.close_duplicate, ci.gh
+    ci.close_duplicate = lambda repo, issue: calls["closed"].append(issue)
     ci.add_labels = lambda repo, issue, *labs: calls["labels"].extend(labs)
     ci.comment = lambda repo, issue, body: calls["comments"].append(body)
     ci._rejected.load_rejected_registry = lambda: empty_reg
@@ -244,6 +247,7 @@ def section_duplicates(failed: list[str], set_env) -> None:
     def run(number: int, payload: str) -> int:
         calls["labels"].clear()
         calls["comments"].clear()
+        calls["closed"].clear()
         set_env(GH_REPO="o/r", ISSUE_NUMBER=str(number),
                 ISSUE_TITLE="[candidate] skill: some_generic_thing (from acme)",
                 ISSUE_BODY=_payload_body(meta, payload, crlf=True))
@@ -253,24 +257,26 @@ def section_duplicates(failed: list[str], set_env) -> None:
         hub["issues"] = [prior(40, d1)]
         rc = run(50, text_v1)
         _check(rc == 0 and calls["labels"] == ["candidate", "duplicate"]
-               and "#40" in calls["comments"][0],
+               and "#40" in calls["comments"][0] and calls["closed"] == ["50"],
                "36. main() byte-identical re-file -> candidate+duplicate, "
-               "never valid/auto-eligible", failed)
+               "closed, never valid/auto-eligible", failed)
 
         rc = run(50, text_v2)
         _check(rc == 0 and calls["labels"] == ["candidate", "valid",
                                                "auto-eligible", "revision"]
-               and "revision:" in calls["comments"][0],
+               and "revision:" in calls["comments"][0]
+               and calls["closed"] == [],
                "37. main() revised re-file of an open issue -> normal labels "
-               "+ revision", failed)
+               "+ revision, NOT closed", failed)
 
         hub["issues"] = []
         ci._rejected.load_rejected_registry = lambda: reg
         rc = run(50, text_v1)
         _check(rc == 0 and calls["labels"] == ["candidate", "dup-of-rejected"]
-               and "already promoted" in calls["comments"][0],
-               "38. main() exact registry digest -> candidate+dup-of-rejected",
-               failed)
+               and "already promoted" in calls["comments"][0]
+               and calls["closed"] == ["50"],
+               "38. main() exact registry digest -> candidate+dup-of-rejected, "
+               "closed", failed)
 
         def boom(origin, repo=""):
             raise RuntimeError("hub listing exploded")
@@ -281,7 +287,30 @@ def section_duplicates(failed: list[str], set_env) -> None:
                                                "auto-eligible"],
                "39. main() dedup failure is fail-open -> labels as before "
                "P-0127", failed)
+        _check(calls["closed"] == [],
+               "40. main() fail-open path closes nothing", failed)
+
+        # close_duplicate itself: issues the gh close, and swallows a failure
+        seen: list[tuple] = []
+        ci.close_duplicate = orig_close
+        ci.gh = lambda *a: seen.append(a) or ""
+        ci.close_duplicate("o/r", "50")
+        _check(seen == [("issue", "close", "50", "--repo", "o/r",
+                         "--reason", "not planned")],
+               "41. close_duplicate -> gh issue close --reason 'not planned'",
+               failed)
+
+        def gh_fail(*a):
+            raise subprocess.CalledProcessError(1, ["gh"])
+        ci.gh = gh_fail
+        try:
+            ci.close_duplicate("o/r", "50")
+            survived = True
+        except Exception:  # noqa: BLE001
+            survived = False
+        _check(survived, "42. close_duplicate swallows a gh failure", failed)
     finally:
+        ci.close_duplicate, ci.gh = orig_close, orig_gh
         (ci.add_labels, ci.comment, ci._ledger.list_hub_candidate_issues,
          ci._rejected.load_rejected_registry) = orig
 
@@ -308,7 +337,7 @@ def main() -> int:
     if failed:
         print(f"[FAIL] {len(failed)} case(s) failed")
         return 1
-    print("[PASS] all 39 cases passed")
+    print("[PASS] all 42 cases passed")
     return 0
 
 
