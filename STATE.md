@@ -17,7 +17,19 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
-### 2026-10-09 — P-0128 Phase A：`related` 接受全局 id + audit Check 18（0.44.0，未发布）
+### 2026-10-09 — 发布 v0.44.0（P-0128 Phase A：related-by-id / candidate #139）
+
+- **发布**：owner 确认后 push master（`2c4bcd0`）→ `gh release create v0.44.0`（target master）→
+  CI `release.yml` run 37875913852 success → OIDC Trusted Publisher。
+- **核实**：PyPI `/governance-core/json` → `latest: 0.44.0`，wheel + sdist 均在；`gh release list`
+  显示 v0.44.0 为 Latest。
+- **消费者影响**：`upgrade` 后可用 `proposal_lib.py link`；已有 `related` 里若写了不存在的 id，
+  `audit_proposals.py` Check 18 会报出。纯增量，无迁移。
+- **#139**：已评论 Phase A 落地，保持 open 等 Phase B 的参考 diff。P-0128 仍 `in-progress`。
+- **owner 决策**：`gc-curation-routine` **保持关闭**（两道开关均不动）；积压继续人工批量清理，
+  靠 P-0127 的 intake 去重 + 自动关闭挡噪音。
+
+### 2026-10-09 — P-0128 Phase A：`related` 接受全局 id + audit Check 18（0.44.0，已于下条发布）
 
 - **批准**：owner 2026-10-09 批 P-0128 并接受各倾向（Phase B 等消费者 diff；`link` 子命令；
   ledger-only id 可解析；Phase A 单独发）。P-0128 现为 `in-progress`（Phase B 未做）。
@@ -47,18 +59,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - **文档**：`docs/core-manual.md` §11、`curate-candidate` 同步（不再说 intake 不关 issue）。
 - **验证**：intake 42/42（+3：关闭调用形态、关闭失败被吞、fail-open 不关闭）；curate_gate 14/14；
   pytest 160 passed；`upgrade` + `doctor` exit 0。线上实证仍待下一个真实重复 candidate。
-
-### 2026-10-09 — P-0128 起草（pending）：candidate #139 handoff linkage 机制
-
-- **判断**：#139 在 charter 内、通用、论证扎实（实读确认：`related` 现为自由文本，
-  `audit_proposals.py` 从不读它；Check 止于 17）。但改 `contracts/proposal_frontmatter_schema.md`
-  且 bundle 只有 brief 无代码；hub 单 agent（`agent_rules/` 仅 `shared.*`，`load_allow_map` 恒空）
-  无法 dogfood handoff 半边。
-- **P-0128（pending，未自批 —— needs-human + 契约变更）**：Phase A `related` 接受 `P-NNNN` +
-  Check 18（hub 可验）；Phase B `handoff_to` + `handoff_targets` + Check 19/20 + session surface
-  （等消费者参考 diff）。4 条 Open Question 待 owner 裁定（是否等 diff、`link` 子命令、ledger-only
-  id、Phase A 单独发）。
-- **#139**：已评论（recommend promote 分两期 + 索要参考实现 diff 与测试）并标 `advised`，保持 open。
-- **待 owner 决策汇总**：① 批 P-0128；② 发布 0.43.1（含 P-0126/P-0127）+ push master（intake 改动
-  push 后才生效）；③ 是否重新启用 `gc-curation-routine`（启用前同步 prompt）；④ intake 是否对
-  byte-identical 重复件自动关闭。
