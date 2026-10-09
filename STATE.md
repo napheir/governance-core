@@ -40,6 +40,10 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   #142 → revision of #141；其余 new —— 与人工判定一致。intake 的线上实证要等下一个真实 candidate。
 - **bump**：0.43.0 → 0.43.1。**未发布**（core-A3 待人工确认）；消费者要升级后 sweep 侧才生效，hub
   侧 intake 随 push 到 master 即生效。
+- **layer-2 例程实况**（`RemoteTrigger list`）：`gc-curation-routine`（`trig_01UjyaQUt3fpdNGDiDqU3Smh`，
+  cron `0 0 * * *`）存在但 `enabled: false`，`updated_at` 2026-06-02（创建当天即关）—— 这就是积压
+  issue 无 `advised` 的原因。**未重新启用**（owner 决策）。`maintainer/curate_routine.md` 已同步：
+  跳过 `duplicate`/`dup-of-rejected`；并注明 trigger 自带 prompt 副本，启用前须同步。
 
 ### 2026-10-09 — P-0126：candidate 积压清理 + promote 两个 guard 类 guide（0.43.0，未发布）
 

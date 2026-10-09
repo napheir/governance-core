@@ -49,7 +49,11 @@ Nothing is auto-promoted unless **ALL** of these hold — the LLM can only
    recommend (`fix` / `wontfix` / `needs-info`), comment, add label `advised`.
 
 Comment on every issue you touch. Skip issues already labeled `advised` or
-`promoted`.
+`promoted`, and (P-0127) issues intake labeled `duplicate` / `dup-of-rejected`.
+
+> **Deployed-prompt drift**: the live `gc-curation-routine` trigger holds its
+> own copy of the prompt below. After editing this spec, update the trigger's
+> prompt too (`/schedule`), or the routine keeps running the old text.
 
 ## Routine prompt (self-contained — the remote agent starts with zero context)
 
@@ -72,8 +76,13 @@ Hard rules (never violate):
   if anything, a fresh correction is a reason to route to a human.)
 - Comment on every issue you touch. Skip issues already labeled `advised` or
   `promoted`.
+- Skip issues labeled `duplicate` or `dup-of-rejected` (P-0127): intake found
+  the payload byte-identical to an earlier issue or to an already-decided
+  registry entry. Do not review, advise or promote them. For an issue labeled
+  `revision`, name the older open issue it revises in your comment.
 
-For each open issue without an `advised` or `promoted` label:
+For each open issue without an `advised`, `promoted`, `duplicate` or
+`dup-of-rejected` label:
 - If it has the `auto-eligible` label:
     Run: python maintainer/curate_gate.py --issue <N> --repo <THIS_REPO>
     - verdict {"eligible": true} AND kill-switch on:
