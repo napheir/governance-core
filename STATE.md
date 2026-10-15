@@ -17,6 +17,17 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-10-15 — 发布 v0.45.0（P-0128 Phase B：handoff_to / candidate #139）
+
+- **发布**：owner 确认（"OK，发布"）后 push master（`7deb957`）→ `gh release create v0.45.0`（target
+  master）→ CI `release.yml` run 38722786881 success → OIDC Trusted Publisher。
+- **核实**：PyPI JSON `latest: 0.45.0`，wheel + sdist 均在；`gh release list` 显示 v0.45.0 为 Latest。
+- **#139**：评论落地内容与相对参考 diff 的改动，已关闭（completed）。hub 当前无 open issue。
+- **消费者影响**：`upgrade` 后可用 `link --handoff-to`；多 agent 消费者的 Check 19/20 与 SessionStart
+  提示开始生效，单 agent 项目静默。纯增量，无迁移。
+- **遗留**：hub `session-context._check_proposals` 只扫 `../shared_state`，hub 自己的 pending 提案
+  （P-0107）不在 SessionStart 显示——已报告 owner，未修。
+
 ### 2026-10-15 — P-0128 Phase B：`handoff_to` + open-handoff 审计（0.45.0，未发布）
 
 - **来源**：消费者 2026-10-09 在 #139 贴出 Phase B 参考 diff（5 文件 / 556 行 / 28 测试，基于
