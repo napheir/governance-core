@@ -83,9 +83,18 @@ This repo runs its own proposal pipeline:
   is the only writer (validates at write time: must resolve in a region or the
   id ledger, not self, not malformed); audit Check 18 FAILs an id that does not
   resolve. Single-directional — the target is never touched and need not
-  reference back. Free-form `related` values are unchanged. Phase B
-  (`handoff_to` + open-handoff audit, multi-agent) is pending the consumer's
-  reference diff on #139.
+  reference back. Free-form `related` values are unchanged.
+- P-0128 Phase B handoff linkage (v0.45.0, schema v1.5.0): `proposal_lib.py
+  link --id P-NNNN --handoff-to <agent>` marks a proposal as a cross-agent
+  research->implementation handoff (`--clear-handoff` removes it). Audit
+  Check 19 WARNs until the target implements it itself, a target-owned
+  proposal back-links it via `related`, or it is rejected; the target's
+  SessionStart lists "Open handoffs to you". `create` prints a `[HANDOFF]`
+  hint, and Check 20 WARNs, when a post-2026-10-15 draft's title names another
+  agent's exclusive path. All of it is silent on this single-agent hub (no
+  per-agent allow files, no other agent to hand off to); it is exercised by
+  `tools/test_handoff_linkage.py` (synthetic agents, incl. the consumer's
+  reference suite from #139).
 
 ## 5. Constitution changes
 

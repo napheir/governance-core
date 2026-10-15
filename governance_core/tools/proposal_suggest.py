@@ -279,6 +279,34 @@ def scope_hits(desc: str, amap: dict) -> list:
     return results
 
 
+def handoff_targets(desc: str, drafting_agent: str, amap: dict) -> list:
+    """Suspected cross-agent handoff target agents for a draft.
+
+    = the set of scope owners ③ infers from `desc`, MINUS the drafting agent
+    itself. A non-empty result means the draft targets another agent's scope
+    (the sender-anchored handoff signal: an agent recommending a change to
+    someone else's scope). Sorted, deduped. Empty when the draft is purely
+    self-scope (no handoff) OR ③ recognized no path tokens (the
+    prose-recommendation floor -- the caller pairs this with the `handoff_to`
+    field + an audit backstop).
+
+    A token the drafting agent CO-OWNS is skipped entirely (it is within the
+    draft's own rights -- even a shared dir owned by every agent), so only
+    tokens pointing at another agent's EXCLUSIVE scope survive.
+
+    NOTE: ③ only fires on path / domain-alias tokens; a behaviour
+    recommendation that names no path yields no owners here -- hence this is
+    a best-effort auto-suggest, not the sole enforcement.
+    """
+    owners: set = set()
+    for hit in scope_hits(desc, amap):
+        hit_owners = set(hit["owners"])
+        if drafting_agent in hit_owners:
+            continue  # draft co-owns this token -- its own right, not a handoff
+        owners.update(hit_owners)
+    return sorted(owners)
+
+
 # ---------------------------------------------------------------------------
 # Orchestration + rendering
 # ---------------------------------------------------------------------------

@@ -49,8 +49,16 @@ Validates:
             a proposal in the corpus or the id ledger, is not the proposal's
             own id, and is well-formed; single-directional, no back-reference
             required (shares proposal_lib.classify_related_ref; P-0128 Phase A)
+  Check 19: sender-anchored open-handoff -- a `handoff_to: X` stays a standing
+            WARN until CLOSED (X implemented it directly, an X-owned proposal
+            back-links via `related`, or it was rejected); a dropped
+            cross-agent handoff surfaces as persistent non-silent debt -- WARN
+            only (P-0128 Phase B)
+  Check 20: in-flight non-terminal draft (created >= cutover) whose title targets
+            another agent's exclusive scope but carries no `handoff_to` -- backstop
+            for an unset handoff -- WARN only
 
-Schema: contracts/proposal_frontmatter_schema.md v1.4.0
+Schema: contracts/proposal_frontmatter_schema.md v1.5.0
 
 Usage:
     python tools/audit_proposals.py            # validate, exit 1 on error
@@ -768,6 +776,154 @@ def _collect_files(repo_root: Path) -> dict:
     return out
 
 
+# ---------------------------------------------------------------------------
+# Checks 19-20: sender-anchored cross-agent handoff linkage.
+# ---------------------------------------------------------------------------
+_TERMINAL_DONE = {"implemented", "superseded", "upstreamed"}
+# Check 20: `handoff_to` lands with schema v1.5.0 (P-0128 Phase B); grandfather
+# everything created before that so historical drafts don't flood the audit.
+HANDOFF_CUTOVER = "2026-10-15"
+_BODY_H1 = re.compile(r"^#\s+Proposal\s+P-\d{4,}:\s*(.+)$", re.MULTILINE)
+
+
+def _fm_str(fm: dict, key: str) -> str:
+    """Return frontmatter scalar `key` as a string, or "" when absent."""
+    if key not in fm:
+        return ""
+    val = fm[key]
+    return val if isinstance(val, str) else ""
+
+
+def _build_proposal_index(regions: dict) -> dict:
+    """Index the whole corpus for the handoff checks (Checks 19-20).
+
+    Returns {pid: {agent, status, related, handoff_to, region, created}},
+    one cross-region pass shared by both checks (each needs whole-corpus
+    visibility: a back-link may live in another region than the handoff).
+    Absent scalar fields are "" (an absent status reads as draft);
+    `related` is always a list.
+    """
+    idx: dict = {}
+    for region, files in regions.items():
+        for full in files:
+            try:
+                fm, _ = _parse_frontmatter(full.read_text(encoding="utf-8"))
+            except OSError:
+                continue
+            if not fm:
+                continue
+            pid = _fm_str(fm, "id")
+            if not pid:
+                continue
+            related = fm["related"] if "related" in fm else []
+            if isinstance(related, str):
+                related = [related] if related else []
+            idx[pid] = {
+                "agent": _fm_str(fm, "agent"),
+                "status": _fm_str(fm, "status") or "draft",
+                "related": list(related),
+                "handoff_to": _fm_str(fm, "handoff_to"),
+                "region": region,
+                "created": _fm_str(fm, "created"),
+            }
+    return idx
+
+
+def _handoff_closed(pid: str, info: dict, index: dict) -> bool:
+    """Is the `handoff_to: X` on proposal `pid` CLOSED? (closure predicate)
+
+    (a) `pid` is terminal-done AND owned by the target X (X implemented its
+        own proposal); OR
+    (b) some proposal owned by X carries `pid` in its `related` (X
+        implemented in a separate proposal that back-links); OR
+    (c) `pid` was rejected -- the recommendation was declined, so nothing is
+        owed (hub addition to the consumer's reference predicate).
+    """
+    x = info["handoff_to"]
+    if info["status"] == "rejected":
+        return True
+    if info["status"] in _TERMINAL_DONE and info["agent"] == x:
+        return True
+    for qinfo in index.values():
+        if qinfo["agent"] == x and pid in qinfo["related"]:
+            return True
+    return False
+
+
+def _check_open_handoffs(index: dict) -> list:
+    """Check 19: a `handoff_to: X` stays a standing WARN until CLOSED.
+
+    The sender-anchored core mechanism: a dropped cross-agent research->impl
+    handoff surfaces as a persistent, non-silent audit debt (not reliant on a
+    human remembering to link). See `_handoff_closed` for the closure predicate.
+    Advisory (WARN) -- an unclosed handoff is a linkage gap, not a file-integrity
+    failure. Known residual: a request the target fulfils in place with no
+    separate proposal (sender-owned, target != sender) shows a benign WARN
+    until the target back-links or the sender clears `handoff_to`
+    (`proposal_lib.py link --clear-handoff`).
+    """
+    warnings: list = []
+    for pid, info in sorted(index.items()):
+        x = info["handoff_to"]
+        if not x:
+            continue
+        if not _handoff_closed(pid, info, index):
+            warnings.append(
+                f"Check 19: {pid} handoff_to={x} is OPEN -- no {x}-owned "
+                f"proposal back-links {pid} via related, and {pid} was not "
+                f"implemented by {x} directly (close with `proposal_lib.py link "
+                f"--id <{x} proposal> --related {pid}`)")
+    return warnings
+
+
+def _check_missing_handoff_to(index: dict, in_flight: list, repo_root: Path) -> list:
+    """Check 20: in-flight draft targets another agent's scope but no handoff_to.
+
+    Backstop for a sender who didn't set `handoff_to`. Conservative to avoid
+    noise: in-flight, non-terminal, created on/after HANDOFF_CUTOVER, and the
+    scope-owner inference (`proposal_suggest.handoff_targets` over the title,
+    against `<repo_root>/agent_rules/`) yields a non-self target. WARN only;
+    silent on a single-agent project (no per-agent allow files).
+    """
+    warnings: list = []
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import proposal_suggest as _ps
+        amap = _ps.load_allow_map(repo_root / "agent_rules")
+    except Exception:  # suggest helper absent: fail open (WARN-only check)
+        return warnings
+    if not amap:
+        return warnings
+    for full in in_flight:
+        try:
+            text = full.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        fm, _ = _parse_frontmatter(text)
+        if not fm:
+            continue
+        pid = _fm_str(fm, "id")
+        if pid not in index:
+            continue
+        info = index[pid]
+        if info["status"] in _TERMINAL_DONE or info["status"] == "rejected":
+            continue
+        if not _DATE_RE.match(info["created"]) or info["created"] < HANDOFF_CUTOVER:
+            continue
+        if info["handoff_to"]:
+            continue
+        m = _BODY_H1.search(text)
+        title = m.group(1).strip() if m else ""
+        targets = _ps.handoff_targets(title, info["agent"], amap)
+        if targets:
+            warnings.append(
+                f"Check 20: {pid} (agent={info['agent']}) title targets another "
+                f"agent's scope ({', '.join(targets)}) but has no handoff_to -- "
+                f"if this is a cross-agent handoff, run `proposal_lib.py link "
+                f"--id {pid} --handoff-to <agent>`")
+    return warnings
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--root", type=Path, default=Path.cwd())
@@ -851,6 +1007,11 @@ def main() -> int:
     # Check 16: execution-class gate calibration (WARN only, P-0119) — shares
     # the approve BLOCK predicate; execution-class + post-cutover only.
     warnings += _check_gate_calibration_adequacy(regions["in-flight"], repo_root)
+    # Check 19/20: sender-anchored open-handoff standing debt (WARN) +
+    # missing-handoff_to backstop (WARN).
+    _prop_index = _build_proposal_index(regions)
+    warnings += _check_open_handoffs(_prop_index)
+    warnings += _check_missing_handoff_to(_prop_index, regions["in-flight"], repo_root)
     for w in warnings:
         sys.stdout.write(f"WARN: {w}\n")
 

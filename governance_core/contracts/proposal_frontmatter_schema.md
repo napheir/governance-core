@@ -1,6 +1,6 @@
 # Contract: proposals/**/*.md Frontmatter Schema
 
-**Version**: 1.4.0
+**Version**: 1.5.0
 **Status**: active
 **Owner**: core
 **Consumers**: all agents (write proposals, read status), `tools/audit_proposals.py` (validation), `.claude/hooks/session-context.py` (filter pending list), `.claude/commands/proposal.md` (skill that mutates status)
@@ -14,6 +14,15 @@ location semantics).
 
 ## Version history
 
+- **1.5.0** (2026-10-15, P-0128 Phase B, candidate #139): optional field
+  `handoff_to` (§4.6, §5.8) marks a cross-agent research->implementation
+  handoff. The handoff stays OPEN (auditor Check 19, WARN) until the target
+  implements the proposal itself, a target-owned proposal lists it in
+  `related`, or it is rejected. Auditor Check 20 (WARN) flags a post-cutover
+  in-flight draft whose title targets another agent's exclusive scope but has
+  no `handoff_to`. `session-context` lists open handoffs to the session's
+  agent. Additive: proposals without the field are unaffected. Written via
+  `proposal_lib.py link --handoff-to` / `--clear-handoff`.
 - **1.4.0** (2026-10-09, P-0128 Phase A, candidate #139): `related` elements
   may be a **global proposal id** (`P-NNNN`) in addition to a free-form
   reference (§4.6, §5.7). An id element must resolve (auditor Check 18) and is
@@ -159,6 +168,7 @@ validator cannot stat the hub's tree. See §5.6 for the format rule and §7.
 |-------|------|-------|
 | `supersedes` | list[string] | relative paths to proposals this one replaces (mirror of others' `superseded_by`) |
 | `related` | list[string] | conceptually linked proposals or knowledge entries. Each element is either a **global proposal id** `P-NNNN` (v1.4.0+, validated — see §5.7) or a free-form reference (relative path / knowledge entry, not validated). Written with `proposal_lib.py link --id <P-NNNN> --related <ref>`; inline list form `related: [P-0123, ...]`. |
+| `handoff_to` | string | (v1.5.0+) the agent expected to implement this proposal's recommendation in a **separate** proposal -- a cross-agent research->implementation handoff. One configured agent name, never the proposal's own `agent`. Written with `proposal_lib.py link --id <P-NNNN> --handoff-to <agent>`, removed with `--clear-handoff`. Closure semantics in §5.8. |
 
 ### 4.7 Execution class (added v1.2.0, P-0119)
 
@@ -267,6 +277,26 @@ colon, no scheme), an absolute path, a whitespace-containing ref.
   predicate (`proposal_lib.classify_related_ref`), so a reference the writer
   accepts never fails the audit.
 
+### 5.8 `handoff_to` closure (v1.5.0+)
+
+- `handoff_to: X` on proposal `P` is **OPEN** until it is **CLOSED** by any of:
+  (a) `P` is `implemented` / `superseded` / `upstreamed` **and** `P.agent == X`
+  (X took the proposal over and finished it);
+  (b) some proposal with `agent: X` lists `P`'s id in `related` (X implemented
+  it in its own proposal and back-linked);
+  (c) `P` is `rejected` (the recommendation was declined; nothing is owed).
+- A back-link from any agent other than X -- including the sender -- does not
+  close it. The search spans every region (in-flight, archive, legacy).
+- An open handoff is advisory debt, never a failure: auditor Check 19 WARNs
+  on every run and `session-context` lists it for X at session start.
+- Known residual: a request X fulfils in place, with no proposal of its own,
+  stays open until X back-links or the sender clears the field.
+- Backstop (auditor Check 20, WARN): an in-flight, non-terminal proposal
+  created on/after the field's cutover (2026-10-15) whose `# Proposal` title
+  names a path owned exclusively by another agent (per
+  `agent_rules/<agent>.allow.txt`) but carries no `handoff_to`. Silent on a
+  single-agent project (no per-agent allow files).
+
 ## 6. Exemptions
 
 The following files are NOT subject to this schema:
@@ -304,6 +334,8 @@ The following files are NOT subject to this schema:
   verified link)
 - A `related` element in id form requires that id to resolve (auditor
   Check 18) but does **not** require a back-reference (§5.7)
+- `handoff_to: X` is never a failure; it stays an open WARN (auditor
+  Check 19) until closed per §5.8
 
 ---
 

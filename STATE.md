@@ -17,6 +17,29 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-10-15 — P-0128 Phase B：`handoff_to` + open-handoff 审计（0.45.0，未发布）
+
+- **来源**：消费者 2026-10-09 在 #139 贴出 Phase B 参考 diff（5 文件 / 556 行 / 28 测试，基于
+  `a3a2af6`）。`git apply` 干净，原样 28 passed；在此基础上按 hub 规范改写。
+- **采纳**：`proposal_suggest.handoff_targets`（per-token co-owner skip）、create 提示、audit
+  **Check 19**（open-handoff，WARN）/ **Check 20**（缺 `handoff_to` 兜底，WARN）、session-context
+  "Open handoffs to you"。
+- **hub 改动**：① 新写入口 `proposal_lib.py link --handoff-to <agent>` / `--clear-handoff`
+  （须为配置内 agent、不得是自己；与 `--related` 同命令时先整体校验再写）；create 提示改为给出该命令，
+  emoji 换 `[HANDOFF]`；② `HANDOFF_CUTOVER` 改为 2026-10-15；③ Check 20 的 allow map 跟随
+  `--root`（`<root>/agent_rules`），导入用 `Path(__file__)` 惯例；④ Art.4：去掉 `fm.get(...)`；
+  ⑤ 关闭谓词加 (c)：`rejected` 视为已关闭（参考实现会让被否决的建议永远挂账）；⑥ session hook 同时
+  查仓内 `shared_state/` 与 `../shared_state/`，只读 frontmatter 段（参考实现读前 1200 字符、只看
+  `../`，在 hub 布局下看不到 in-flight）；⑦ `handoff_to` 进 serializer 字段序。
+- **契约**：`proposal_frontmatter_schema.md` v1.4.0 → **v1.5.0**（§4.6 行 + 新 §5.8 关闭语义 + §7）。
+  `commands/proposal.md`（`link --handoff-to` + 红线）、`docs/core-manual.md` §4。
+- **验证**：`tools/test_handoff_linkage.py` 46 passed（消费者 28 + hub 18）；pytest `tools/` 237
+  passed；全部脚本套件零失败；`upgrade` + `doctor` exit 0；真实语料 audit 0/62 failures、0 warnings
+  （hub 无新 WARN）；wheel 干净（仅 `governance_core*`，schema 1.5.0，新测试在内）。**live dogfood**：
+  hub 上 `--handoff-to core`（自己）/ `trade`（未配置）均 rc=1 且文件不变，`--related`+坏
+  `--handoff-to` 不会半写，空 `link` rc=2；session hook 在单 agent hub 上不输出 handoff 行。
+- **bump**：0.44.0 → 0.45.0。**未发布**（发布需 owner 确认）。#139 待发布后评论并关闭。
+
 ### 2026-10-09 — 发布 v0.44.0（P-0128 Phase A：related-by-id / candidate #139）
 
 - **发布**：owner 确认后 push master（`2c4bcd0`）→ `gh release create v0.44.0`（target master）→

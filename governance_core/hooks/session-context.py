@@ -515,6 +515,91 @@ def _check_proposals(root, role):
     return "\n".join(parts)
 
 
+_HO_ID_RE = re.compile(r"^id:\s*(P-\d{4,})", re.MULTILINE)
+_HO_AGENT_RE = re.compile(r"^agent:\s*(\w+)", re.MULTILINE)
+_HO_STATUS_RE = re.compile(r"^status:\s*([\w-]+)", re.MULTILINE)
+_HO_TO_RE = re.compile(r"^handoff_to:\s*(\S+)", re.MULTILINE)
+_HO_RELATED_RE = re.compile(r"^related:\s*\[(.*?)\]", re.MULTILINE)
+
+
+def _check_open_handoffs(root, role):
+    """Surface open cross-agent handoffs TO this agent.
+
+    Sender-anchored open-handoff: a `handoff_to: <role>` proposal is a piece of
+    research/recommendation handed to THIS agent to implement -- it stays a
+    standing debt until this agent's implementing proposal back-links it via
+    `related: [P-NNNN]`. Surfacing it at session start makes the debt actively
+    visible instead of only living in an audit run.
+
+    Lightweight regex scan (no import -- keeps the hook fast/robust) over
+    in-flight + archive frontmatter blocks. The authoritative check is audit
+    Check 19 in `audit_proposals.py`; this is the session nudge and mirrors
+    its closure predicate (rejected / target-implemented / target back-link).
+    In-flight is looked up both inside the repo (`shared_state/`, the
+    single-repo layout) and beside it (`../shared_state/`, the multi-clone
+    layout).
+    """
+    roots = []
+    for base in (os.path.join(root, "shared_state", "proposals"),
+                 os.path.join(root, "..", "shared_state", "proposals"),
+                 os.path.join(root, "proposals", "_archive")):
+        base = os.path.abspath(base)
+        if base not in roots:
+            roots.append(base)
+    props = {}  # id -> {agent, handoff_to, related:set, status}
+    for base in roots:
+        if not os.path.isdir(base):
+            continue
+        for dirpath, _dirs, files in os.walk(base):
+            for f in files:
+                if not f.endswith(".md") or f == "README.md":
+                    continue
+                try:
+                    with open(os.path.join(dirpath, f), encoding="utf-8") as fh:
+                        head = fh.read(4096)
+                except (OSError, UnicodeDecodeError):
+                    continue
+                # Frontmatter only: a body line like "status: x" must not match.
+                end = head.find("\n---", 3)
+                if not head.startswith("---") or end < 0:
+                    continue
+                head = head[:end]
+                mid = _HO_ID_RE.search(head)
+                if not mid:
+                    continue
+                m_rel = _HO_RELATED_RE.search(head)
+                related = set()
+                if m_rel:
+                    related = {x.strip().strip("'\"")
+                               for x in m_rel.group(1).split(",") if x.strip()}
+                m_ho = _HO_TO_RE.search(head)
+                m_ag = _HO_AGENT_RE.search(head)
+                m_st = _HO_STATUS_RE.search(head)
+                props[mid.group(1)] = {
+                    "agent": m_ag.group(1) if m_ag else None,
+                    "handoff_to": (m_ho.group(1).strip().strip("'\"") if m_ho else None),
+                    "related": related,
+                    "status": m_st.group(1) if m_st else "draft",
+                }
+    rows = []
+    for pid, info in props.items():
+        if info["handoff_to"] != role:
+            continue
+        closed = info["status"] == "rejected" or (
+            info["status"] in ("implemented", "superseded", "upstreamed")
+            and info["agent"] == role)
+        if not closed:
+            closed = any(q["agent"] == role and pid in q["related"]
+                         for q in props.values())
+        if not closed:
+            rows.append(f"{pid} (from {info['agent']})")
+    if not rows:
+        return ""
+    return ("  Open handoffs to you (implement, then back-link with "
+            "`proposal_lib.py link --id <yours> --related <P-NNNN>`): "
+            + ", ".join(sorted(rows)))
+
+
 def main():
     """Output session context on startup."""
     try:
@@ -529,6 +614,7 @@ def main():
     role, branch = _detect_role(root)
     state_summary = _read_recent_state(root)
     proposals = _check_proposals(root, role)
+    open_handoffs = _check_open_handoffs(root, role)  # sender-anchored debt
     git_hygiene = _check_git_hygiene(root)
     skill_drift = _check_skill_drift(root)
     cross_clone_drift = _check_cross_clone_drift(role)
@@ -540,6 +626,8 @@ def main():
     ]
     if proposals:
         output.append(proposals)
+    if open_handoffs:
+        output.append(open_handoffs)
     if git_hygiene:
         output.append(git_hygiene)
     if skill_drift:

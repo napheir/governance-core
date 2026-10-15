@@ -33,6 +33,7 @@ ledger snapshot）。Agent 不直接 Edit frontmatter / 不直接动 body 之外
 | `/proposal supersede <id> --by <new-path>` | 被新方案替代（**本仓库内**） | (任意) → superseded |
 | `/proposal upstream <id> --to-hub <ref>` | 替代方案已上送到 hub（**另一仓库**） | (任意) → upstreamed |
 | `/proposal link <id> --related <ref>` | 加 `related` 交叉引用（`P-NNNN` 会被校验） | （不转移状态） |
+| `/proposal link <id> --handoff-to <agent>` | 标记跨 agent handoff（`--clear-handoff` 撤销） | （不转移状态） |
 | `/proposal list [--include-terminal]` | 列出 in-flight + (可选) archive | （只读） |
 | `/proposal show <id>` | 显示 frontmatter + body 预览 | （只读） |
 | `/proposal path <id>` | 解析 id 到当前文件路径 | （只读） |
@@ -249,6 +250,28 @@ frontmatter `related` 追加交叉引用。这是 `related` 的**唯一写入口
   agent）。幂等：重复 link 同一 ref 不产生变更。成功追加时写一行 State Log。
 - 典型用途：实施方 proposal 指回它所承接的调研 / 建议 proposal，让链条可机械追溯。
 
+### `link <id> --handoff-to <agent>` / `--clear-handoff`（P-0128 Phase B）
+
+调 `python tools/proposal_lib.py link --id P-NNNN --handoff-to <agent>`：把本 proposal
+标记为**跨 agent 的研究→实现 handoff** —— 本 proposal 提出建议，由 `<agent>` 在**它自己的**
+proposal 里实现。这是 `handoff_to` 的唯一写入口（可与 `--related` 同一条命令给出，先整体校验
+再写）。
+
+- `<agent>` 必须是配置里的 agent，且不能是本 proposal 自己的 `agent`。
+- **挂账直到关闭**（schema §5.8）：`<agent>` 自己把本 proposal 做到 implemented /
+  superseded / upstreamed；或 `<agent>` 名下某个 proposal 用 `link --related P-NNNN`
+  回链本 proposal；或本 proposal 被 rejected。其他 agent（包括发送方自己）的回链不算。
+- 未关闭时：audit **Check 19** 每次运行都 WARN；目标 agent 的 SessionStart 显示
+  "Open handoffs to you"。只提醒、不阻断。
+- **接收方的义务**：看到 open handoff 后，实现时用 `link --id <自己的 P-NNNN> --related
+  <发送方 P-NNNN>` 回链 —— 这一步就是关账。
+- `--clear-handoff` 用于目标方已就地满足、不再需要单独 proposal 的情况（否则会一直挂账）。
+- `create` 时若标题里的路径属于他 agent 独占 scope，会打印 `[HANDOFF]` 提示并给出上面的
+  命令；漏设时 audit **Check 20** 兜底 WARN（只看 2026-10-15 之后创建的 in-flight 草稿）。
+  单 agent 项目没有按 agent 划分的 allow 文件，两者都不会出声。
+- **红线**：口头 / 聊天里的 handoff 不留痕迹，等于没有交接 —— 跨 agent 的研究→实现
+  必须落成 `handoff_to`，接收方实现时必须回链。
+
 ### `list [--include-terminal]`
 
 调 `python tools/proposal_lib.py list [--include-terminal]`：
@@ -317,7 +340,7 @@ Commit message 含 `Implements: P-NNNN` 或 `Per proposal P-NNNN` 时，wrap-up 
 
 ## 反模式
 
-- ❌ 直接 Edit shared_state/proposals/ 文件的 frontmatter（含手写 `related:` —— 用 `link`）
+- ❌ 直接 Edit shared_state/proposals/ 文件的 frontmatter（含手写 `related:` / `handoff_to:` —— 用 `link`）
 - ❌ 直接 Edit 文件的 `## State Log` 段（破坏 audit trail）
 - ❌ Agent 自批 approve / reject（违反安全约束）
 - ❌ `complete` 时不传 hash 也不在能解析的 HEAD 状态（lib 会拒）

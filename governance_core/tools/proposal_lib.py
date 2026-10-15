@@ -190,7 +190,7 @@ def serialize_frontmatter(fm: dict) -> str:
         "approved_at", "started_at",
         "implemented_in", "implemented_at",
         "rejected_at", "rejection_reason",
-        "superseded_by", "supersedes", "related",
+        "superseded_by", "supersedes", "related", "handoff_to",
         "owner",
     ]
     lines = ["---"]
@@ -1393,14 +1393,76 @@ def link_proposal(proposal_id: str, related: list[str]) -> tuple[Path, list[str]
         if added:
             fm["related"] = existing + added
             entry = f"- {_today()}: linked related {', '.join(added)}"
-            if _STATE_LOG_HEADER in body:
-                new_body = body.rstrip() + "\n" + entry + "\n"
-            else:
-                new_body = (body.rstrip() + "\n\n" + _STATE_LOG_HEADER
-                            + "\n\n" + entry + "\n")
             write_atomic(path, serialize_frontmatter(fm) + "\n"
-                         + new_body.lstrip("\n"))
+                         + _append_state_log(body, entry).lstrip("\n"))
     return path, added
+
+
+def _append_state_log(body: str, entry: str) -> str:
+    """Return `body` with `entry` appended under the State Log header."""
+    if _STATE_LOG_HEADER in body:
+        return body.rstrip() + "\n" + entry + "\n"
+    return body.rstrip() + "\n\n" + _STATE_LOG_HEADER + "\n\n" + entry + "\n"
+
+
+def validate_handoff_target(proposal_id: str, target: str) -> None:
+    """Raise ValueError unless `target` is a legal `handoff_to` for the proposal.
+
+    Legal = one of the configured agents and not the proposal's own agent (a
+    handoff to yourself owes nothing to anyone). Raises FileNotFoundError when
+    the proposal does not exist.
+    """
+    path = find_by_id(proposal_id)
+    if path is None:
+        raise FileNotFoundError(f"Proposal {proposal_id} not found")
+    agents = _agents()
+    if target not in agents:
+        raise ValueError(
+            f"handoff_to {target!r} is not a configured agent; allowed: {agents}")
+    fm, _ = parse_proposal(path)
+    if "agent" in fm and fm["agent"] == target:
+        raise ValueError(
+            f"handoff_to {target!r} is {proposal_id}'s own agent; a handoff "
+            f"must target another agent")
+
+
+def set_handoff_to(proposal_id: str, target: str | None) -> tuple[Path, bool]:
+    """Set (or, with target=None, clear) a proposal's `handoff_to` (P-0128 B).
+
+    The only sanctioned writer of `handoff_to`. Marks the proposal as a
+    cross-agent research->impl handoff to `target`; audit Check 19 then holds
+    it open until a `target`-owned proposal back-links it via `related` (or
+    the target implements this proposal itself). Clearing is the escape for
+    a request the target fulfilled in place. Validated via
+    `validate_handoff_target` before any write; idempotent.
+
+    Returns (path, changed). Appends one State Log line when changed. Filelock
+    held during the read-modify-write.
+    """
+    if target is not None:
+        validate_handoff_target(proposal_id, target)
+    path = find_by_id(proposal_id)
+    if path is None:
+        raise FileNotFoundError(f"Proposal {proposal_id} not found")
+
+    lock = filelock.FileLock(str(_lock_path()), timeout=_lock_timeout())
+    with lock:
+        fm, body = parse_proposal(path)
+        current = fm["handoff_to"] if "handoff_to" in fm else ""
+        if (target or "") == current:
+            return path, False
+        if target is None:
+            del fm["handoff_to"]
+            entry = f"- {_today()}: handoff_to cleared (was {current})"
+        elif current:
+            fm["handoff_to"] = target
+            entry = f"- {_today()}: handoff_to changed {current} -> {target}"
+        else:
+            fm["handoff_to"] = target
+            entry = f"- {_today()}: handoff_to set to {target}"
+        write_atomic(path, serialize_frontmatter(fm) + "\n"
+                     + _append_state_log(body, entry).lstrip("\n"))
+    return path, True
 
 
 def _resolve_head_hash() -> str:
@@ -1540,6 +1602,47 @@ def _emit_create_recall(description: str) -> None:
     sys.stdout.write("[WARN] proposal_suggest recall unavailable; skipped\n")
 
 
+def _emit_handoff_suggestion(description: str, agent: str, proposal_id: str) -> None:
+    """Suggest `handoff_to` when the draft targets another agent's scope (P-0128).
+
+    Sender-anchored cross-agent handoff signal: if `proposal_suggest` infers the
+    draft touches scope owned exclusively by another agent, the draft is likely a
+    research->implementation handoff -- prompt the author to record it with
+    `link --handoff-to X` so `audit_proposals.py` (Check 19) holds a standing
+    open-handoff until X's implementing proposal back-links (`related`).
+    Best-effort / advisory: silent when no target is inferred (self-scope, a
+    prose recommendation with no path tokens -- the Check 20 backstop catches
+    the latter -- or a single-agent project with no per-agent allow files).
+    Never fails create.
+    """
+    try:
+        sys.path.insert(0, str(REPO_ROOT / "tools"))
+        import proposal_suggest as _ps
+        targets = _ps.handoff_targets(
+            description, agent, _ps.load_allow_map(REPO_ROOT / "agent_rules"))
+    except Exception:
+        return
+    if not targets:
+        return
+    if len(targets) == 1:
+        sys.stdout.write(
+            f"\n[HANDOFF] 疑似跨 agent handoff -- 目标 scope owner: {targets[0]}\n"
+            f"   若本 proposal 的研究/建议将由 {targets[0]} 实现，请记录：\n"
+            f"       python tools/proposal_lib.py link --id {proposal_id} "
+            f"--handoff-to {targets[0]}\n"
+            f"   （audit Check 19 会挂账，直到 {targets[0]} 的实现 proposal 用 "
+            f"related 回链 {proposal_id}）\n"
+        )
+    else:
+        sys.stdout.write(
+            f"\n[HANDOFF] 疑似跨 agent handoff -- 触及多个他 agent scope: "
+            f"{', '.join(targets)}\n"
+            f"   若属研究->实现 handoff，请选定单一目标后记录：\n"
+            f"       python tools/proposal_lib.py link --id {proposal_id} "
+            f"--handoff-to <agent>\n"
+        )
+
+
 def _cmd_create(args):
     path = create_proposal(slug=args.slug, title=args.title, agent=args.agent)
     print(f"[OK] Created {path.relative_to(REPO_ROOT.parent)}")
@@ -1548,6 +1651,9 @@ def _cmd_create(args):
     # P-0124: auto-emit the drafting recall so the author sees prior art /
     # checklist / scope owner without a separate opt-in step.
     _emit_create_recall(args.title)
+    # Sender-anchored handoff hint: if the draft targets another agent's
+    # exclusive scope, prompt for `handoff_to` so the handoff is tracked.
+    _emit_handoff_suggestion(args.title, fm["agent"], fm["id"])
     return 0
 
 
@@ -1571,12 +1677,32 @@ def _cmd_transition(args):
 
 
 def _cmd_link(args):
-    """CLI: add `related` cross-references to a proposal (P-0128 Phase A)."""
-    path, added = link_proposal(args.id, args.related)
-    if added:
-        print(f"[OK] {args.id}: related += {', '.join(added)}")
-    else:
-        print(f"[OK] {args.id}: related unchanged (already linked)")
+    """CLI: add `related` refs and/or set/clear `handoff_to` (P-0128).
+
+    Every requested change is validated before anything is written, so a bad
+    `--handoff-to` never leaves a half-applied `--related`.
+    """
+    if not args.related and args.handoff_to is None and not args.clear_handoff:
+        print("[FAIL] link needs --related, --handoff-to or --clear-handoff",
+              file=sys.stderr)
+        return 2
+    if args.handoff_to is not None:
+        validate_handoff_target(args.id, args.handoff_to)
+    path = None
+    if args.related:
+        path, added = link_proposal(args.id, args.related)
+        if added:
+            print(f"[OK] {args.id}: related += {', '.join(added)}")
+        else:
+            print(f"[OK] {args.id}: related unchanged (already linked)")
+    if args.handoff_to is not None or args.clear_handoff:
+        path, changed = set_handoff_to(args.id, args.handoff_to)
+        if args.clear_handoff:
+            state = "cleared" if changed else "unchanged (not set)"
+        else:
+            state = (f"set to {args.handoff_to}" if changed
+                     else "unchanged (already set)")
+        print(f"[OK] {args.id}: handoff_to {state}")
     print(f"     path: {path.relative_to(REPO_ROOT.parent)}")
     return 0
 
@@ -1907,11 +2033,18 @@ def main(argv=None) -> int:
                    help="Print what would be written without modifying ledger file")
     p.set_defaults(func=_cmd_migrate_ledger)
 
-    p = sub.add_parser("link", help="Add `related` cross-references "
-                                    "(global P-NNNN ids are validated)")
+    p = sub.add_parser("link", help="Add `related` cross-references (global "
+                                    "P-NNNN ids are validated) and/or set "
+                                    "`handoff_to`")
     p.add_argument("--id", required=True)
-    p.add_argument("--related", required=True, action="append",
+    p.add_argument("--related", action="append", default=[],
                    help="P-NNNN id or free-form ref; repeatable")
+    handoff = p.add_mutually_exclusive_group()
+    handoff.add_argument("--handoff-to", dest="handoff_to",
+                         help="mark as a cross-agent handoff to this agent "
+                              "(a configured agent other than the owner)")
+    handoff.add_argument("--clear-handoff", action="store_true",
+                         help="remove handoff_to")
     p.set_defaults(func=_cmd_link)
 
     p = sub.add_parser("path", help="Print absolute path for P-NNNN")
