@@ -17,6 +17,22 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-10-16 — fix: SessionStart 不显示 hub 自己的待审提案（0.45.1，未发布）
+
+- **bug**：`session-context._check_proposals` 只扫 `../shared_state/proposals`（多 clone 布局）；
+  hub 的 `shared_state/` 在仓库内，所以 hub 开会话时从不列出自己的 pending/approved/in-progress
+  提案（P-0107 一直看不到）。P-0128 Phase B 合入时发现，owner 要求修。
+- **修复**：新 helper `_shared_state_proposal_roots(root)` 返回仓内 + 同级两处中存在的目录（去重、
+  仓内优先）；`_check_proposals` 与 `_check_open_handoffs` 共用它；同一文件在两处只列一次。
+  无需提案（单文件、清晰复现、低风险）。
+- **范围核查**：`edit-write-guard` 的 `../shared_state` 只是给仓外同级目录开白名单（仓内本来就在
+  边界内），`migrate_proposals_to_shared_state` 只在缺配置时兜底——均非同类 bug，未动。
+- **验证**：新 `tools/test_session_context_proposals.py` 11 passed（对旧 hook 3 failed，即仓内布局
+  的几例）；pytest `tools/` 248 passed；脚本套件零失败；`upgrade` + `doctor` exit 0；audit 0/62；
+  wheel 干净。**live**：hub SessionStart 现显示 `Pending proposals (core, shared_state):
+  p-0107-skill_self_improvement_v2.md`。
+- **bump**：0.45.0 → 0.45.1。**未发布**（需 owner 确认）。
+
 ### 2026-10-15 — 发布 v0.45.0（P-0128 Phase B：handoff_to / candidate #139）
 
 - **发布**：owner 确认（"OK，发布"）后 push master（`7deb957`）→ `gh release create v0.45.0`（target

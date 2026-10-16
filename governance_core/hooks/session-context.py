@@ -432,6 +432,23 @@ def _proposal_status(fpath: str) -> str:
     return m.group(1) if m else "pending"
 
 
+def _shared_state_proposal_roots(root):
+    """Return the existing in-flight proposal roots, de-duplicated.
+
+    In-flight proposals live in `shared_state/proposals/`, which sits either
+    inside the repo (single-repo layout, e.g. the governance-core hub) or
+    beside it (`../shared_state/`, the multi-clone layout). Both are checked,
+    in-repo first; only directories that exist are returned.
+    """
+    roots = []
+    for base in (os.path.join(root, "shared_state", "proposals"),
+                 os.path.join(root, "..", "shared_state", "proposals")):
+        base = os.path.abspath(base)
+        if base not in roots and os.path.isdir(base):
+            roots.append(base)
+    return roots
+
+
 def _check_proposals(root, role):
     """Check pending/approved/in-progress proposals across 3 regions (P-0001 Phase 3).
 
@@ -450,13 +467,11 @@ def _check_proposals(root, role):
     """
     visible_statuses = {"pending", "approved", "in-progress"}
 
-    # Region 1+2: shared_state/proposals/<agent>/ (in-flight, all 5 agents)
-    shared_state_root = os.path.abspath(
-        os.path.join(root, "..", "shared_state", "proposals")
-    )
+    # Region 1+2: shared_state/proposals/<agent>/ (in-flight, all agents),
+    # in-repo or sibling layout (see _shared_state_proposal_roots).
     self_bucket = []
     other_buckets = {}  # agent_name -> count
-    if os.path.isdir(shared_state_root):
+    for shared_state_root in _shared_state_proposal_roots(root):
         for agent_name in sorted(os.listdir(shared_state_root)):
             agent_dir = os.path.join(shared_state_root, agent_name)
             if not os.path.isdir(agent_dir):
@@ -470,7 +485,8 @@ def _check_proposals(root, role):
                 if _proposal_status(fpath) not in visible_statuses:
                     continue
                 if agent_name == role:
-                    self_bucket.append(f)
+                    if f not in self_bucket:
+                        self_bucket.append(f)
                 else:
                     other_buckets[agent_name] = other_buckets.get(agent_name, 0) + 1
 
@@ -535,17 +551,10 @@ def _check_open_handoffs(root, role):
     in-flight + archive frontmatter blocks. The authoritative check is audit
     Check 19 in `audit_proposals.py`; this is the session nudge and mirrors
     its closure predicate (rejected / target-implemented / target back-link).
-    In-flight is looked up both inside the repo (`shared_state/`, the
-    single-repo layout) and beside it (`../shared_state/`, the multi-clone
-    layout).
+    In-flight is looked up in both layouts via `_shared_state_proposal_roots`.
     """
-    roots = []
-    for base in (os.path.join(root, "shared_state", "proposals"),
-                 os.path.join(root, "..", "shared_state", "proposals"),
-                 os.path.join(root, "proposals", "_archive")):
-        base = os.path.abspath(base)
-        if base not in roots:
-            roots.append(base)
+    roots = _shared_state_proposal_roots(root) + [
+        os.path.abspath(os.path.join(root, "proposals", "_archive"))]
     props = {}  # id -> {agent, handoff_to, related:set, status}
     for base in roots:
         if not os.path.isdir(base):
