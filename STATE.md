@@ -17,6 +17,15 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-10-16 — 发布 v0.45.1（SessionStart 列出仓内 shared_state 提案）
+
+- **发布**：owner 确认（"是的，发布"）后 push master（`4f409d6`）→ `gh release create v0.45.1`
+  （target master）→ CI `release.yml` run 38834240931 success → OIDC Trusted Publisher。
+- **核实**：PyPI `/governance-core/0.45.1/json` 有 wheel + sdist；主 JSON 首次查询仍是 0.45.0（CDN
+  缓存），带 no-cache 重查为 `latest: 0.45.1`；`gh release list` 显示 v0.45.1 为 Latest。
+- **消费者影响**：单仓布局（`shared_state/` 在仓内）的项目 `upgrade` 后 SessionStart 开始列出在途
+  提案；多 clone 布局行为不变。无迁移。
+
 ### 2026-10-16 — fix: SessionStart 不显示 hub 自己的待审提案（0.45.1，未发布）
 
 - **bug**：`session-context._check_proposals` 只扫 `../shared_state/proposals`（多 clone 布局）；
