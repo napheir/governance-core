@@ -17,7 +17,13 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
-### 2026-11-05 — 自动 merge 提交门禁 + 子宪法审计误报（0.48.3，未发布）
+### 2026-11-05 — 发布 v0.48.3（自动 merge 提交门禁 + 子宪法审计）
+
+- owner 确认后推送 1 commit（e5e3dfb），`gh release create v0.48.3`；workflow 42028597542：build / publish-pypi success。
+- 核实：`gh release list` Latest = v0.48.3；PyPI 版本端点 `/pypi/governance-core/0.48.3/json` 含 wheel + sdist。
+- 已通知 deva-vani（他们等 owner 看过 `/upgrade` 预览再升级；本机 governance-core 为 editable 安装，指向本仓库工作区）。
+
+### 2026-11-05 — 自动 merge 提交门禁 + 子宪法审计误报（0.48.3）
 
 - **背景**：deva-vani 四个 clone 已升到 0.48.2，三项修复全部确认；`/sync-repos` 不加 `--no-verify` 实测通过（`--no-ff --no-commit` 后 `git commit`）。
   另报两个问题。
@@ -41,16 +47,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - owner 确认后推送 1 commit（8921f45），`gh release create v0.48.2`；workflow 42023042411：build / publish-pypi success。
 - 核实：`gh release list` Latest = v0.48.2；PyPI 版本端点 `/pypi/governance-core/0.48.2/json` 含 wheel + sdist。
 - 已通知 deva-vani：四个 clone 升 0.48.2 后各跑一次 doctor / check_agent_roles / audit_sub_constitutions；P-0129 验收第 1–3 项待 agent-platform 会话实测回报。
-
-### 2026-11-05 — deva-vani 升级反馈修复（0.48.2）
-
-- **背景**：deva-vani 四个 clone 已升级到 0.48.1，doctor 全 OK；P-0129 验收第 4 项实测通过（越界 commit 被 pre-commit 拒，exit=1），
-  第 1–3 项待 owner 开 agent-platform 会话。同时报 3 个问题 + 1 处文档矛盾。
-- **check_agent_roles 误报**（P-0130 引入）：installer 给每个 clone 装 `core-auditor.md`、master 跟踪的 core 角色随 merge 进业务 clone，
-  被 Check 2 判跨 scope。改为只把**其他业务 agent** 名作前缀视为跨 scope，core 角色在各 clone 合法。
-- **audit_sub_constitutions 找不到业务 clone**（F7 同族）：按 `install_root/agent-<name>` 拼路径；改为本 clone 父目录 + config `clone_dir`。
-- **`detect_role('.')` 返回 `<unresolved>`**：`_root()` 只 normpath，`basename('.')` 为空；改为 abspath（fail-closed 方向不变）。
-- **`/sync-repos` Step 4 的 `commit --no-verify`**：0.48.1 起门禁在结束 merge 的 commit 时用 MERGE_HEAD 识别导入，去掉 `--no-verify`，被拒即停报；
-  补充"master 停止跟踪的文件会被 merge 删除、upgrade 前该 clone 无 hook 注册"；更正"config.json 是 gitignored"的不实描述。
-- **测试**：+3（core 角色在业务 clone 不报、相对路径身份解析、嵌套布局找到兄弟 clone）；对 HEAD 旧代码反向校准 3 例全 FAIL。
-  全量 pytest 340 passed，脚本风格全过。版本 0.48.1 → 0.48.2。**发布待 owner 确认**。
