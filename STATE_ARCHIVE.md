@@ -6,6 +6,16 @@
 
 ---
 
+### 2026-11-05 — P-0130 Phase A：提案 `agent` 改为取自 config
+
+- **起因**：deva-vani 报 knowledge owner / check_agent_roles 写死上游角色；本仓库按角色名 token 扫描找到同族 6 处（G1–G6），
+  起草 P-0130，owner 批准（Q1–Q4 按默认：归档不在册 WARN、`core` 别名、audit_hooks 改 v2、一次发布 0.48.0）。
+- **G1**：`contracts/proposal_frontmatter_schema.md` 1.5.0 → 1.6.0，`agent` 取值 = config `agents[].name`；`audit_proposals.py`
+  删 `VALID_AGENTS`，改用 `_config_agents`（`load_proposals_config`）：in-flight 不在册 FAIL，归档/legacy 只做形式校验
+  `^[a-z][a-z0-9_-]*$`，不在册由新增 Check 21 WARN。`_validate_one` 新增可选参数 `valid_agents`（旧调用方不受影响）。
+- **测试**：新增 `test_config_derived_enums.py` 7 例（提案部分）；hub `audit_proposals` 仍 0 failures；全量 pytest 314 passed，脚本风格全过。
+
+
 ### 2026-11-05 — 发布 v0.47.0（P-0129 Phase C/D/F）
 
 - owner 确认后推送 master（5 commits）并 `gh release create v0.47.0`；release workflow 41995202256：build / publish-pypi success。

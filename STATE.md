@@ -17,6 +17,16 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-05 — 发布 v0.48.0 + 归档 P-0130
+
+- P-0130 验收 1–6 通过（第 6 项提案内写的 cmd 引号转义有误，同一门禁直接执行 exit 1 = 干净；已记入完成 note），reconcile 后
+  `implemented`（69772dc），owner 同意后归档到 `proposals/_archive/2026/`（e23b3d1）。
+- 推送 4 commits，`gh release create v0.48.0`；release workflow 42006873502：build / publish-pypi success；核实 `gh release list`
+  Latest = v0.48.0，PyPI latest = 0.48.0（wheel + sdist）。
+- 已通知 deva-vani（`artifacts/deva-vani/2026-11-05-release-0.48.0.md` + 会话消息），并按 owner 要求催报 P-0129 验收第 4 项实测
+  （越权 Edit / Bash 写兄弟 clone / 改自身 guard / 越界 commit）。
+- 待办：P-0129 等回报后 complete + 归档；sync_infra 集中 hook 与 installer 本地接线冲突（见记忆）、条款去业务化、mab 侧、授权码进 git，各自另开。
+
 ### 2026-11-05 — P-0130 Phase C：check_agent_roles / audit_hooks v2 + 文档，版本 0.48.0（未发布）
 
 - **G3**：`check_agent_roles.py` 重写：agent / clone 根取自 config（单 agent = 本仓库，多 clone = `<父目录>/<clone_dir>`）；核心角色 =
@@ -41,12 +51,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   以符合契约自己的 SemVer（新增 owner 值 = minor）。
 - **测试**：`test_config_derived_enums.py` 新增 5 例 knowledge（含 `core_agent_name: lead` 时 `owner: core` 仍有效、缺 config FATAL）；
   `test_audit_index_absent.py` 夹具补 config。hub `audit_knowledge` Failed 0（owner_enum=['core']）；全量 pytest 320 passed，脚本风格全过。
-
-### 2026-11-05 — P-0130 Phase A：提案 `agent` 改为取自 config
-
-- **起因**：deva-vani 报 knowledge owner / check_agent_roles 写死上游角色；本仓库按角色名 token 扫描找到同族 6 处（G1–G6），
-  起草 P-0130，owner 批准（Q1–Q4 按默认：归档不在册 WARN、`core` 别名、audit_hooks 改 v2、一次发布 0.48.0）。
-- **G1**：`contracts/proposal_frontmatter_schema.md` 1.5.0 → 1.6.0，`agent` 取值 = config `agents[].name`；`audit_proposals.py`
-  删 `VALID_AGENTS`，改用 `_config_agents`（`load_proposals_config`）：in-flight 不在册 FAIL，归档/legacy 只做形式校验
-  `^[a-z][a-z0-9_-]*$`，不在册由新增 Check 21 WARN。`_validate_one` 新增可选参数 `valid_agents`（旧调用方不受影响）。
-- **测试**：新增 `test_config_derived_enums.py` 7 例（提案部分）；hub `audit_proposals` 仍 0 failures；全量 pytest 314 passed，脚本风格全过。
