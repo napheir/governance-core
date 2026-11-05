@@ -5,6 +5,13 @@
 
 ---
 
+### 2026-11-05 — 发布 v0.48.3（自动 merge 提交门禁 + 子宪法审计）
+
+- owner 确认后推送 1 commit（e5e3dfb），`gh release create v0.48.3`；workflow 42028597542：build / publish-pypi success。
+- 核实：`gh release list` Latest = v0.48.3；PyPI 版本端点 `/pypi/governance-core/0.48.3/json` 含 wheel + sdist。
+- 已通知 deva-vani（他们等 owner 看过 `/upgrade` 预览再升级；本机 governance-core 为 editable 安装，指向本仓库工作区）。
+
+
 ### 2026-11-05 — 自动 merge 提交门禁 + 子宪法审计误报（0.48.3）
 
 - **背景**：deva-vani 四个 clone 已升到 0.48.2，三项修复全部确认；`/sync-repos` 不加 `--no-verify` 实测通过（`--no-ff --no-commit` 后 `git commit`）。

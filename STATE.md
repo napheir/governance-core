@@ -17,6 +17,17 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-05 — 起草 P-0132（授权码泄露修复，A + C）
+
+- owner 选 A + C（码移出 git + 按码吊销 / 停用 schema 1；不轮换密钥、不重签其他消费者、不 yank）。P-0132 已起草并提交评审（pending）。
+  三个 phase：A 契约 `contracts/authorization_schema.md` + `.governance/auth_code`（gitignored）存储与迁移；B feed 条目加 `code_sha256`
+  （保留 consumer_id 兼容旧客户端）、`SUPPORTED_SCHEMAS = (2,)`、安装时尽力查 feed、revoke 工具按码吊销；C 发布 0.49.0 后由维护者
+  重签 hub 码、删 config 里的码、吊销 `99411b5a`，每步人工确认。
+- trade-agent 的码不在本机，trade_agent 仓库各分支都没跟踪 config；注册表登记时间晚于 schema 2 成为默认值、expiry = 签发日 + 365，
+  判断为 schema 2，验收里要求 owner 在 trade 项目跑一次 doctor 确认。owner 问 trade 码是否快过期：2027-05-19 到期，还剩 195 天；
+  hub / auto-tax / trade 三个码都在 2027-05-18~19 到期。
+- 验收命令逐条预跑：三条都还选不中测试（实施前失败）。
+
 ### 2026-11-05 — 发布 v0.48.4、批准 P-0131、授权码泄露调研
 
 - owner「发布。批准 P-0131。先处理授权码泄露」：推送 d7f5a42，`gh release create v0.48.4`，CI 成功；`gh release list` Latest = v0.48.4，
@@ -41,9 +52,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   STATE_ARCHIVE.md 时必须一起 add。hub 归档标题已改。
 - **测试**：+3（`test_rotate_state_archive.py`），对旧版反向校准 3 例全 FAIL。全量 pytest 350 passed，脚本风格全过。
   版本 0.48.3 → 0.48.4。**发布待 owner 确认**。
-
-### 2026-11-05 — 发布 v0.48.3（自动 merge 提交门禁 + 子宪法审计）
-
-- owner 确认后推送 1 commit（e5e3dfb），`gh release create v0.48.3`；workflow 42028597542：build / publish-pypi success。
-- 核实：`gh release list` Latest = v0.48.3；PyPI 版本端点 `/pypi/governance-core/0.48.3/json` 含 wheel + sdist。
-- 已通知 deva-vani（他们等 owner 看过 `/upgrade` 预览再升级；本机 governance-core 为 editable 安装，指向本仓库工作区）。
