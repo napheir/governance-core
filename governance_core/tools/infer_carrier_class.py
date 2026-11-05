@@ -226,7 +226,7 @@ def render_report(result: dict, generated_at: str) -> str:
     lines.append("3. **Plan backfill PR** based on §5 manifests; the field")
     lines.append("   is `carrier_class: <value>` inserted after `owner:` in")
     lines.append("   each entry's frontmatter.")
-    lines.append("4. **Once backfill ships**, bump schema to v1.3.0 and flip")
+    lines.append("4. **Once backfill ships**, bump schema to v1.4.0 and flip")
     lines.append("   Checks 12-15 from warn to fail (see schema §8.2).")
     lines.append("")
 

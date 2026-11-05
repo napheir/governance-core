@@ -36,7 +36,7 @@ theme: universal
 | carrier_class | 载体形式 |
 |---|---|
 | `reference` / `runbook` / `derived-lesson` | MD 默认；**含流程图 / 序列图 / 状态机 / 复杂叙事 → HTML profile（推荐）** |
-| `current-state` | **强制 HTML profile**（v1.3.0 cutover 后；当前 pilot 期外的可留 MD，但新写应直接 HTML） |
+| `current-state` | **强制 HTML profile**（v1.4.0 cutover 后；当前 pilot 期外的可留 MD，但新写应直接 HTML） |
 | `decision-record` / `experiment-record` | **禁止 HTML**（diff-friendly 优先，必须 MD） |
 
 **Step 0.3 — 输出**（在本次会话明确声明）：

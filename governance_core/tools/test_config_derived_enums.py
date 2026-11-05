@@ -20,7 +20,12 @@ from pathlib import Path
 import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))  # tools/
+import audit_knowledge as ak  # noqa: E402
 import audit_proposals as ap  # noqa: E402
+import migrate_knowledge_frontmatter as mkf  # noqa: E402
+
+_KNOWLEDGE_CONTRACT = (Path(__file__).resolve().parent.parent / "contracts"
+                       / "knowledge_frontmatter_schema.md")
 
 AGENTS = ["core", "platform", "experience", "content"]
 
@@ -98,3 +103,60 @@ def test_proposal_archived_current_agent_no_warning(tmp_path: Path) -> None:
     p = _proposal(tmp_path / "arch", "0006", "content", status="rejected")
     regions = {"in-flight": [], "archive": [p], "legacy": []}
     assert ap._check_archived_agents(regions, set(AGENTS)) == []
+
+
+# --- knowledge owner (contract v1.3.0) ---------------------------------------
+
+
+def _knowledge_project(root: Path, owner: str, agents: list,
+                       core: str = "core") -> None:
+    """Config + knowledge contract + one entry owned by `owner`."""
+    _write_config(root, agents, core)
+    (root / "contracts").mkdir(parents=True, exist_ok=True)
+    (root / "contracts" / "knowledge_frontmatter_schema.md").write_text(
+        _KNOWLEDGE_CONTRACT.read_text(encoding="utf-8"), encoding="utf-8")
+    entry = root / "knowledge" / "governance"
+    entry.mkdir(parents=True, exist_ok=True)
+    (entry / "e.md").write_text(
+        f"---\ntitle: E\nstatus: active\ncreated: 2026-11-05\n"
+        f"updated: 2026-11-05\nowner: {owner}\ntags: [x]\n---\n\n# E\n\nBody.\n",
+        encoding="utf-8")
+
+
+def _owner_failed(caplog) -> bool:
+    return any("not in enum" in r.getMessage() for r in caplog.records)
+
+
+def test_knowledge_owner_enum_is_config_agents_plus_core(tmp_path: Path) -> None:
+    _write_config(tmp_path, AGENTS)
+    assert ak.load_owner_enum(tmp_path) == set(AGENTS)
+    assert mkf.load_valid_owners(tmp_path) == set(AGENTS)
+
+
+def test_knowledge_business_owner_passes(tmp_path: Path, caplog) -> None:
+    _knowledge_project(tmp_path, "platform", AGENTS)
+    ak.main(tmp_path)
+    assert not _owner_failed(caplog)
+
+
+@pytest.mark.parametrize("owner", ["ghost", "trade"])
+def test_knowledge_unknown_owner_fails(tmp_path: Path, caplog, owner: str) -> None:
+    _knowledge_project(tmp_path, owner, AGENTS)
+    assert ak.main(tmp_path) == 1
+    assert _owner_failed(caplog)
+
+
+def test_knowledge_core_alias_valid_when_core_named_otherwise(tmp_path: Path,
+                                                              caplog) -> None:
+    """Shipped docs say `owner: core`; a core agent named `lead` keeps them valid."""
+    _knowledge_project(tmp_path, "core", ["lead", "platform"], core="lead")
+    ak.main(tmp_path)
+    assert not _owner_failed(caplog)
+
+
+def test_knowledge_missing_config_is_fatal(tmp_path: Path) -> None:
+    (tmp_path / "knowledge").mkdir()
+    (tmp_path / "contracts").mkdir()
+    (tmp_path / "contracts" / "knowledge_frontmatter_schema.md").write_text(
+        _KNOWLEDGE_CONTRACT.read_text(encoding="utf-8"), encoding="utf-8")
+    assert ak.main(tmp_path) == 1

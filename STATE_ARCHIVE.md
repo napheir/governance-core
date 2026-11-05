@@ -6,6 +6,21 @@
 
 ---
 
+### 2026-11-05 — P-0129 Phase F：提交前 scope 门禁（F9），版本 0.47.0（未发布）
+
+- **问题**：install 不生成任何 `<agent>.allow.txt`、不装 pre-commit；`check_scope.py --agent core` 缺 `core.allow.txt` 即 FATAL ——
+  第十二条的提交前防线在所有消费者里都不存在。
+- **修复**：`check_scope.py` 不传 `--agent` 时按 config 判定身份，core 直接 PASS，跳过 `#` 注释行（与 edit-write-guard 一致）；
+  installer 为每个非 core agent 生成带注释的空 allow.txt（deny-all，归项目所有，不进清单），在 git 根目录装
+  `.git/hooks/pre-commit`（sh 存根，LF，调用 `check_scope.py --staged-only`）：带标记才刷新，别人的 hook 不覆盖，设了 `core.hooksPath` 不装。
+  doctor 对空 allow list、缺失或外来的 pre-commit 告警。
+- **偏差**：未接 `check_constitution_change.py` —— 它要读 pre-commit 时还不存在的提交信息、模板过时、输出 Unicode 符号，会拦住所有
+  `CLAUDE.md` 提交；宪法源由 edit-write-guard L5 守护。另修 doctor 里 `hooks_dir` 变量被覆盖导致 OK 行 `hooks=0` 的回归（未发布前发现）。
+- **dogfood**：hub upgrade 后装上 pre-commit，本提交即经过该门禁（core → PASS）。
+- **测试**：新增 `test_installer_commit_gate.py` 9 例（含经真实 hook 的 `git commit`：业务越界被拒、加规则后通过、core 任意通过）。
+  全量 pytest 307 passed，脚本风格全过；版本 0.46.0 → 0.47.0，wheel 含两个模板、无 `maintainer/`。**发布待 owner 确认**。
+
+
 ### 2026-11-05 — P-0129 Phase D：新项目生成总宪法初稿（F4）
 
 - **问题**：新消费者的 `constitution/total.md` / `agent.md` 是 stub，regen 出的 `CLAUDE.md` 没有任何条款；Claude Code 只加载 `CLAUDE.md`，

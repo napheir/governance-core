@@ -34,7 +34,14 @@ _CONTRACT_SRC = (
 
 
 def _scaffold(tmp: Path, owner: str = "core") -> None:
-    """Build a minimal auditable project: contract + one knowledge entry."""
+    """Build a minimal auditable project: config + contract + one entry.
+
+    The config supplies the valid owner values (contract v1.3.0 §3.2, P-0130).
+    """
+    (tmp / ".governance").mkdir(parents=True, exist_ok=True)
+    (tmp / ".governance" / "config.json").write_text(
+        '{"agents": [{"name": "core", "branch": "master", "clone_dir": "x"}]}',
+        encoding="utf-8")
     (tmp / "contracts").mkdir(parents=True, exist_ok=True)
     shutil.copy(_CONTRACT_SRC, tmp / "contracts" / "knowledge_frontmatter_schema.md")
     entry_dir = tmp / "knowledge" / "governance"

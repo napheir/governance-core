@@ -35,7 +35,6 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-VALID_OWNERS = {"rules", "trade", "data", "research", "core"}
 SKIP_FILENAMES = {"INDEX.md", "_TEMPLATE.md", "VALIDATION_TEST.md"}
 
 FRONTMATTER_RE = re.compile(r"\A---\r?\n(.*?)\r?\n---\r?\n", re.DOTALL)
@@ -43,12 +42,27 @@ OWNER_LINE_RE = re.compile(r"^owner\s*:\s*(\S+)\s*$", re.MULTILINE)
 TABLE_ROW_RE = re.compile(r"^\s*\|(.+)\|\s*$")
 
 
-def parse_category_owner_map(knowledge_root: Path) -> dict[str, str]:
+def load_valid_owners(repo_root: Path) -> set[str]:
+    """Valid owners (contract v1.3.0 §3.2): config agent names + `core` (P-0130).
+
+    Raises FileNotFoundError when .governance/config.json is missing.
+    """
+    import json
+    cfg_path = repo_root / ".governance" / "config.json"
+    if not cfg_path.is_file():
+        raise FileNotFoundError(f".governance/config.json not found at {repo_root}")
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    return {agent["name"] for agent in cfg["agents"]} | {"core"}
+
+
+def parse_category_owner_map(knowledge_root: Path,
+                             valid_owners: set[str]) -> dict[str, str]:
     """Parse top INDEX.md to build category -> primary_owner map.
 
     Looks for a markdown table whose header contains 'Subdirectory' and
     'Owner'. Returns {category_name: primary_owner} where primary_owner is
-    the first owner listed if multi-owner.
+    the first owner listed if multi-owner; owners outside `valid_owners`
+    are skipped with a warning.
     """
     index_md = knowledge_root / "INDEX.md"
     if not index_md.is_file():
@@ -80,7 +94,7 @@ def parse_category_owner_map(knowledge_root: Path) -> dict[str, str]:
         if not cat or not owner_cell:
             continue
         primary = owner_cell.split("+")[0].strip().lower()
-        if primary not in VALID_OWNERS:
+        if primary not in valid_owners:
             logger.warning(
                 "top INDEX category %r has unrecognized primary owner %r; skipping",
                 cat, primary,
@@ -112,12 +126,12 @@ def extract_frontmatter(text: str) -> tuple[str, str, str]:
     return match.group(1), text[end:], ""
 
 
-def owner_already_set(frontmatter: str) -> bool:
-    """True if frontmatter has a valid `owner: <enum>` line."""
+def owner_already_set(frontmatter: str, valid_owners: set[str]) -> bool:
+    """True if frontmatter has an `owner:` line naming a valid owner."""
     match = OWNER_LINE_RE.search(frontmatter)
     if not match:
         return False
-    return match.group(1).lower() in VALID_OWNERS
+    return match.group(1).lower() in valid_owners
 
 
 def inject_owner(frontmatter: str, owner: str) -> str:
@@ -206,6 +220,7 @@ def migrate_file(
     owner_map: dict[str, str],
     dry_run: bool,
     scaffold: bool,
+    valid_owners: set[str],
 ) -> str:
     """Process one file; return status string."""
     rel = file_path.relative_to(knowledge_root)
@@ -231,7 +246,7 @@ def migrate_file(
         file_path.write_text(new_text, encoding="utf-8")
         return f"  [NEW]  {rel} -- scaffolded frontmatter (owner: {expected_owner})"
 
-    if owner_already_set(fm):
+    if owner_already_set(fm, valid_owners):
         current = OWNER_LINE_RE.search(fm).group(1).lower()
         return f"  [OK]   {rel} -- owner already {current!r}"
 
@@ -274,7 +289,12 @@ def main() -> int:
         logger.error("[FATAL] knowledge/ not found at %s", knowledge_root)
         return 1
 
-    owner_map = parse_category_owner_map(knowledge_root)
+    try:
+        valid_owners = load_valid_owners(root)
+    except FileNotFoundError as exc:
+        logger.error("[FATAL] %s", exc)
+        return 1
+    owner_map = parse_category_owner_map(knowledge_root, valid_owners)
     logger.info("Category owner map from %s/INDEX.md:", knowledge_root.relative_to(root))
     for cat, owner in sorted(owner_map.items()):
         logger.info("  %-16s -> %s", cat, owner)
@@ -296,6 +316,7 @@ def main() -> int:
             md_path, knowledge_root, root, owner_map,
             dry_run=not args.execute,
             scaffold=args.scaffold_missing_fm,
+            valid_owners=valid_owners,
         )
         logger.info(result)
         if "[ADD]" in result:

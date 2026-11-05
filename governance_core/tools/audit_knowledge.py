@@ -5,6 +5,8 @@ Derives required fields, enum values, and category -> owner map from:
   - contracts/knowledge_frontmatter_schema.md
   - contracts/knowledge_index_schema.md
   - knowledge/INDEX.md (Subdirectory Overview table)
+  - .governance/config.json agents[] (owner values, as contract v1.3.0 §3.2
+    directs; P-0130)
 
 Checks run (severity in brackets):
   1. Frontmatter required fields present         [fail]
@@ -27,7 +29,7 @@ Checks run (severity in brackets):
 Checks 12-15 enforce P-0053 / schema v1.2.0's transitional `carrier_class`
 field per `contracts/knowledge_frontmatter_schema.md` §2.5 + §8.2 — they
 emit warnings (never failures) so the broader knowledge base can migrate
-gradually. Schema v1.3.0 will flip them to failures.
+gradually. Schema v1.4.0 will flip them to failures.
 
 Exits 0 if no failures, 1 otherwise.
 
@@ -482,6 +484,20 @@ def _audit_scenario_coverage(root: Path, clusters_path: Path) -> tuple[int, int]
 
 # -------------- main audit --------------
 
+def load_owner_enum(root: Path) -> set[str]:
+    """Valid `owner` values (contract v1.3.0 §3.2): config agent names + `core`.
+
+    The contract names the source instead of listing values (P-0130): the
+    upstream roles were hard-coded here before. Raises FileNotFoundError when
+    `.governance/config.json` is missing (fail loud, Art.4).
+    """
+    cfg_path = root / ".governance" / "config.json"
+    if not cfg_path.is_file():
+        raise FileNotFoundError(f".governance/config.json not found at {root}")
+    cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    return {agent["name"] for agent in cfg["agents"]} | {"core"}
+
+
 def main(root: Path | None = None) -> int:
     """Run all checks; return 0 (healthy) or 1 (failures)."""
     if root is None:
@@ -498,10 +514,15 @@ def main(root: Path | None = None) -> int:
 
     required_fields = parse_required_fields(contract_fm)
     status_enum = parse_enum(contract_fm, "### 3.1 `status`")
-    owner_enum = parse_enum(contract_fm, "### 3.2 `owner`")
+    try:
+        owner_enum = load_owner_enum(root)
+    except FileNotFoundError as exc:
+        logger.error("[FATAL] %s -- owner values come from config agents "
+                     "(contract v1.3.0 §3.2)", exc)
+        return 1
     briefing_enum = parse_enum(contract_fm, "### 3.3 `briefing`")
     # Schema v1.2.0+: `carrier_class` enum (transitional required field).
-    # Auditor Checks 12-15 emit warnings only; v1.3.0 will flip to fail.
+    # Auditor Checks 12-15 emit warnings only; v1.4.0 will flip to fail.
     try:
         carrier_class_enum = parse_enum(contract_fm, "### 3.4 `carrier_class`")
     except ValueError:
@@ -523,7 +544,7 @@ def main(root: Path | None = None) -> int:
         category_owners = {}
 
     logger.info(
-        "Contract v1.2.0 loaded: required=%s status_enum=%s owner_enum=%s "
+        "Contract v1.3.0 loaded: required=%s status_enum=%s owner_enum=%s "
         "briefing_enum=%s carrier_class_enum=%s",
         required_fields, sorted(status_enum), sorted(owner_enum),
         sorted(briefing_enum), sorted(carrier_class_enum),
@@ -704,7 +725,7 @@ def main(root: Path | None = None) -> int:
 
     # --- Checks 12-15: carrier_class transitional (warn-only, P-0053 Phase 2) ---
     # Schema v1.2.0 introduced `carrier_class` as a transitional required
-    # field. All four checks below emit WARN (never FAIL) until v1.3.0
+    # field. All four checks below emit WARN (never FAIL) until v1.4.0
     # flips them per `contracts/knowledge_frontmatter_schema.md` §8.2.
     if carrier_class_enum:
         logger.info("\n=== Checks 12-15: carrier_class (warn-only, v1.2.0 transitional) ===")

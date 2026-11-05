@@ -30,7 +30,7 @@ Mermaid Rendering）的"受限语义 HTML + Mermaid 双层"思路（render + sou
 |---|---|---|
 | `reference` | **可选**（推荐复杂叙事 / 含流程图的文档迁 HTML）| MD 仍合法；profile 不强制迁移 |
 | `runbook` | **可选** | 同上 |
-| `current-state` | **强制**（v1.3.0 cutover 后；本 phase 仅 pilot 1 文件） | 必须配 autogen 块；不允许手写数字 |
+| `current-state` | **强制**（v1.4.0 cutover 后；本 phase 仅 pilot 1 文件） | 必须配 autogen 块；不允许手写数字 |
 | `derived-lesson` | **可选** | 同上 |
 | `decision-record` | **禁止** | 一次性决策不需要 rich layout；MD 即可，diff-friendly 更重要 |
 | `experiment-record` | **禁止** | frozen 报告由实验协议强制冻结；不应改载体 |
@@ -121,7 +121,7 @@ Mermaid Rendering）的"受限语义 HTML + Mermaid 双层"思路（render + sou
 | 可选 meta | 等价 .md frontmatter | 取值 | 行为 |
 |---|---|---|---|
 | `kc:briefing` | `briefing: pinned` / `briefing: serendipity` | `pinned` / `serendipity` | dashboard briefing panel surfacing；`pinned` 置顶 |
-| `kc:related` | `related: [...]` | 逗号分隔路径列表 | 反向索引 + dashboard "related" 链接（v1.3.0 之后启用，先 reserve） |
+| `kc:related` | `related: [...]` | 逗号分隔路径列表 | 反向索引 + dashboard "related" 链接（v1.4.0 之后启用，先 reserve） |
 | `kc:supersedes` | `supersedes: <path>` | 单一路径 | 标记本文取代了哪份历史 entry（dashboard 显示 supersedes 链） |
 | `kc:superseded-by` | `superseded_by: <path>` | 单一路径 | 标记本文已被取代（dashboard 显示 deprecation 链） |
 

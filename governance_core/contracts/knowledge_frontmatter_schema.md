@@ -1,6 +1,6 @@
 # Contract: knowledge/**/*.md Frontmatter Schema
 
-**Version**: 1.2.0
+**Version**: 1.3.0
 **Status**: active
 **Owner**: core
 **Consumers**: all agents (read via `/learn`, write via `experiment-manager`)
@@ -64,13 +64,13 @@ existing knowledge entries can be migrated without breaking the build.
 
 | Field | Type | Introduced | Becomes hard-required | Semantics |
 |-------|------|------------|----------------------|-----------|
-| `carrier_class` | enum | v1.2.0 | v1.3.0 (sealed when P-0054 implementation completes) | See §3.4 |
+| `carrier_class` | enum | v1.2.0 | v1.4.0 (sealed when P-0054 implementation completes) | See §3.4 |
 
 P-0053 Phase 2 (this version) introduces `carrier_class` as a transitional
 required field. Phase 3 produces a read-only inference report mapping each
 existing entry to its expected class without modifying files. Backfill is
 governed by P-0054 or a separate proposal; only after backfill completes
-does v1.3.0 promote the field to hard-required in §2.
+does v1.4.0 promote the field to hard-required in §2.
 
 ---
 
@@ -89,13 +89,12 @@ Unknown values are a hard audit failure.
 
 ### 3.2 `owner`
 
-| Value | Meaning |
-|-------|---------|
-| `rules` | Written + maintained by rules agent (algorithms, experiments, model decisions) |
-| `trade` | Written + maintained by trade agent (execution, strategy, risk) |
-| `data` | Written + maintained by data agent (ingestion, quality, analytics) |
-| `research` | Written + maintained by research agent (tool research, prototypes, inspiration) |
-| `core` | Written + maintained by core agent (governance, shared infrastructure, cross-agent ADRs) |
+`owner` is an agent name from this project's `.governance/config.json`
+`agents[].name` (v1.3.0+; it was a fixed enum of the upstream project's roles).
+The literal `core` is always valid and means the config's core agent
+(`core_agent_name`) -- the same token the scope guards use for core, and the
+value every shipped governance document carries. Unknown values are a hard
+audit failure.
 
 `owner` determines write-authority under scope guards: only the owner agent may
 materially change the entry's body; other agents may reference but must open a
@@ -136,7 +135,7 @@ Authoritative semantic source: `knowledge/governance/knowledge-carrier-classes.m
 each class's update triggers, autogen permissions, and lesson eligibility.
 
 Unknown values are an audit warning during the v1.2.0 transitional window
-(`tools/audit_knowledge.py` Check 12) and a hard failure from v1.3.0.
+(`tools/audit_knowledge.py` Check 12) and a hard failure from v1.4.0.
 
 ---
 
@@ -291,8 +290,8 @@ make `carrier_class` mandatory but defers enforcement to allow migration:
 - **P-0054**: defines the autogen block protocol and migrates `current-state`
   exemplars; backfill of `carrier_class` frontmatter for the broader corpus
   is a separate downstream proposal.
-- **v1.3.0**: once backfill is complete and Phase 4 ships, the field moves
-  from §2.5 to §2 and the warnings become failures. v1.3.0 release notes
+- **v1.4.0**: once backfill is complete and Phase 4 ships, the field moves
+  from §2.5 to §2 and the warnings become failures. v1.4.0 release notes
   will document the cutover commit.
 
 Authoritative class semantics live in
@@ -300,3 +299,13 @@ Authoritative class semantics live in
 the enum values and the migration timeline; semantics (when to update each
 class, which class allows autogen blocks, lesson eligibility) are owned by
 the governance doc.
+
+### 8.3 v1.3.0 release notes (P-0130)
+
+`owner` (§3.2) takes its values from `.governance/config.json` `agents[].name`
+plus the literal `core`, instead of the upstream roles
+(`rules / trade / data / research / core`). Minor bump: every project whose
+config lists those agents keeps validating unchanged; a project with other
+agents (e.g. `platform`) can now own knowledge entries. No file is rewritten.
+The `carrier_class` hard-required cutover previously planned as v1.3.0 moves
+to **v1.4.0** (renumbered only; its scope is unchanged).
