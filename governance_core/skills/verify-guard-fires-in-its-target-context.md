@@ -6,7 +6,7 @@ type: guide
 owner: core
 tags: [governance, enforcement, hook, audit, cross-clone, inert-guard, verification]
 created: 2026-08-20
-updated: 2026-10-09
+updated: 2026-11-05
 ---
 
 # verify-guard-fires-in-its-target-context
@@ -43,4 +43,6 @@ A guard that is registered, documented and file-present can still be completely 
 - When the same misregistration affects several hooks, resist fixing only the one in your scope -- but do not silently expand blast radius either; fix what was reviewed and file the rest with the measured evidence attached
 - Two generations of tooling writing the same config is the usual cause of a half-dead guard: the newer generation registers correctly, the older one leaves a dead entry beside it, and the dead entry is what you find first. It also means duplicate live registrations -- the same hook running twice per call -- which an exact (matcher, command) dedupe cannot see because both the matcher strings and the command strings differ
 - Prefer a config form that carries no environment identity at all (a variable the runtime expands) over one that hardcodes a path and needs a repair pass. A repair pass loses to anything that rewrites the file behind it -- notably a git merge of a tracked config
+- A guard whose decision depends on project topology (agent identity, clone layout, nested directories) cannot be proven on a project that lacks that topology: a single-agent repo exercises only the single-agent branch. Build a fixture in the consumer's real shape -- its agent names and its actual `<root>/<project>/<clone>` nesting -- copy the real guard files into each fixture clone, and run them as subprocesses there
+- Calibrate against the last release: put the previously released guard (`git show <tag>:<path>`) into the same fixture and confirm the scenarios your new tests expect BLOCKED exit 0 there. A test that passes on both versions does not discriminate
 - The same check applies to a single-repo project whose enforcing copy lives outside the repo (e.g. a user-global hook directory): fixing the in-repo source does not change what actually runs until the enforcing copy is refreshed -- exercise the enforcing copy, not the source
