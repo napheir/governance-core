@@ -6,6 +6,17 @@
 
 ---
 
+### 2026-11-05 — P-0129 Phase C：多 clone 自动生成会话边界锚（F3）
+
+- **问题**：新装多 clone 消费者没有 `.claude/settings.json` 的 `projectRoot: "../"`，会话边界只到 clone，`../shared_state/` 提案写不了；
+  补这个文件又被 classify 闸门拦，只能 `CLAUDE_BOUNDARY_OVERRIDE` 解开。
+- **修复**（`installer.py`）：`_ensure_boundary_anchor` 在 agents > 1 且 `shared_state_root` 与 clone 同在项目目录下时，幂等加入该键；
+  保留其他键，已有不同值不动（告警），JSON 无法解析不改写。单 agent（hub）与非标准布局不写。doctor 对缺锚的多 clone 告警（不影响退出码）。
+  安全前提是 Phase A 的按 config 判定身份。core-manual 同步。
+- **测试**：新增 `test_installer_topology_anchor.py` 6 例（真实 `install()`；含端到端：装完后 `derive_session_boundary` 解析到项目目录）。
+  全量 pytest 292 passed，脚本风格全过；hub upgrade 后无 settings.json（单 agent），doctor OK。
+
+
 ### 2026-11-05 — 发布 v0.46.0（P-0129 Phase A/B/E）
 
 - owner 确认后推送 master（8 commits）并 `gh release create v0.46.0`；release workflow 41991242166：build / publish-pypi success。

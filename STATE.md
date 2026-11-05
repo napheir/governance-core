@@ -17,6 +17,14 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-05 — 发布 v0.47.0（P-0129 Phase C/D/F）
+
+- owner 确认后推送 master（5 commits）并 `gh release create v0.47.0`；release workflow 41995202256：build / publish-pypi success。
+- 核实：`gh release list` Latest = v0.47.0；PyPI JSON latest = 0.47.0（wheel + sdist）。P-0129 的 F1–F10 至此全部发布。
+- 已通知 deva-vani：`artifacts/deva-vani/2026-11-05-release-0.47.0.md` + 会话消息。
+- 待办：P-0129 等 deva-vani 回报验收第 4 项实测后 complete + 归档；起草 P-0130（knowledge owner 枚举 / `audit_proposals` VALID_AGENTS /
+  `check_agent_roles` / `audit_hooks` 写死上游角色，改为从 config 推导，涉及两份契约）；mab 侧问题与授权码进 git 另行处理。
+
 ### 2026-11-05 — P-0129 Phase F：提交前 scope 门禁（F9），版本 0.47.0（未发布）
 
 - **问题**：install 不生成任何 `<agent>.allow.txt`、不装 pre-commit；`check_scope.py --agent core` 缺 `core.allow.txt` 即 FATAL ——
@@ -42,13 +50,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - **限制**：mab 模板自带 stub `total.md`，所以 mab 新建的项目要等 mab 停发该 stub 后才受益（mab 侧，非本提案）。
 - **测试**：新增 `test_installer_constitution_seed.py` 6 例（含模板对每个条款文件的指针完整性、装后 `regen --check` 为 OK）。
   全量 pytest 298 passed，脚本风格全过；hub upgrade 后宪法不变，doctor OK。
-
-### 2026-11-05 — P-0129 Phase C：多 clone 自动生成会话边界锚（F3）
-
-- **问题**：新装多 clone 消费者没有 `.claude/settings.json` 的 `projectRoot: "../"`，会话边界只到 clone，`../shared_state/` 提案写不了；
-  补这个文件又被 classify 闸门拦，只能 `CLAUDE_BOUNDARY_OVERRIDE` 解开。
-- **修复**（`installer.py`）：`_ensure_boundary_anchor` 在 agents > 1 且 `shared_state_root` 与 clone 同在项目目录下时，幂等加入该键；
-  保留其他键，已有不同值不动（告警），JSON 无法解析不改写。单 agent（hub）与非标准布局不写。doctor 对缺锚的多 clone 告警（不影响退出码）。
-  安全前提是 Phase A 的按 config 判定身份。core-manual 同步。
-- **测试**：新增 `test_installer_topology_anchor.py` 6 例（真实 `install()`；含端到端：装完后 `derive_session_boundary` 解析到项目目录）。
-  全量 pytest 292 passed，脚本风格全过；hub upgrade 后无 settings.json（单 agent），doctor OK。
