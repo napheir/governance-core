@@ -97,12 +97,15 @@ def _ledger_cases() -> list[bool]:
 
 
 def _consumer_project(tmp: Path, consumer_id: str, auth_code: str) -> None:
-    """Write a minimal authorized .governance/config.json under `tmp`."""
+    """Write a minimal authorized project under `tmp`: config.json plus the
+    code in .governance/auth_code (P-0132)."""
     cfg = tmp / ".governance" / "config.json"
     cfg.parent.mkdir(parents=True, exist_ok=True)
     cfg.write_text(json.dumps({
-        "authorization": {"consumer_id": consumer_id, "auth_code": auth_code},
+        "authorization": {"consumer_id": consumer_id},
         "candidate_uplink": {"consent": True}}), encoding="utf-8")
+    (tmp / ".governance" / "auth_code").write_text(auth_code + "\n",
+                                                   encoding="utf-8")
 
 
 def _learned_skill(tmp: Path, name: str, layer: str) -> None:

@@ -55,6 +55,103 @@ def _raises(label: str, fn) -> bool:
     return False
 
 
+# --- per-code revocation (P-0132), pytest-style ---------------------------
+
+_FP_A = "a" * 64
+_FP_B = "b" * 64
+
+
+def test_per_code_entry_revokes_only_that_code() -> None:
+    feed = revocation.add_revocation(revocation.new_feed(), "acme", "leaked",
+                                     code_sha256=_FP_A)
+    assert revocation.is_revoked(feed, "acme", _FP_A)
+    assert not revocation.is_revoked(feed, "acme", _FP_B)
+    assert not revocation.is_revoked(feed, "acme")  # consumer itself not revoked
+    assert not revocation.is_revoked(feed, "other", _FP_A)
+
+
+def test_per_code_consumer_wide_entry_still_revokes_every_code() -> None:
+    feed = revocation.add_revocation(revocation.new_feed(), "acme", "left")
+    assert revocation.is_revoked(feed, "acme")
+    assert revocation.is_revoked(feed, "acme", _FP_B)
+
+
+def test_per_code_entries_are_idempotent_and_independent() -> None:
+    feed = revocation.new_feed()
+    feed = revocation.add_revocation(feed, "acme", "x", code_sha256=_FP_A)
+    feed = revocation.add_revocation(feed, "acme", "y", code_sha256=_FP_A)
+    feed = revocation.add_revocation(feed, "acme", "left")
+    assert len(feed["revoked"]) == 2
+    restored = revocation.remove_revocation(feed, "acme")  # consumer-wide only
+    assert revocation.is_revoked(restored, "acme", _FP_A)
+    assert not revocation.is_revoked(restored, "acme", _FP_B)
+    cleared = revocation.remove_code_revocation(restored, _FP_A)
+    assert cleared["revoked"] == []
+
+
+def test_per_code_feed_validation_rejects_bad_fingerprint() -> None:
+    feed = revocation.new_feed()
+    feed["revoked"] = [{"consumer_id": "acme", "revoked_on": "2026-11-05",
+                        "reason": "", "code_sha256": "NOT-HEX"}]
+    try:
+        revocation.validate_feed(feed)
+    except revocation.RevocationFeedError:
+        pass
+    else:
+        raise AssertionError("bad code_sha256 accepted")
+    try:
+        revocation.add_revocation(revocation.new_feed(), "acme", "", code_sha256="x")
+    except revocation.RevocationFeedError:
+        pass
+    else:
+        raise AssertionError("add_revocation accepted a bad fingerprint")
+
+
+def test_per_code_evaluate_blocks_the_revoked_code() -> None:
+    now = datetime.datetime.now(datetime.timezone.utc)
+    feed = revocation.add_revocation(revocation.new_feed(), "acme", "leaked",
+                                     code_sha256=_FP_A)
+    blocked = revocation.evaluate(feed, "acme", 30, now, now, now,
+                                  code_sha256=_FP_A)
+    allowed = revocation.evaluate(feed, "acme", 30, now, now, now,
+                                  code_sha256=_FP_B)
+    assert blocked[:2] == (False, "revoked")
+    assert allowed[:2] == (True, "current")
+
+
+def _v0484_accepts(feed_bytes: bytes) -> dict:
+    """Feed parsing of clients before 0.49.0, frozen from v0.48.4's
+    revocation.validate_feed (shipped tests cannot reach the hub's history).
+    Signature checking is unchanged and covered above."""
+    feed = json.loads(feed_bytes.decode("utf-8"))
+    assert isinstance(feed, dict) and feed.get("schema") == 1
+    assert feed.get("updated")
+    revoked = feed.get("revoked")
+    assert isinstance(revoked, list)
+    for entry in revoked:
+        if not isinstance(entry, dict) or not entry.get("consumer_id"):
+            raise revocation.RevocationFeedError(
+                "every revoked entry needs a non-empty consumer_id")
+    return feed
+
+
+def _v0484_is_revoked(feed: dict, consumer_id: str) -> bool:
+    """v0.48.4's revocation.is_revoked: consumer_id match only."""
+    return any(e.get("consumer_id") == consumer_id for e in feed["revoked"])
+
+
+def test_per_code_feed_still_valid_for_clients_before_0_49() -> None:
+    """Old clients require consumer_id in every entry and match on it alone:
+    a per-code entry keeps the feed valid for them and reads as revoking the
+    whole consumer -- never invalidates the feed (which would freeze every
+    consumer after max_offline_days)."""
+    feed = revocation.add_revocation(revocation.new_feed(), "governance-core",
+                                     "leaked", code_sha256=_FP_A)
+    parsed = _v0484_accepts(revocation.serialize_feed(feed))
+    assert _v0484_is_revoked(parsed, "governance-core")
+    assert not _v0484_is_revoked(parsed, "deva-vani")
+
+
 def main() -> int:
     """Run every revocation-feed case; exit non-zero on any failure."""
     seed = auth.generate_seed()

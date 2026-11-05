@@ -28,9 +28,17 @@ import tempfile
 from pathlib import Path
 
 import governance_core
+from governance_core import auth
 from governance_core.auth import codec, revocation
 
-BAD_CODE = "GC1.eyJzY2hlbWEiOjF9.aaaa"
+# Unverifiable code (bad signature) whose payload is a well-formed schema 2
+# with an unreachable feed: only a cached `valid: true` can let it through
+# gate 1, and gate 2 then allows it within the offline grace.
+BAD_CODE = "GC1." + codec.b64url_encode(json.dumps(
+    {"consumer_id": "acme", "expiry": "2999-01-01", "issued": "2026-05-18",
+     "max_offline_days": 30, "schema": 2,
+     "revocation_feed_url": "file:///gc-no-such-dir/revocation.json"},
+    sort_keys=True, separators=(",", ":")).encode("utf-8")) + ".aaaa"
 KEY_PATH = Path.home() / ".governance-core" / "signing_key.json"
 
 
@@ -64,11 +72,15 @@ def _make_repo(auth_code: str) -> tuple[Path, Path]:
     auth_src = Path(governance_core.__file__).resolve().parent / "auth"
     shutil.copytree(auth_src, hook.parent / "_gc_auth",
                     ignore=shutil.ignore_patterns("__pycache__"))
-    cfg = tmp / ".governance" / "config.json"
-    cfg.parent.mkdir(parents=True)
-    cfg.write_text(json.dumps({"authorization": {"auth_code": auth_code}}),
-                   encoding="utf-8")
+    _write_code(tmp, auth_code)
     return tmp, hook
+
+
+def _write_code(tmp: Path, code: str) -> None:
+    """Store `code` where auth-guard reads it: .governance/auth_code (P-0132)."""
+    path = tmp / ".governance" / "auth_code"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(code + "\n", encoding="utf-8")
 
 
 def _cleanup(tmp: Path) -> None:
@@ -126,10 +138,12 @@ def _cache_cases() -> list[bool]:
     return results
 
 
-def _schema2_code(seed: bytes, consumer_id: str, feed_url: str) -> str:
-    """Build a real-key-signed schema-2 code for the revocation cases."""
+def _schema2_code(seed: bytes, consumer_id: str, feed_url: str,
+                  issued: str = "2026-05-18") -> str:
+    """Build a schema-2 code signed with `seed` for the revocation cases."""
+    expiry = (datetime.date.today() + datetime.timedelta(days=365)).isoformat()
     payload = codec.canonical_payload(
-        consumer_id, "2026-05-18", "2027-05-18", schema=2,
+        consumer_id, issued, expiry, schema=2,
         revocation_feed_url=feed_url, max_offline_days=30)
     return codec.make_auth_code(payload, seed)
 
@@ -157,9 +171,7 @@ def _revocation_cases() -> list[bool]:
         fp, sp = tmp / "revocation.json", tmp / "revocation.json.sig"
         revocation.write_feed(fp, sp, revocation.new_feed(), seed)
         code = _schema2_code(seed, "acme", fp.as_uri())
-        (tmp / ".governance" / "config.json").write_text(
-            json.dumps({"authorization": {"auth_code": code}}),
-            encoding="utf-8")
+        _write_code(tmp, code)
         results.append(_check("schema-2, feed reachable + clean -> allow",
                                hook, 0))
     finally:
@@ -173,9 +185,7 @@ def _revocation_cases() -> list[bool]:
                                          "left org")
         revocation.write_feed(fp, sp, feed, seed)
         code = _schema2_code(seed, "acme", fp.as_uri())
-        (tmp / ".governance" / "config.json").write_text(
-            json.dumps({"authorization": {"auth_code": code}}),
-            encoding="utf-8")
+        _write_code(tmp, code)
         results.append(_check("schema-2, consumer revoked -> block", hook, 2))
     finally:
         _cleanup(tmp)
@@ -185,9 +195,7 @@ def _revocation_cases() -> list[bool]:
     try:
         missing = (tmp / "no-such-feed.json").as_uri()
         code = _schema2_code(seed, "acme", missing)
-        (tmp / ".governance" / "config.json").write_text(
-            json.dumps({"authorization": {"auth_code": code}}),
-            encoding="utf-8")
+        _write_code(tmp, code)
         results.append(_check("schema-2, feed unreachable + grace -> allow",
                                hook, 0))
     finally:
@@ -198,9 +206,7 @@ def _revocation_cases() -> list[bool]:
     try:
         missing = (tmp / "no-such-feed.json").as_uri()
         code = _schema2_code(seed, "acme", missing)
-        (tmp / ".governance" / "config.json").write_text(
-            json.dumps({"authorization": {"auth_code": code}}),
-            encoding="utf-8")
+        _write_code(tmp, code)
         revocation.feed_cache_path(tmp).write_text(json.dumps({
             "feed_url": missing, "first_seen": _iso_days_ago(40),
             "last_attempt_at": _iso_days_ago(0), "fetched_at": None,
@@ -215,9 +221,7 @@ def _revocation_cases() -> list[bool]:
     try:
         missing = (tmp / "no-such-feed.json").as_uri()
         code = _schema2_code(seed, "acme", missing)
-        (tmp / ".governance" / "config.json").write_text(
-            json.dumps({"authorization": {"auth_code": code}}),
-            encoding="utf-8")
+        _write_code(tmp, code)
         revocation.feed_cache_path(tmp).write_text(json.dumps({
             "feed_url": missing, "first_seen": _iso_days_ago(60),
             "last_attempt_at": _iso_days_ago(0),
@@ -229,6 +233,97 @@ def _revocation_cases() -> list[bool]:
         _cleanup(tmp)
 
     return results
+
+
+# --- pytest cases with a throwaway key (P-0132) ---------------------------
+# The hook loads the public key from the vendored _gc_auth/pubkey.json, so
+# a fixture repo can trust a test key: real signatures, no maintainer key.
+
+def _test_key_repo(seed: bytes, code: str) -> tuple[Path, Path]:
+    """Throwaway repo whose vendored _gc_auth trusts `seed`'s public key.
+
+    The code is in .governance/auth_code AND in config.json, as after a
+    0.49 migration that kept the config copy: 0.49+ reads only the file,
+    older releases read only config.json -- so each version is exercised on
+    the same code (and the old one is shown to behave differently)."""
+    tmp, hook = _make_repo(code)
+    (tmp / ".governance" / "config.json").write_text(
+        json.dumps({"authorization": {"auth_code": code}}), encoding="utf-8")
+    (hook.parent / "_gc_auth" / "pubkey.json").write_text(json.dumps({
+        "alg": "ed25519", "key_id": "test",
+        "key_b64": codec.b64url_encode(auth.public_key_from_seed(seed))}),
+        encoding="utf-8")
+    return tmp, hook
+
+
+def _signed_feed(seed: bytes, feed: dict) -> tuple[Path, str]:
+    """Write `feed` signed with `seed` to a temp dir; return (dir, file URI)."""
+    feed_dir = Path(tempfile.mkdtemp(prefix="gc_feed_test_"))
+    fp = feed_dir / "revocation.json"
+    revocation.write_feed(fp, feed_dir / "revocation.json.sig", feed, seed)
+    return feed_dir, fp.as_uri()
+
+
+def test_per_code_revoked_code_blocked_other_code_allowed() -> None:
+    """A per-code entry freezes the leaked code only; the consumer's
+    replacement code keeps working."""
+    seed = auth.generate_seed()
+    feed_dir = Path(tempfile.mkdtemp(prefix="gc_feed_test_"))
+    feed_url = (feed_dir / "revocation.json").as_uri()
+    leaked = _schema2_code(seed, "acme", feed_url, issued="2026-05-18")
+    fresh = _schema2_code(seed, "acme", feed_url, issued="2026-11-05")
+    feed = revocation.add_revocation(revocation.new_feed(), "acme", "leaked",
+                                     code_sha256=codec.code_fingerprint(leaked))
+    revocation.write_feed(feed_dir / "revocation.json",
+                          feed_dir / "revocation.json.sig", feed, seed)
+    for code, want in ((leaked, 2), (fresh, 0)):
+        tmp, hook = _test_key_repo(seed, code)
+        try:
+            assert _run_hook(hook) == want, (code == leaked, want)
+        finally:
+            _cleanup(tmp)
+    shutil.rmtree(feed_dir, ignore_errors=True)
+
+
+def test_per_code_consumer_wide_entry_still_blocks_every_code() -> None:
+    seed = auth.generate_seed()
+    feed_dir, feed_url = _signed_feed(
+        seed, revocation.add_revocation(revocation.new_feed(), "acme", "left"))
+    tmp, hook = _test_key_repo(seed, _schema2_code(seed, "acme", feed_url))
+    try:
+        assert _run_hook(hook) == 2
+    finally:
+        _cleanup(tmp)
+        shutil.rmtree(feed_dir, ignore_errors=True)
+
+
+def test_schema1_refused_by_auth_guard() -> None:
+    """A correctly signed schema-1 (perpetual) code blocks every tool call."""
+    seed = auth.generate_seed()
+    payload = json.dumps({"consumer_id": "acme", "issued": "2026-05-18",
+                          "schema": 1},
+                         sort_keys=True, separators=(",", ":")).encode("utf-8")
+    tmp, hook = _test_key_repo(seed, codec.make_auth_code(payload, seed))
+    try:
+        assert _run_hook(hook) == 2
+    finally:
+        _cleanup(tmp)
+
+
+def test_code_in_config_only_is_not_read() -> None:
+    """auth-guard reads .governance/auth_code only; a code left in
+    config.json (pre-0.49) does not authorize -- upgrade migrates it."""
+    seed = auth.generate_seed()
+    feed_dir, feed_url = _signed_feed(seed, revocation.new_feed())
+    code = _schema2_code(seed, "acme", feed_url)
+    tmp, hook = _test_key_repo(seed, code)
+    try:
+        assert _run_hook(hook) == 0
+        (tmp / ".governance" / "auth_code").unlink()  # config copy remains
+        assert _run_hook(hook) == 2
+    finally:
+        _cleanup(tmp)
+        shutil.rmtree(feed_dir, ignore_errors=True)
 
 
 def main() -> int:

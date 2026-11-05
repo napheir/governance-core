@@ -4,25 +4,27 @@ Runtime authorization enforcement (P-0065 Phase 1, P-0071). Fires before
 EVERY tool call and blocks it unless the project's governance-core
 authorization is valid. Two gates run in order:
 
-  1. Code verification -- the stored authorization code must verify against
-     the bundled public key and must not be expired. The verdict is cached
-     per (repo, code, public key, date): re-checked once per day so an
-     expired code is never served a stale `valid`.
+  1. Code verification -- the code stored in `.governance/auth_code`
+     (gitignored; P-0132 -- no longer config.json) must verify against the
+     bundled public key and must not be expired. The verdict is cached per
+     (repo, code, public key, date): re-checked once per day so an expired
+     code is never served a stale `valid`. Only schema-2 codes verify; the
+     perpetual schema 1 is retired (P-0132).
 
-  2. Revocation (schema-2 codes only) -- the code's consumer_id must not
-     appear on the maintainer's signed revocation feed. `auth-guard` polls
-     the feed URL carried in the code, at most once per TTL, caching the
-     last verified feed. If the feed cannot be reached, the last cached
-     feed is used; once no successful fetch has happened for the code's
-     `max_offline_days`, the consumer is frozen. A schema-1 (legacy
-     perpetual) code carries no feed and skips this gate.
+  2. Revocation -- neither the code's consumer_id nor the code itself (its
+     fingerprint, P-0132 per-code entries) may appear on the maintainer's
+     signed revocation feed. `auth-guard` polls the feed URL carried in the
+     code, at most once per TTL, caching the last verified feed. If the feed
+     cannot be reached, the last cached feed is used; once no successful
+     fetch has happened for the code's `max_offline_days`, the consumer is
+     frozen.
 
 Together with the install-time gate this makes "invalid or revoked
 authorization -> no capabilities" hold continuously. The freeze affects
 the agent's tool calls only; the human's own shell is unaffected, so
 recovery is always possible.
 
-Fail-closed for verification: any error -- missing config, broken package,
+Fail-closed for verification: any error -- missing code file, broken package,
 unreadable key -- blocks. Fetch failures are NOT fail-open: they fall back
 to the cached feed and, past max_offline_days, to a freeze.
 
@@ -56,6 +58,11 @@ _RECOVER_INSTALL = (
     "  Recover: run  governance-core install --auth-code <CODE>  in a "
     "terminal (capabilities are gated on a valid maintainer-issued code; "
     "see README 'Authorization')."
+)
+_RECOVER_MIGRATE = (
+    "  Recover: run  governance-core upgrade  in a terminal (it moves a code "
+    "still stored in config.json to .governance/auth_code), or  "
+    "governance-core install --auth-code <CODE>."
 )
 _RECOVER_REVOKED = (
     "  This consumer_id is on the maintainer's revocation feed. "
@@ -126,8 +133,12 @@ def _fetch_feed(feed_url: str, public_key: bytes):
 
 
 def _revocation_gate(root: Path, consumer_id: str, feed_url: str,
-                     max_offline_days: int, public_key: bytes):
+                     max_offline_days: int, public_key: bytes,
+                     code_sha256: str):
     """Evaluate the revocation feed for `consumer_id`; return (allowed, reason).
+
+    `code_sha256` is the fingerprint of the code in use: a per-code feed
+    entry blocks that code alone (P-0132).
 
     Maintains a temp-dir feed cache so the network is touched at most once
     per `_FEED_TTL`. The cache holds the last verified feed, the last
@@ -175,7 +186,8 @@ def _revocation_gate(root: Path, consumer_id: str, feed_url: str,
             pass
 
     return revocation.evaluate(feed, consumer_id, max_offline_days,
-                               fetched_at, first_seen, now)
+                               fetched_at, first_seen, now,
+                               code_sha256=code_sha256)
 
 
 def main() -> None:
@@ -188,17 +200,17 @@ def main() -> None:
 
     # repo root: hook lives at <repo>/.claude/hooks/auth-guard.py
     root = Path(__file__).resolve().parent.parent.parent
-    cfg_path = root / ".governance" / "config.json"
 
+    # P-0132: the code lives in the gitignored .governance/auth_code (never
+    # read from config.json -- `governance-core upgrade` migrates it).
     try:
-        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        from _gc_auth import store
+        auth_code = store.read_code(root)
     except Exception as exc:  # noqa: BLE001
-        _block(f"cannot read .governance/config.json ({exc})",
-               _RECOVER_INSTALL)
-
-    if "authorization" not in cfg or "auth_code" not in cfg["authorization"]:
-        _block("no authorization recorded in config.json", _RECOVER_INSTALL)
-    auth_code = cfg["authorization"]["auth_code"]
+        _block(f"cannot read the authorization code ({exc})", _RECOVER_INSTALL)
+    if auth_code is None:
+        _block("no authorization code at .governance/auth_code",
+               _RECOVER_MIGRATE)
 
     try:
         from _gc_auth import codec
@@ -245,7 +257,10 @@ def main() -> None:
         _block(f"cannot read authorization payload ({exc})", _RECOVER_INSTALL)
 
     if payload.get("schema") != 2:
-        sys.exit(0)  # schema-1 legacy perpetual code: no revocation gate
+        # Unreachable while codec accepts schema 2 only (P-0132 retired the
+        # perpetual schema 1); block rather than skip the revocation gate.
+        _block(f"unsupported authorization schema {payload.get('schema')!r}",
+               _RECOVER_INSTALL)
 
     try:
         consumer_id = payload["consumer_id"]
@@ -255,7 +270,8 @@ def main() -> None:
         _block(f"schema-2 payload missing {exc}", _RECOVER_INSTALL)
 
     allowed, category, reason = _revocation_gate(
-        root, consumer_id, feed_url, max_offline_days, public_key)
+        root, consumer_id, feed_url, max_offline_days, public_key,
+        codec.code_fingerprint(auth_code))
     if allowed:
         sys.exit(0)
     recover = _RECOVER_REVOKED if category == "revoked" else _RECOVER_OFFLINE

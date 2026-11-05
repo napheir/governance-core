@@ -1,9 +1,9 @@
 """Test harness for governance_core.auth.codec (P-0071 Phase 1).
 
-Covers the dual-schema authorization-code codec:
-  - schema 1 (legacy perpetual) round-trip + optional expiry
+Covers the authorization-code codec (schema 2 only since P-0132):
+  - schema 1 (retired perpetual) refused
   - schema 2 (leased + revocable) round-trip + required-field enforcement
-  - expiry checking for both schemas
+  - expiry checking
   - malformed / tampered / unknown-schema rejection
 
 Uses a throwaway keypair generated per run -- never the real signing key.
@@ -59,28 +59,48 @@ def _sign(payload: bytes, seed: bytes) -> str:
     return codec.make_auth_code(payload, seed)
 
 
+def _schema1_payload() -> bytes:
+    """A retired schema-1 payload (no expiry, no feed), built by hand."""
+    return json.dumps({"consumer_id": "acme", "issued": "2026-05-18",
+                       "schema": 1},
+                      sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def test_schema1_refused_by_codec() -> None:
+    """P-0132: a correctly signed schema-1 (perpetual) code no longer verifies."""
+    seed = auth.generate_seed()
+    code = _sign(_schema1_payload(), seed)
+    try:
+        codec.verify_auth_code(code, auth.public_key_from_seed(seed))
+    except codec.AuthCodeError as exc:
+        assert "schema" in str(exc)
+    else:
+        raise AssertionError("schema-1 code verified")
+
+
+def test_per_code_fingerprint_is_sha256_of_stripped_code() -> None:
+    """The fingerprint identifies one code; surrounding whitespace is ignored."""
+    import hashlib
+    code = "GC1.payload.sig"
+    assert codec.code_fingerprint(code) == codec.code_fingerprint(f"  {code}\n")
+    assert codec.code_fingerprint(code) == hashlib.sha256(code.encode()).hexdigest()
+
+
 def main() -> int:
     """Run every codec case; exit non-zero on any failure."""
     seed = auth.generate_seed()
     pub = auth.public_key_from_seed(seed)
     results: list[bool] = []
 
-    # --- schema 1 -----------------------------------------------------
-    s1 = codec.canonical_payload("acme", "2026-05-18", schema=1)
-    code_s1 = _sign(s1, seed)
-    results.append(_case(
-        "schema-1 perpetual round-trip",
-        lambda: codec.verify_auth_code(code_s1, pub)["schema"] == 1))
-
-    s1e = codec.canonical_payload("acme", "2026-05-18", "2027-01-01", schema=1)
-    code_s1e = _sign(s1e, seed)
-    results.append(_case(
-        "schema-1 with future expiry verifies",
-        lambda: codec.verify_auth_code(code_s1e, pub, today="2026-12-31")
-        ["consumer_id"] == "acme"))
+    # --- schema 1: retired (P-0132) ------------------------------------
+    code_s1 = _sign(_schema1_payload(), seed)
     results.append(_raises(
-        "schema-1 past expiry rejected",
-        lambda: codec.verify_auth_code(code_s1e, pub, today="2027-06-01")))
+        "schema-1 perpetual code refused",
+        lambda: codec.verify_auth_code(code_s1, pub)))
+    results.append(_raises(
+        "canonical_payload refuses to build schema 1",
+        lambda: codec.canonical_payload("acme", "2026-05-18", schema=1),
+        exc_type=ValueError))
 
     # --- schema 2 -----------------------------------------------------
     s2 = codec.canonical_payload(

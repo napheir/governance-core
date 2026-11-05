@@ -15,6 +15,10 @@ Usage:
     python maintainer/revoke_consumer.py --consumer-id acme --reason "left org"
     python maintainer/revoke_consumer.py --unrevoke acme   # correct a mistake
     python maintainer/revoke_consumer.py --list
+    # P-0132: revoke ONE code (e.g. a leaked one); the consumer stays active
+    python maintainer/revoke_consumer.py --code-file artifacts/old.code --reason "leaked"
+    python maintainer/revoke_consumer.py --code-sha256 <hex> --consumer-id acme --reason "..."
+    python maintainer/revoke_consumer.py --unrevoke-code <hex>
 
 Like the other maintainer tools this lives in maintainer/: committed for
 auditability, excluded from the pip package.
@@ -91,9 +95,82 @@ def _cmd_list() -> int:
     logger.info("[OK] revocation feed verified (updated %s, %d revoked)",
                 feed["updated"], len(revoked))
     for entry in revoked:
+        scope = (f"code {entry['code_sha256']}" if "code_sha256" in entry
+                 else "all codes")
         sys.stdout.write(
-            f"  {entry['consumer_id']}  revoked_on={entry['revoked_on']}  "
+            f"  {entry['consumer_id']}  {scope}  "
+            f"revoked_on={entry['revoked_on']}  "
             f"reason={entry.get('reason') or '(none)'}\n")
+    return 0
+
+
+def _cmd_revoke_code(code_file: Path | None, code_sha256: str | None,
+                     consumer_id: str | None, reason: str) -> int:
+    """Revoke ONE authorization code (P-0132); its consumer stays active.
+
+    With `code_file` the fingerprint and consumer_id come from the code
+    itself (read, never printed; its signature is not checked -- an
+    expired or revoked code must still be revocable). With `code_sha256`
+    the consumer_id must be given. The entry keeps the consumer_id: clients
+    before 0.49.0 match on it alone and so freeze the whole consumer --
+    re-issue the consumer's replacement code and have it upgraded first.
+    """
+    if code_file is not None:
+        try:
+            code = code_file.read_text(encoding="utf-8").strip()
+            payload = codec.decode_payload(code)
+        except (OSError, codec.AuthCodeError) as exc:
+            logger.error("[FAIL] cannot read a code from %s: %s", code_file, exc)
+            return 1
+        if consumer_id is not None and consumer_id != payload["consumer_id"]:
+            logger.error("[FAIL] --consumer-id %r does not match the code's "
+                         "consumer_id %r", consumer_id, payload["consumer_id"])
+            return 1
+        consumer_id = payload["consumer_id"]
+        code_sha256 = codec.code_fingerprint(code)
+    elif consumer_id is None:
+        logger.error("[FAIL] --code-sha256 needs --consumer-id (clients "
+                     "before 0.49.0 require it in every entry)")
+        return 1
+    seed = _load_seed()
+    if seed is None:
+        return 1
+    try:
+        feed = _load_existing_feed() or revocation.new_feed()
+        feed = revocation.add_revocation(
+            feed, consumer_id, reason, datetime.date.today().isoformat(),
+            code_sha256=code_sha256)
+    except revocation.RevocationFeedError as exc:
+        logger.error("[FAIL] %s", exc)
+        return 1
+    revocation.write_feed(FEED_PATH, SIG_PATH, feed, seed)
+    logger.info("[OK] code %s of %r added to the revocation feed",
+                code_sha256, consumer_id)
+    logger.info("[OK] commit %s + %s and push so consumers' auth-guard "
+                "picks up the revocation", FEED_PATH.name, SIG_PATH.name)
+    return 0
+
+
+def _cmd_unrevoke_code(code_sha256: str) -> int:
+    """Remove the per-code revocation of `code_sha256` (P-0132)."""
+    seed = _load_seed()
+    if seed is None:
+        return 1
+    try:
+        feed = _load_existing_feed()
+    except revocation.RevocationFeedError as exc:
+        logger.error("[FAIL] existing feed rejected: %s", exc)
+        return 1
+    if feed is None or not any(
+            "code_sha256" in e and e["code_sha256"] == code_sha256
+            for e in feed["revoked"]):
+        logger.info("[WARN] code %s is not on the revocation feed -- no-op",
+                    code_sha256)
+        return 0
+    feed = revocation.remove_code_revocation(feed, code_sha256)
+    revocation.write_feed(FEED_PATH, SIG_PATH, feed, seed)
+    logger.info("[OK] code %s removed from the revocation feed", code_sha256)
+    logger.info("[OK] commit %s + %s and push", FEED_PATH.name, SIG_PATH.name)
     return 0
 
 
@@ -184,13 +261,25 @@ def main() -> int:
     parser.add_argument("--unrevoke", default=None,
                         help="consumer to un-revoke -- remove from the feed; "
                              "corrects a mistaken revocation")
+    parser.add_argument("--code-file", type=Path, default=None,
+                        help="revoke only the code stored in this file "
+                             "(P-0132); keep the file out of git")
+    parser.add_argument("--code-sha256", default=None,
+                        help="revoke only the code with this fingerprint "
+                             "(needs --consumer-id)")
+    parser.add_argument("--unrevoke-code", default=None,
+                        help="remove a per-code revocation by fingerprint")
     args = parser.parse_args()
 
-    actions = sum([args.init, args.list, args.consumer_id is not None,
-                   args.unrevoke is not None])
-    if actions != 1:
+    revoke_code = args.code_file is not None or args.code_sha256 is not None
+    actions = sum([args.init, args.list, args.unrevoke is not None,
+                   args.unrevoke_code is not None, revoke_code,
+                   args.consumer_id is not None and not revoke_code])
+    if actions != 1 or (args.code_file is not None
+                        and args.code_sha256 is not None):
         parser.error("choose exactly one of --init / --list / "
-                     "--consumer-id / --unrevoke")
+                     "--consumer-id / --unrevoke / --code-file / "
+                     "--code-sha256 / --unrevoke-code")
 
     if args.init:
         return _cmd_init(args.force)
@@ -198,8 +287,13 @@ def main() -> int:
         return _cmd_list()
     if args.unrevoke is not None:
         return _cmd_unrevoke(args.unrevoke)
+    if args.unrevoke_code is not None:
+        return _cmd_unrevoke_code(args.unrevoke_code)
     if not args.reason:
-        parser.error("--reason is required when revoking a consumer")
+        parser.error("--reason is required when revoking")
+    if revoke_code:
+        return _cmd_revoke_code(args.code_file, args.code_sha256,
+                                args.consumer_id, args.reason)
     return _cmd_revoke(args.consumer_id, args.reason)
 
 

@@ -5,6 +5,16 @@
 
 ---
 
+### 2026-11-05 — 发布 v0.48.4、批准 P-0131、授权码泄露调研
+
+- owner「发布。批准 P-0131。先处理授权码泄露」：推送 d7f5a42，`gh release create v0.48.4`，CI 成功；`gh release list` Latest = v0.48.4，
+  PyPI 版本端点含 wheel + sdist；已通知 deva-vani。P-0131 pending → approved（note 记 owner 原话），实施排在授权码之后。
+- **授权码调研（只读，未打印任何码）**：hub 公开仓库历史里有两份 hub 码 —— schema 1 永久码（13d1843 / 581f7e5，无到期、无吊销 feed，
+  auth-guard 对 schema 1 直接放行）与当前 schema 2 码（到期 2027-05-18，吊销只能按 consumer_id，会冻结 hub 自己）。
+  deva-vani / trade_agent 仓库为 PRIVATE；其他公开仓库（multi-agent-template 等）当前无跟踪的 config。本机可见的消费者码全是 schema 2。
+  吊销 feed URL 签在每个 schema 2 码里，指向 hub 公开仓库的 raw 地址。方案对比交 owner 讨论。
+
+
 ### 2026-11-05 — 起草 P-0131 + rotate_state 归档标题修复（0.48.4）
 
 - **P-0131 已起草并提交评审（pending）**：merge 导入按来源提交归属。现状：`check_scope.py:279-290` 对与 MERGE_HEAD 相同的越界文件

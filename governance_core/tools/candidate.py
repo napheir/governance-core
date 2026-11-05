@@ -46,6 +46,7 @@ import subprocess
 import sys
 from pathlib import Path
 
+from governance_core.auth import store as _auth_store
 from governance_core.candidates import collect as _collect
 from governance_core.candidates import envelope as _envelope
 from governance_core.candidates import ledger as _ledger
@@ -71,11 +72,16 @@ def _origin(cfg: dict) -> str | None:
     return None
 
 
-def _auth_code(cfg: dict) -> str | None:
-    """Return the authorization code from config, or None if absent."""
-    if "authorization" in cfg and "auth_code" in cfg["authorization"]:
-        return cfg["authorization"]["auth_code"]
-    return None
+def _auth_code(root: Path) -> str | None:
+    """Return the project's authorization code, or None if absent/unusable.
+
+    Read from the gitignored .governance/auth_code (P-0132), not config.json.
+    """
+    try:
+        return _auth_store.read_code(root)
+    except _auth_store.AuthStoreError as exc:
+        sys.stderr.write(f"[candidate] {exc}\n")
+        return None
 
 
 def _consent_ok(cfg: dict) -> bool:
@@ -183,10 +189,10 @@ def cmd_uplink(args: argparse.Namespace) -> int:
     cfg = _config(root)
     if cfg is None:
         return 2
-    auth_code = _auth_code(cfg)
+    auth_code = _auth_code(root)
     if auth_code is None:
-        sys.stderr.write("[candidate] no authorization code in config "
-                         "(run install)\n")
+        sys.stderr.write("[candidate] no authorization code at "
+                         ".governance/auth_code (run install)\n")
         return 2
     if not args.dry_run and not _consent_ok(cfg):
         sys.stderr.write("[candidate] candidate-uplink consent not recorded "
@@ -215,10 +221,10 @@ def cmd_submit(args: argparse.Namespace) -> int:
     if origin is None:
         sys.stderr.write("[candidate] no consumer_id in config (run install)\n")
         return 2
-    auth_code = _auth_code(cfg)
+    auth_code = _auth_code(root)
     if auth_code is None:
-        sys.stderr.write("[candidate] no authorization code in config "
-                         "(run install)\n")
+        sys.stderr.write("[candidate] no authorization code at "
+                         ".governance/auth_code (run install)\n")
         return 2
     if not args.dry_run and not _consent_ok(cfg):
         sys.stderr.write("[candidate] candidate-uplink consent not recorded "
@@ -260,10 +266,11 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     if cfg is None:
         return 2
     origin = _origin(cfg)
-    auth_code = _auth_code(cfg)
+    auth_code = _auth_code(root)
     if origin is None or auth_code is None:
         sys.stdout.write("[candidate] sweep: project not fully authorized "
-                         "-- skipped (no consumer_id / auth code in config)\n")
+                         "-- skipped (no consumer_id in config / no "
+                         ".governance/auth_code)\n")
         return 0
     if origin == "governance-core":
         sys.stdout.write("[candidate] sweep: [N/A -- hub project] "

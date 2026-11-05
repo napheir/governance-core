@@ -36,9 +36,10 @@ your project immediately has:
 governance-core is **source-available**: you may read, audit, and fork the
 source freely. **Using** it to govern a project — running `governance-core
 install` / `upgrade` — requires a valid **authorization code** issued by the
-maintainer. `install` verifies the code offline (no network) against a public
-key bundled in the package; without a valid code the governance layer is not
-materialized.
+maintainer. `install` verifies the code offline against a public key bundled
+in the package, then checks the signed revocation feed once (best effort: an
+unreachable feed does not block it); without a valid code the governance
+layer is not materialized.
 
 `install` also requires **candidate-uplink consent**: improved skills, hooks,
 and mechanisms detected in your project may be packaged as candidates and
@@ -48,6 +49,13 @@ version this consent is mandatory — declining it aborts the install.
 ```bash
 governance-core install --project-root . --auth-code GC1.<...> --accept-candidate-uplink
 ```
+
+The code is stored in `.governance/auth_code`, which the installer's managed
+`.gitignore` block ignores — keep it out of public repositories. Projects
+installed before 0.49.0 kept it in `.governance/config.json`; `upgrade`
+moves it, and `upgrade --remove-config-auth-code` deletes the old copy once
+every clone of the project runs 0.49.0 or later. Format, storage and
+revocation rules: `governance_core/contracts/authorization_schema.md`.
 
 To obtain an authorization code, contact the maintainer. See
 [LICENSE](LICENSE) for terms.

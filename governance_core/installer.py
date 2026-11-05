@@ -46,10 +46,12 @@ import os
 import shutil
 import subprocess
 import sys
+import urllib.request
 from pathlib import Path
 from typing import Any
 
 from governance_core.auth import codec
+from governance_core.auth import store as auth_store
 
 logger = logging.getLogger("governance_core.installer")
 
@@ -210,14 +212,62 @@ def _now_iso() -> str:
     )
 
 
-def _resolve_auth_code(config: dict[str, Any],
-                       auth_code_arg: str | None) -> str | None:
-    """Return the auth code to verify: the CLI arg, else the stored one."""
-    if auth_code_arg:
-        return auth_code_arg
-    if "authorization" in config and "auth_code" in config["authorization"]:
+def _legacy_config_code(config: dict[str, Any]) -> str | None:
+    """Return the pre-P-0132 code stored in config.json, or None."""
+    if ("authorization" in config and isinstance(config["authorization"], dict)
+            and "auth_code" in config["authorization"]):
         return config["authorization"]["auth_code"]
     return None
+
+
+def _resolve_auth_code(project_root: Path, config: dict[str, Any],
+                       auth_code_arg: str | None) -> tuple[str | None, str]:
+    """Return (code, source): the CLI arg, else the code file, else config.
+
+    config.json's `authorization.auth_code` is read only as a migration
+    source when `.governance/auth_code` does not exist yet (P-0132), so an
+    upgrade never strands a clone without its code.
+    """
+    if auth_code_arg:
+        return auth_code_arg, "--auth-code"
+    stored = auth_store.read_code(project_root)
+    if stored:
+        return stored, auth_store.AUTH_CODE_REL
+    legacy = _legacy_config_code(config)
+    if legacy:
+        return legacy, f"{CONFIG_REL} (migrating to {auth_store.AUTH_CODE_REL})"
+    return None, ""
+
+
+def _install_time_revocation(code: str, payload: dict[str, Any]) -> str:
+    """Best-effort revocation check at install; return a reason if revoked.
+
+    Fetches the signed feed named in a schema-2 code once (short timeout)
+    and verifies it with the bundled key. "" when the code is not revoked,
+    the code carries no feed, or the feed cannot be fetched / verified --
+    the runtime auth-guard enforces revocation either way (P-0132).
+    """
+    if "revocation_feed_url" not in payload:
+        return ""
+    from governance_core.auth import revocation
+    feed_url = payload["revocation_feed_url"]
+    try:
+        with urllib.request.urlopen(feed_url, timeout=8) as resp:
+            feed_bytes = resp.read()
+        with urllib.request.urlopen(revocation.sig_url_for(feed_url),
+                                    timeout=8) as resp:
+            sig_text = resp.read().decode("utf-8")
+        feed = revocation.verify_feed(feed_bytes, sig_text,
+                                      codec.load_bundled_public_key())
+    except Exception as exc:  # noqa: BLE001 - offline / bad feed: runtime gate decides
+        logger.info("[install] revocation feed not checked (%s); auth-guard "
+                    "enforces it at runtime", exc)
+        return ""
+    if revocation.is_revoked(feed, payload["consumer_id"],
+                             codec.code_fingerprint(code)):
+        return (f"this authorization code (consumer_id="
+                f"{payload['consumer_id']!r}) is on the revocation feed")
+    return ""
 
 
 def _consent_satisfied(config: dict[str, Any]) -> bool:
@@ -555,6 +605,12 @@ GITIGNORE_RUNTIME_PATTERNS = (
     "/.governance/installed_files.json",
     "/.governance/candidate-outbox/",
 )
+# P-0132: the authorization code file. Ignored by default; a private repo
+# that wants every clone to receive it through git re-includes it with
+# `!/.governance/auth_code` below the block (lines outside the block are
+# the owner's). Kept apart from the runtime patterns so doctor's
+# "runtime files still tracked" note does not report a deliberate choice.
+GITIGNORE_SECRET_PATTERNS = ("/" + auth_store.AUTH_CODE_REL,)
 
 
 def _update_gitignore_text(existing: str) -> str | None:
@@ -570,6 +626,9 @@ def _update_gitignore_text(existing: str) -> str | None:
         GITIGNORE_BLOCK_BEGIN,
         "# Runtime state written by governance hooks / tools -- never commit.",
         *GITIGNORE_RUNTIME_PATTERNS,
+        "# Authorization code (secret). A PRIVATE repo may re-include it with",
+        "# !/.governance/auth_code after this block.",
+        *GITIGNORE_SECRET_PATTERNS,
         GITIGNORE_BLOCK_END,
     ]) + eol
     start = existing.find(GITIGNORE_BLOCK_BEGIN)
@@ -605,6 +664,19 @@ def _configure_gitignore(project_root: Path) -> None:
     with open(path, "w", encoding="utf-8", newline="") as f:
         f.write(updated)
     logger.info("[gitignore] runtime block written")
+
+
+def _git_tracks(project_root: Path, rel: str) -> bool:
+    """Return True when git tracks `rel` in `project_root` (best-effort)."""
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(project_root), "ls-files", "--error-unmatch",
+             "--", rel],
+            capture_output=True, encoding="utf-8", errors="replace",
+            timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return out.returncode == 0
 
 
 def _tracked_runtime_files(project_root: Path) -> list[str]:
@@ -1214,6 +1286,7 @@ def install(
     accept_candidate_uplink: bool = False,
     prune: bool = True,
     dry_run: bool = False,
+    remove_config_auth_code: bool = False,
 ) -> int:
     """Install / upgrade the governance layer into `project_root`.
 
@@ -1225,6 +1298,12 @@ def install(
     P-0070: `prune` (default True) removes autonomy-layer files dropped from
     the package source since the last install (manifest-diff). Pass False to
     keep stale files.
+
+    P-0132: the code is stored in the gitignored `.governance/auth_code`,
+    never in config.json. A pre-0.49 `authorization.auth_code` left in
+    config.json is migrated to the file and kept until
+    `remove_config_auth_code` -- clones of a multi-clone project still on an
+    older version read it there.
     """
     project_root = project_root.resolve()
     if not project_root.exists():
@@ -1237,7 +1316,13 @@ def install(
     # --- P-0065 Phase 1: authorization + consent gate ----------------------
     # Both must pass before the autonomy layer (= governance capabilities) is
     # copied; gate first, materialize second.
-    code = _resolve_auth_code(cfg, auth_code)
+    try:
+        code, source = _resolve_auth_code(project_root, cfg, auth_code)
+        previous = auth_store.read_code(project_root)
+    except auth_store.AuthStoreError as exc:
+        logger.error("[install] %s -- pass --auth-code <CODE> to rewrite it",
+                     exc)
+        return 7
     if not code:
         logger.error("[install] no authorization code. governance-core "
                       "requires a maintainer-issued code -- pass --auth-code "
@@ -1247,6 +1332,12 @@ def install(
         payload = codec.verify_auth_code(code, codec.load_bundled_public_key())
     except codec.AuthCodeError as exc:
         logger.error("[install] authorization failed: %s", exc)
+        return 7
+    logger.info("[install] authorization code from %s", source)
+    revoked = _install_time_revocation(code, payload)
+    if revoked:
+        logger.error("[install] authorization refused: %s -- contact the "
+                     "governance-core maintainer", revoked)
         return 7
     if not _collect_consent(cfg, accept_candidate_uplink):
         logger.error("[install] candidate-uplink consent is REQUIRED in this "
@@ -1258,16 +1349,25 @@ def install(
 
     # Preserve verified_at when the code is unchanged, so a repeated upgrade
     # does not churn a committed config.json (P-0065 Phase 2 dogfood finding).
+    legacy = _legacy_config_code(cfg)
+    unchanged = code == (previous if previous is not None else legacy)
     verified_at = _now_iso()
-    if ("authorization" in cfg
-            and cfg["authorization"].get("auth_code") == code
+    if (unchanged and "authorization" in cfg
+            and isinstance(cfg["authorization"], dict)
             and "verified_at" in cfg["authorization"]):
         verified_at = cfg["authorization"]["verified_at"]
-    cfg["authorization"] = {
-        "auth_code": code,
-        "consumer_id": consumer_id,
-        "verified_at": verified_at,
-    }
+    authorization: dict[str, Any] = {}
+    if legacy is not None and not remove_config_auth_code:
+        # Kept until --remove-config-auth-code: in a multi-clone project the
+        # tracked config.json reaches clones still on < 0.49, whose
+        # auth-guard reads the code from here (P-0132).
+        authorization["auth_code"] = legacy
+    elif legacy is not None:
+        logger.info("[auth] removed authorization.auth_code from %s",
+                    CONFIG_REL)
+    authorization["consumer_id"] = consumer_id
+    authorization["verified_at"] = verified_at
+    cfg["authorization"] = authorization
     if not _consent_satisfied(cfg):
         cfg["candidate_uplink"] = {
             "consent": True,
@@ -1275,6 +1375,10 @@ def install(
             "consent_terms_version": CONSENT_TERMS_VERSION,
         }
     if not dry_run:
+        if previous != code:
+            auth_store.write_code(project_root, code)
+            logger.info("[auth] authorization code written to %s (gitignored)",
+                        auth_store.AUTH_CODE_REL)
         _write_config(project_root, cfg)
     logger.info("[install] project=%s ritual_phrase=%r", cfg.get("project_name"), cfg.get("ritual_phrase"))
 
@@ -1357,7 +1461,7 @@ def install(
 
 
 def _report_auth_lifecycle(payload: dict[str, Any],
-                           project_root: Path) -> None:
+                           project_root: Path, code: str) -> None:
     """Log lease expiry + revocation-feed status (P-0071; informational).
 
     doctor does not fail on revocation -- the runtime auth-guard enforces
@@ -1373,9 +1477,9 @@ def _report_auth_lifecycle(payload: dict[str, Any],
         except ValueError:
             logger.info("[doctor] lease: expiry %s", payload["expiry"])
     else:
-        logger.info("[doctor] lease: perpetual (schema-1 code)")
+        logger.info("[doctor] lease: no expiry in the code")
 
-    if payload.get("schema") != 2:
+    if "revocation_feed_url" not in payload:
         return
     from governance_core.auth import revocation
     cache_path = revocation.feed_cache_path(project_root)
@@ -1389,10 +1493,15 @@ def _report_auth_lifecycle(payload: dict[str, Any],
         logger.info("[doctor] revocation feed: no successful fetch yet "
                     "(first seen %s)", cache.get("first_seen"))
         return
-    revoked = revocation.is_revoked(feed, payload["consumer_id"])
-    logger.info("[doctor] revocation feed: last fetch %s -- consumer %s",
-                cache.get("fetched_at"),
-                "REVOKED" if revoked else "not revoked")
+    if revocation.is_revoked(feed, payload["consumer_id"]):
+        status = "consumer REVOKED"
+    elif revocation.is_revoked(feed, payload["consumer_id"],
+                               codec.code_fingerprint(code)):
+        status = "this code REVOKED (P-0132 per-code entry)"
+    else:
+        status = "not revoked"
+    logger.info("[doctor] revocation feed: last fetch %s -- %s",
+                cache.get("fetched_at"), status)
 
 
 def _load_guard_common(project_root: Path):
@@ -1485,24 +1594,44 @@ def doctor(project_root: Path) -> int:
         logger.info("[doctor] runtime-import-discipline: %d tracked exception(s) "
                     "pending self-containment: %s",
                     len(disc["exempt"]), disc["exempt"])
-    # P-0065 Phase 1: authorization must be present and still verify
-    if "authorization" not in cfg or "auth_code" not in cfg["authorization"]:
-        logger.error("[doctor] no authorization in config.json "
-                      "(run install with --auth-code)")
+    # P-0065 Phase 1: authorization must be present and still verify.
+    # P-0132: the code lives in the gitignored .governance/auth_code.
+    try:
+        auth_code = auth_store.read_code(project_root)
+    except auth_store.AuthStoreError as exc:
+        logger.error("[doctor] %s (run install with --auth-code)", exc)
+        return 7
+    legacy_code = _legacy_config_code(cfg)
+    if auth_code is None:
+        if legacy_code is not None:
+            logger.error("[doctor] authorization code not migrated to %s yet "
+                         "-- run: governance-core upgrade",
+                         auth_store.AUTH_CODE_REL)
+        else:
+            logger.error("[doctor] no authorization code at %s (run install "
+                         "with --auth-code)", auth_store.AUTH_CODE_REL)
         return 7
     try:
         auth_payload = codec.verify_auth_code(
-            cfg["authorization"]["auth_code"],
-            codec.load_bundled_public_key())
+            auth_code, codec.load_bundled_public_key())
     except codec.AuthCodeError as exc:
         logger.error("[doctor] authorization invalid: %s", exc)
         return 7
+    if legacy_code is not None:
+        logger.warning("[doctor] authorization.auth_code is still stored in %s "
+                       "(tracked by git: %s) -- once every clone runs >= 0.49.0: "
+                       "governance-core upgrade --remove-config-auth-code",
+                       CONFIG_REL,
+                       "yes" if _git_tracks(project_root, CONFIG_REL) else "no")
+    if _git_tracks(project_root, auth_store.AUTH_CODE_REL):
+        logger.info("[doctor] note: %s is tracked by git (owner's choice) -- "
+                    "keep this repository private", auth_store.AUTH_CODE_REL)
     # P-0065 Phase 1: candidate-uplink consent must be recorded
     if not _consent_satisfied(cfg):
         logger.error("[doctor] candidate-uplink consent not recorded for "
                       "current terms (required in this version)")
         return 8
-    _report_auth_lifecycle(auth_payload, project_root)
+    _report_auth_lifecycle(auth_payload, project_root, auth_code)
     # P-0129 F10: runtime files committed before the .gitignore block existed
     # stay tracked; informational (not an install defect).
     # P-0129 F3: a multi-clone clone without the boundary anchor confines its

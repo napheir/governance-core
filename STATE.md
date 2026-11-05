@@ -17,6 +17,28 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-05 — 实施 P-0132 Phase A+B：码移出 git、按码吊销、停用 schema 1（0.49.0，未发布）
+
+- **A 存储**：新增 `auth/store.py`（`.governance/auth_code` 单行、原子写；随 auth 包 vendored 进 `_gc_auth`）。installer 取码顺序
+  `--auth-code` → 码文件 → config 旧码（仅迁移来源）；config 只写 `consumer_id` / `verified_at`，旧码保留到
+  `--remove-config-auth-code`（install / upgrade 新参数）；gitignore 受管块加 `/.governance/auth_code`（单独常量，不进"仍被跟踪的运行时
+  文件"提示）；doctor 读码文件、config 残留旧码时警告（并报 config 是否被 git 跟踪）、码文件被跟踪时提示保持私有。auth-guard 只读码文件
+  （不再读 config.json），candidate.py 同。
+- **B 吊销**：`codec.SUPPORTED_SCHEMAS = (2,)`，新增 `code_fingerprint()`；feed 条目可带 `code_sha256`（必须同时带 consumer_id），
+  `is_revoked(feed, cid, code_sha256=None)`，`remove_revocation` 只撤整 consumer 条目，新增 `remove_code_revocation`；auth-guard 带指纹
+  检查、schema 非 2 一律拦截；install 时尽力拉一次 feed，按码被吊销 → exit 7；`revoke_consumer.py --code-file/--code-sha256/
+  --unrevoke-code`；`issue_auth_code.py` 去掉 schema 1、新增 `--out PATH`（码写文件不打印，避免进会话记录）。
+- 新契约 `contracts/authorization_schema.md` 1.0.0；README / core-manual §9 更新。hub 已 dogfood：upgrade 把码迁到码文件，doctor 警告 config
+  残留（Phase C 再删）。
+- **测试**：新增 `test_auth_code_storage.py`（8，真实 install + 测试密钥签名的码与 feed）；`test_revocation.py` +6、`test_auth_guard.py` +4、
+  `test_auth_codec.py` +2（pytest 风格，一次性测试密钥：fixture 改写 vendored `_gc_auth/pubkey.json`）；旧脚本用例改为码文件存储、schema 1
+  改为拒收；旧客户端兼容用冻结的 0.48.4 `validate_feed` / `is_revoked` 快照（shipped 测试拿不到 hub 历史）。对 0.48.5 反向校准：11 FAIL +
+  1 ERROR（新模块缺失），兼容用例（整 consumer 吊销仍拦所有码）两版都过。全量 pytest 377 passed，脚本风格全过；wheel 含 store.py 与新契约。
+- **偏离**：A、B 共用 installer / auth-guard 同一批函数，合为一个提交（提案写的是各一个）。
+- deva-vani：业务方决定码文件保持 gitignored；请求在其四个 clone 升到 0.49.0、删掉 config 旧码后，由维护者重签其码并按码吊销旧码
+  （待 owner 决定）。另报：本机 editable 安装让未发布代码在 deva-vani 会话里实时生效（其 doctor 现 exit 7，属预期）；scope-guard 对
+  `python -c` 里的 `.replace(` 误报（低优先级）。
+
 ### 2026-11-05 — 实施 P-0131：merge 导入按来源提交归属（0.48.5，未发布）
 
 - owner「OK，实施P-0131。批准P-0132，同意你的建议。完成131后可以你直接做132」：P-0132 pending → approved（Open Questions 按倾向）；
@@ -45,12 +67,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   判断为 schema 2，验收里要求 owner 在 trade 项目跑一次 doctor 确认。owner 问 trade 码是否快过期：2027-05-19 到期，还剩 195 天；
   hub / auto-tax / trade 三个码都在 2027-05-18~19 到期。
 - 验收命令逐条预跑：三条都还选不中测试（实施前失败）。
-
-### 2026-11-05 — 发布 v0.48.4、批准 P-0131、授权码泄露调研
-
-- owner「发布。批准 P-0131。先处理授权码泄露」：推送 d7f5a42，`gh release create v0.48.4`，CI 成功；`gh release list` Latest = v0.48.4，
-  PyPI 版本端点含 wheel + sdist；已通知 deva-vani。P-0131 pending → approved（note 记 owner 原话），实施排在授权码之后。
-- **授权码调研（只读，未打印任何码）**：hub 公开仓库历史里有两份 hub 码 —— schema 1 永久码（13d1843 / 581f7e5，无到期、无吊销 feed，
-  auth-guard 对 schema 1 直接放行）与当前 schema 2 码（到期 2027-05-18，吊销只能按 consumer_id，会冻结 hub 自己）。
-  deva-vani / trade_agent 仓库为 PRIVATE；其他公开仓库（multi-agent-template 等）当前无跟踪的 config。本机可见的消费者码全是 schema 2。
-  吊销 feed URL 签在每个 schema 2 码里，指向 hub 公开仓库的 raw 地址。方案对比交 owner 讨论。

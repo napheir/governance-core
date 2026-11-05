@@ -13,9 +13,13 @@ Subcommands:
         touching business files at the project root.
 
     governance-core upgrade [--auth-code CODE] [--project-root PATH]
+                            [--remove-config-auth-code]
         Same as install but only refreshes governance assets; preserves
         existing .governance/config.json. Re-verifies the stored
-        authorization code (or --auth-code if given).
+        authorization code (or --auth-code if given). The code is kept in
+        the gitignored .governance/auth_code (P-0132); a code still in
+        config.json is migrated there, and removed from config.json only
+        with --remove-config-auth-code (once every clone runs >= 0.49.0).
 
     governance-core doctor [--project-root PATH]
         Validate downstream project's governance configuration:
@@ -39,6 +43,12 @@ import sys
 from pathlib import Path
 
 
+_REMOVE_CONFIG_AUTH_CODE_HELP = (
+    "delete the pre-0.49 authorization.auth_code copy from config.json (the "
+    "code lives in .governance/auth_code); in a multi-clone project run it "
+    "only after every clone is on >= 0.49.0")
+
+
 def cmd_install(args: argparse.Namespace) -> int:
     from governance_core.installer import install
     return install(
@@ -47,6 +57,7 @@ def cmd_install(args: argparse.Namespace) -> int:
         force=args.force,
         auth_code=args.auth_code,
         accept_candidate_uplink=args.accept_candidate_uplink,
+        remove_config_auth_code=args.remove_config_auth_code,
     )
 
 
@@ -61,6 +72,7 @@ def cmd_upgrade(args: argparse.Namespace) -> int:
         accept_candidate_uplink=args.accept_candidate_uplink,
         prune=not args.no_prune,
         dry_run=args.dry_run,
+        remove_config_auth_code=args.remove_config_auth_code,
     )
 
 
@@ -97,6 +109,8 @@ def main() -> int:
                            help="maintainer-issued authorization code (required)")
     p_install.add_argument("--accept-candidate-uplink", action="store_true",
                            help="consent to candidate uplink (required this version)")
+    p_install.add_argument("--remove-config-auth-code", action="store_true",
+                           help=_REMOVE_CONFIG_AUTH_CODE_HELP)
     p_install.set_defaults(func=cmd_install)
 
     p_upgrade = sub.add_parser("upgrade")
@@ -107,6 +121,8 @@ def main() -> int:
                            help="consent to candidate uplink if not already recorded")
     p_upgrade.add_argument("--no-prune", action="store_true",
                            help="keep autonomy-layer files dropped from the package source")
+    p_upgrade.add_argument("--remove-config-auth-code", action="store_true",
+                           help=_REMOVE_CONFIG_AUTH_CODE_HELP)
     p_upgrade.add_argument("--dry-run", action="store_true",
                            help="preview the upgrade -- diff drifted files, "
                                 "list overwrite/prune, write nothing")

@@ -216,16 +216,30 @@ leaves the project with no governance capabilities.
 Authorization is also enforced **at runtime**: the `auth-guard.py` PreToolUse
 hook (matcher `*`) runs before every tool call, with two gates:
 
-1. **Code verification** — the stored code must verify against the bundled
-   public key and not be expired. The verdict is cached per (repo, code,
-   key, date), so an expired lease is re-checked daily, never served stale.
-2. **Revocation** (schema-2 codes) — the code's `consumer_id` must not be on
-   the maintainer's signed revocation feed. `auth-guard` polls the feed URL
-   carried in the code at most once per TTL (~6h), caching the last verified
-   feed. An unreachable feed falls back to the cached copy; once no
-   successful fetch has happened for the code's `max_offline_days`, the
-   consumer is frozen. A schema-1 (legacy perpetual) code carries no feed
-   and skips this gate.
+1. **Code verification** — the code stored in `.governance/auth_code` must
+   verify against the bundled public key and not be expired. The verdict is
+   cached per (repo, code, key, date), so an expired lease is re-checked
+   daily, never served stale. Only schema-2 codes verify (0.49.0, P-0132).
+2. **Revocation** — neither the code's `consumer_id` nor the code itself
+   (its fingerprint) may be on the maintainer's signed revocation feed.
+   `auth-guard` polls the feed URL carried in the code at most once per TTL
+   (~6h), caching the last verified feed. An unreachable feed falls back to
+   the cached copy; once no successful fetch has happened for the code's
+   `max_offline_days`, the consumer is frozen.
+
+**Where the code lives (0.49.0, P-0132).** `.governance/auth_code`, one
+line, ignored by the managed `.gitignore` block; config.json keeps only
+`authorization.{consumer_id, verified_at}`. Until 0.48.x the code sat in the
+tracked config.json, which published the hub's own codes in this public
+repository. `upgrade` migrates a code still in config.json and keeps that
+copy, because in a multi-clone project config.json is tracked and merged into
+clones that may still run an older version; after **every** clone runs 0.49.0
+or later, run `governance-core upgrade --remove-config-auth-code` in the core
+clone and commit config.json. doctor warns while the copy remains. A private
+repository may deliberately track the file by adding `!/.governance/auth_code`
+after the managed block. install also checks the revocation feed once
+(best-effort) and refuses a revoked code. Schema 1 (perpetual, no feed) is
+retired. Contract: `governance_core/contracts/authorization_schema.md`.
 
 A project that loses authorization — code tampered, lease expired, key
 rotated, or `consumer_id` revoked — is frozen, not silently allowed to keep
@@ -263,8 +277,10 @@ python maintainer/issue_auth_code.py --consumer-id <project-or-org>
 Codes are issued as **schema-2 leases** (P-0071): each carries an `expiry`
 (default: issued + 365 days) plus the revocation-feed coordinates
 (`revocation_feed_url`, `max_offline_days`). A lease is renewed by
-re-issuing before expiry. `--schema 1` issues a legacy perpetual code;
-`--expiry YYYY-MM-DD` overrides the lease window. The expiry is enforced by
+re-issuing before expiry; `--expiry YYYY-MM-DD` overrides the lease window
+(schema 1 was retired in 0.49.0). `--out PATH` writes the code to a file
+instead of printing it -- use it from an agent session so the code never
+reaches a transcript, and keep the file out of git. The expiry is enforced by
 the codec and by the runtime `auth-guard` (whose verdict cache is
 date-keyed, so an expired code is never served a stale `valid` verdict).
 The printed `GC1.<...>` string is the authorization code. `issue_auth_code`
@@ -290,6 +306,21 @@ is published at `revocation.json` on `master` and polled raw by every
 consumer's `auth-guard` (P-0071 Phase 3 — at most once per ~6h TTL).
 `--list` verifies and prints the current feed; `--init` writes a fresh
 empty signed feed (`--force` overwrites an existing one).
+
+**Revoking one code (0.49.0, P-0132).** When a single code leaks, revoke
+just that code; the consumer stays active and its replacement keeps working:
+
+```pwsh
+python maintainer/revoke_consumer.py --code-file artifacts/old.code --reason "leaked"
+# or: --code-sha256 <fingerprint> --consumer-id <id>;  undo: --unrevoke-code <fingerprint>
+```
+
+The entry carries the code's `code_sha256` fingerprint and its
+`consumer_id`. Clients before 0.49.0 match entries on `consumer_id` alone,
+so for them the entry freezes the whole consumer: issue the replacement code
+and have the consumer upgrade and install it **before** publishing the
+entry. `--unrevoke <id>` lifts only the consumer-wide entry, never a
+per-code one.
 
 The feed is signed with the same private key as authorization codes and
 verified with the bundled public key, so it cannot be forged or replayed
@@ -358,7 +389,11 @@ revocation feed) and accepting their common-layer contributions.
 
 governance-core is its own first authorized consumer. Its
 `.governance/config.json` carries an `authorization` block (consumer_id
-`governance-core`) and a `candidate_uplink` consent block. `upgrade`
+`governance-core`) and a `candidate_uplink` consent block; the code itself is
+in the gitignored `.governance/auth_code` (0.49.0). This repository is
+public: never commit a code here -- the codes it committed before 0.49.0
+(a schema-1 perpetual one and the schema-2 one) are in its history, which is
+why P-0132 retired schema 1 and revokes the old schema-2 code by fingerprint. `upgrade`
 re-verifies the stored code on every run, so the dogfood loop is unchanged
 except that `upgrade` now also checks authorization. `doctor` reports the
 consumer id and fails (exit 7 / 8) if authorization or consent is missing.

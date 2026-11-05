@@ -104,4 +104,7 @@ htmlcov/
 /audit/
 /.governance/installed_files.json
 /.governance/candidate-outbox/
+# Authorization code (secret). A PRIVATE repo may re-include it with
+# !/.governance/auth_code after this block.
+/.governance/auth_code
 # <<< governance-core runtime <<<

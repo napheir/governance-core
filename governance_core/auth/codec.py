@@ -8,29 +8,29 @@ Auth-code format (single copy-pasteable line):
 separators=(",", ":"))`, UTF-8. `signature` is the Ed25519 signature over the
 exact payload_json bytes.
 
-Two payload schemas coexist:
+Payload schema 2 (P-0071, leased + revocable) is the only one accepted:
 
-  schema 1 (P-0065, legacy perpetual):
-      {"consumer_id": str, "issued": "YYYY-MM-DD", "schema": 1,
-       "expiry"?: "YYYY-MM-DD"}
-
-  schema 2 (P-0071, leased + revocable):
       {"consumer_id": str, "issued": "YYYY-MM-DD", "schema": 2,
        "expiry": "YYYY-MM-DD", "revocation_feed_url": str,
        "max_offline_days": int}
 
-`expiry` (ISO date): present and strictly before the reference date ->
-verification fails; absent (schema 1 only) -> the code never expires.
-`revocation_feed_url` is the signed revocation feed `auth-guard` polls;
-`max_offline_days` bounds how long a consumer may run without a successful
-feed fetch before it is frozen. Both are required for schema 2 and consumed
-by the runtime `auth-guard` hook (P-0071 Phase 3), not by this codec.
+`expiry` (ISO date) strictly before the reference date -> verification
+fails. `revocation_feed_url` is the signed revocation feed `auth-guard`
+polls; `max_offline_days` bounds how long a consumer may run without a
+successful feed fetch before it is frozen. Both are consumed by the runtime
+`auth-guard` hook (P-0071 Phase 3), not by this codec.
+
+Schema 1 (P-0065: no expiry, no feed) is retired (P-0132): such a code
+never expired and skipped the revocation gate, and the hub's own schema-1
+code is in its public git history. `code_fingerprint()` identifies one code
+for per-code revocation. Full contract: contracts/authorization_schema.md.
 """
 
 from __future__ import annotations
 
 import base64
 import datetime
+import hashlib
 import json
 from pathlib import Path
 from typing import Any
@@ -38,10 +38,9 @@ from typing import Any
 from . import sign, verify
 
 AUTH_CODE_PREFIX = "GC1"
-# Schemas this codec can verify. New codes are issued at CURRENT_SCHEMA;
-# schema 1 stays accepted so a self-hosted upgrade is never interrupted
-# mid-transition (constitution Art.8 -- the dogfood instance must not break).
-SUPPORTED_SCHEMAS = (1, 2)
+# Schemas this codec can verify; new codes are issued at CURRENT_SCHEMA.
+# Schema 1 was retired by P-0132 (perpetual, not revocable, leaked).
+SUPPORTED_SCHEMAS = (2,)
 CURRENT_SCHEMA = 2
 # Keys a schema-2 payload must carry beyond the schema-1 core.
 _SCHEMA2_REQUIRED = ("expiry", "revocation_feed_url", "max_offline_days")
@@ -65,14 +64,14 @@ def b64url_decode(text: str) -> bytes:
 
 def canonical_payload(consumer_id: str, issued: str,
                       expiry: str | None = None, *,
-                      schema: int = 1,
+                      schema: int = CURRENT_SCHEMA,
                       revocation_feed_url: str | None = None,
                       max_offline_days: int | None = None) -> bytes:
     """Build the canonical-JSON payload bytes for an authorization code.
 
-    `schema` selects the payload shape. Schema 1 carries an optional
-    `expiry`. Schema 2 requires `expiry`, `revocation_feed_url`, and
+    Schema 2 requires `expiry`, `revocation_feed_url`, and
     `max_offline_days` -- a missing one raises ValueError before signing.
+    Any other `schema` raises ValueError.
     """
     if schema not in SUPPORTED_SCHEMAS:
         raise ValueError(f"unsupported payload schema: {schema!r}")
@@ -92,9 +91,16 @@ def canonical_payload(consumer_id: str, issued: str,
         obj["expiry"] = expiry
         obj["revocation_feed_url"] = revocation_feed_url
         obj["max_offline_days"] = max_offline_days
-    elif expiry is not None:
-        obj["expiry"] = expiry
     return json.dumps(obj, sort_keys=True, separators=(",", ":")).encode("utf-8")
+
+
+def code_fingerprint(code: str) -> str:
+    """Return the sha256 hex fingerprint identifying one authorization code.
+
+    sha256 of the whitespace-stripped code, UTF-8. Publishing it in the
+    revocation feed revokes that code alone without revealing it (P-0132).
+    """
+    return hashlib.sha256(code.strip().encode("utf-8")).hexdigest()
 
 
 def make_auth_code(payload: bytes, seed: bytes) -> str:
