@@ -6,6 +6,15 @@
 
 ---
 
+### 2026-11-05 — 发布 v0.47.0（P-0129 Phase C/D/F）
+
+- owner 确认后推送 master（5 commits）并 `gh release create v0.47.0`；release workflow 41995202256：build / publish-pypi success。
+- 核实：`gh release list` Latest = v0.47.0；PyPI JSON latest = 0.47.0（wheel + sdist）。P-0129 的 F1–F10 至此全部发布。
+- 已通知 deva-vani：`artifacts/deva-vani/2026-11-05-release-0.47.0.md` + 会话消息。
+- 待办：P-0129 等 deva-vani 回报验收第 4 项实测后 complete + 归档；起草 P-0130（knowledge owner 枚举 / `audit_proposals` VALID_AGENTS /
+  `check_agent_roles` / `audit_hooks` 写死上游角色，改为从 config 推导，涉及两份契约）；mab 侧问题与授权码进 git 另行处理。
+
+
 ### 2026-11-05 — P-0129 Phase F：提交前 scope 门禁（F9），版本 0.47.0（未发布）
 
 - **问题**：install 不生成任何 `<agent>.allow.txt`、不装 pre-commit；`check_scope.py --agent core` 缺 `core.allow.txt` 即 FATAL ——

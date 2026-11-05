@@ -118,6 +118,30 @@ edit-write-guard blocks every write and names the reason;
 `governance-core doctor` exits 10 with the same reason. Non-core agents may
 not Edit/Write their own `.claude/hooks/**` or `.claude/settings*.json`.
 
+### Agent enums come from config (P-0130)
+
+No validator carries a list of agent names. Proposal `agent`
+(`proposal_frontmatter_schema` v1.6.0) and knowledge `owner`
+(`knowledge_frontmatter_schema` v1.3.0; literal `core` = the core agent) take
+their values from `.governance/config.json` `agents[]`:
+
+- `audit_proposals.py` — an in-flight proposal must name a current config
+  agent (FAIL); archived / legacy ones only need a well-formed name, and
+  Check 21 WARNs when their agent is no longer in config (retired agents keep
+  valid history).
+- `audit_knowledge.py` / `migrate_knowledge_frontmatter.py` — owners = config
+  agent names plus `core`; missing config is FATAL.
+- `check_agent_roles.py` — per config agent: a core role `<agent>-*.md`, no
+  role file named after another agent (shared roles are fine), frontmatter.
+- `audit_hooks.py` — per config clone: every `hooks_manifest.json` hook
+  present and registered in `settings.local.json`, no duplicates, identical
+  to the core clone's copy, no `hooks` / `enabledPlugins` in `settings.json`
+  (a projectRoot-only `settings.json` is expected). `--fix` copies from core.
+
+Keep it that way: a role name in quotes anywhere in `governance_core/` is a
+regression — `git grep -nE "[\"'\`](rules|trade|simu)[\"'\`]" -- governance_core`
+should find nothing outside tests and the one-shot proposal migration tool.
+
 ## 6. Releasing
 
 Version bump in `pyproject.toml` + `governance_core/__init__.py`, commit, then

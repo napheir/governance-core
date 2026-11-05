@@ -3,16 +3,24 @@
 check_agent_roles.py
 --------------------
 Validate that each agent's .claude/agents/ directory follows the role
-definition standards defined in AGENTS.md.
+definition rules of the project-architecture clause (art_01 角色定义规范).
+
+Agents and their clone directories come from .governance/config.json
+(P-0130 -- the upstream agents, clone paths and role-prefix vocabularies were
+hard-coded here before, so the tool rejected every other project's agents).
 
 Checks:
-1. Each agent has at least one core role file (<agent>-specialist.md)
-2. No cross-scope role files (e.g. trade-specialist.md in data-agent)
-3. Role files have valid YAML frontmatter
+1. Each agent has at least one core role file named after it (<agent>-*.md)
+2. No cross-scope role files: a role file whose name prefix is ANOTHER
+   agent's name (shared roles such as design-system-owner.md are fine)
+3. Role files have YAML frontmatter with name / description / tools
+
+Clone roots: a single-agent project checks this repo; a multi-clone project
+checks <this clone's parent>/<clone_dir> for every agent.
 
 Usage:
     python tools/check_agent_roles.py
-    python tools/check_agent_roles.py --agent data
+    python tools/check_agent_roles.py --agent platform
 """
 
 import argparse
@@ -20,94 +28,69 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-PROJECT_ROOT = ROOT.parent
-
-# Agent definitions: name -> (clone directory, allowed role prefixes)
-AGENT_DEFS = {
-    "rules": {
-        "dir": "agent-rules",
-        "allowed_prefixes": ["rules", "algorithm", "finance", "model", "signal"],
-        "core_role": "rules-specialist.md",
-    },
-    "trade": {
-        "dir": "agent-trade",
-        "allowed_prefixes": ["trade", "execution", "risk", "order"],
-        "core_role": "trade-specialist.md",
-    },
-    "data": {
-        "dir": "agent-data",
-        "allowed_prefixes": ["data", "design", "dashboard", "collector", "analysis"],
-        "core_role": "data-specialist.md",
-    },
-    "research": {
-        "dir": "agent-research",
-        "allowed_prefixes": ["research", "evaluation", "prototype", "survey"],
-        "core_role": "research-specialist.md",
-    },
-}
 
 
-def check_agent(name: str, defn: dict) -> list:
-    """Check a single agent's role definitions. Returns list of issues."""
+def load_agent_roots(root: Path) -> dict:
+    """Return {agent name: clone root Path} from root's config (fail loud)."""
+    from governance_core.config import load_config
+    cfg = load_config(root)
+    if len(cfg.agents) == 1:
+        return {cfg.agents[0].name: root}
+    return {a.name: root.parent / a.clone_dir for a in cfg.agents}
+
+
+def check_agent(name: str, clone_root: Path, agent_names: set) -> list:
+    """Check one agent's role definitions. Returns list of issue strings."""
     issues = []
-    agent_dir = PROJECT_ROOT / defn["dir"]
-    roles_dir = agent_dir / ".claude" / "agents"
+    roles_dir = clone_root / ".claude" / "agents"
 
-    if not agent_dir.exists():
-        issues.append(f"[WARN] {name}: clone directory not found: {agent_dir}")
+    if not clone_root.exists():
+        issues.append(f"[WARN] {name}: clone directory not found: {clone_root}")
         return issues
 
     if not roles_dir.exists():
         issues.append(f"[HIGH] {name}: .claude/agents/ directory missing")
         return issues
 
-    role_files = list(roles_dir.glob("*.md"))
+    role_files = sorted(roles_dir.glob("*.md"))
     if not role_files:
         issues.append(f"[HIGH] {name}: no role definition files found")
         return issues
 
-    # Check 1: core role exists
-    core_role = defn["core_role"]
-    if not (roles_dir / core_role).exists():
+    # Check 1: a core role named after the agent
+    if not any(rf.stem == name or rf.stem.startswith(f"{name}-")
+               for rf in role_files):
         issues.append(
-            f"[HIGH] {name}: missing core role file: {core_role}"
+            f"[HIGH] {name}: missing core role file named after the agent "
+            f"({name}-<role>.md)"
         )
 
-    # Check 2: no cross-scope roles
-    allowed = defn["allowed_prefixes"]
+    # Check 2: no role file claimed by another agent's name
+    others = agent_names - {name}
     for rf in role_files:
-        stem = rf.stem  # e.g. "trade-specialist"
-        first_part = stem.split("-")[0]  # e.g. "trade"
-        if first_part not in allowed:
+        prefix = rf.stem.split("-")[0]
+        if prefix in others:
             issues.append(
                 f"[HIGH] {name}: cross-scope role file: {rf.name} "
-                f"(prefix '{first_part}' not in allowed: {allowed})"
+                f"(prefix '{prefix}' is agent '{prefix}')"
             )
 
-    # Check 3: YAML frontmatter exists
+    # Check 3: YAML frontmatter exists with the required fields
     for rf in role_files:
         try:
             content = rf.read_text(encoding="utf-8")
-        except Exception as e:
-            issues.append(f"[WARN] {name}: cannot read {rf.name}: {e}")
+        except (OSError, UnicodeDecodeError) as exc:
+            issues.append(f"[WARN] {name}: cannot read {rf.name}: {exc}")
             continue
-
         if not content.startswith("---"):
-            issues.append(
-                f"[WARN] {name}: {rf.name} missing YAML frontmatter"
-            )
+            issues.append(f"[WARN] {name}: {rf.name} missing YAML frontmatter")
             continue
-
-        # Check for required frontmatter fields
         end_idx = content.find("---", 3)
         if end_idx == -1:
-            issues.append(
-                f"[WARN] {name}: {rf.name} incomplete YAML frontmatter"
-            )
+            issues.append(f"[WARN] {name}: {rf.name} incomplete YAML frontmatter")
             continue
-
         frontmatter = content[3:end_idx]
-        for field in ["name:", "description:", "tools:"]:
+        for field in ("name:", "description:", "tools:"):
             if field not in frontmatter:
                 issues.append(
                     f"[WARN] {name}: {rf.name} missing frontmatter field: {field}"
@@ -116,26 +99,27 @@ def check_agent(name: str, defn: dict) -> list:
     return issues
 
 
-def main():
-    """Run role definition compliance checks."""
+def main(root: Path = ROOT, argv: list | None = None) -> int:
+    """Run role definition compliance checks; return the exit code."""
     parser = argparse.ArgumentParser(description="Check agent role definitions")
     parser.add_argument("--agent", help="Check specific agent only")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
-    agents_to_check = {}
+    agent_roots = load_agent_roots(root)
+    agent_names = set(agent_roots)
     if args.agent:
-        if args.agent not in AGENT_DEFS:
+        if args.agent not in agent_roots:
             print(f"Unknown agent: {args.agent}")
-            print(f"Available: {', '.join(AGENT_DEFS.keys())}")
-            sys.exit(1)
-        agents_to_check[args.agent] = AGENT_DEFS[args.agent]
+            print(f"Available (from config): {', '.join(sorted(agent_names))}")
+            return 1
+        to_check = {args.agent: agent_roots[args.agent]}
     else:
-        agents_to_check = AGENT_DEFS
+        to_check = agent_roots
 
     all_issues = []
-    for name, defn in agents_to_check.items():
+    for name, clone_root in to_check.items():
         print(f"Checking {name}...")
-        issues = check_agent(name, defn)
+        issues = check_agent(name, clone_root, agent_names)
         all_issues.extend(issues)
         if not issues:
             print(f"  [OK] {name}: all checks passed")
@@ -146,17 +130,15 @@ def main():
     print()
     high_count = sum(1 for i in all_issues if i.startswith("[HIGH]"))
     warn_count = sum(1 for i in all_issues if i.startswith("[WARN]"))
-
     if high_count > 0:
         print(f"Result: {high_count} HIGH, {warn_count} WARN issues found")
-        sys.exit(1)
-    elif warn_count > 0:
+        return 1
+    if warn_count > 0:
         print(f"Result: {warn_count} WARN issues (no HIGH)")
-        sys.exit(0)
-    else:
-        print("Result: All agents compliant")
-        sys.exit(0)
+        return 0
+    print("Result: All agents compliant")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

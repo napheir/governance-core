@@ -127,7 +127,7 @@ def is_under(path: str, prefixes):
     for pre in prefixes:
         pre_n = _norm(pre)
 
-        # Strip trailing /** glob (e.g. "rules/**" -> "rules")
+        # Strip trailing /** glob (e.g. "services/**" -> "services")
         if pre_n.endswith("/**"):
             pre_n = pre_n[:-3]
 

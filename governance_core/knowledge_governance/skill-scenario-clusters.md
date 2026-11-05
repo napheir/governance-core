@@ -55,7 +55,7 @@ theme: universal
 |-------|----------------------|-----------------------------|
 | `universal` | copied to every clone | in the SessionStart always-inject pool + "universal" index group |
 | `core-only` | stays only in core | not every-session; reachable via a scenario cluster |
-| `<agent>` (e.g. `trade`) | copied only to that clone | that agent's index group; not in the universal pool |
+| `<agent>` (an agent name from config, e.g. `platform`) | copied only to that clone | that agent's index group; not in the universal pool |
 
 `learned` skills (`.claude/skills/learned/`) carry **no** `theme` — they are per-agent
 session extractions, deliberately excluded from `sync_infra` routing. For injection

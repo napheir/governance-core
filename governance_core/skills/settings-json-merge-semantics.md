@@ -25,7 +25,9 @@ Hook 是串联而非覆盖 → 同一 hook 可能被登记多次：
 1. **唯一规范 home 是 `settings.local.json`**，这是 sync_infra 和 audit_hooks 的作用对象
 2. 任何 `.claude/settings.json` 包含 `hooks` 或 `enabledPlugins`，视为漂移——走
    `proposals/` 或直接 `git rm` 清除，把内容迁到 `settings.local.json`
-3. 新 clone bootstrapping 时只生成 `settings.local.json`，不要创建 `settings.json`
+3. 新 clone 不要在 `settings.json` 里放 `hooks` / `enabledPlugins`。`settings.json` 只承载需要跨 clone
+   共享、经 git 同步的声明 —— 目前是多 clone 项目的 `projectRoot` 边界锚（由 `governance-core install`
+   维护，P-0129）；只含该键的 `settings.json` 不是漂移
 4. `tools/audit_hooks.py` 的 `_check_legacy_settings_json` 会自动发现违反此规范的文件
 
 ## 触发模式
