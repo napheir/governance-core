@@ -518,6 +518,11 @@ pruned):
   `check_constitution_change.py` is deliberately NOT wired in: it needs the
   commit message (absent at pre-commit time) and would reject every
   `CLAUDE.md` commit; constitution edits are guarded by edit-write-guard L5.
+  Since 0.48.1 the gate judges **staged** content: the `agent_rules/` /
+  `check_scope.py` "same as master" skip compares the index with master (not
+  `master..HEAD`, which let an agent widen its own allow list), and during a
+  merge commit a file staged exactly as `MERGE_HEAD` has it is a merge import,
+  not an agent change.
 
 ## 11. Candidate pipeline (P-0065)
 
