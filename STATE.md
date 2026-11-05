@@ -17,6 +17,14 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-05 — 发布 v0.46.0（P-0129 Phase A/B/E）
+
+- owner 确认后推送 master（8 commits）并 `gh release create v0.46.0`；release workflow 41991242166：build / publish-pypi success。
+- 核实已发布状态：`gh release list` Latest = v0.46.0；PyPI JSON latest = 0.46.0（wheel + sdist）。
+- 已通知 deva-vani：`artifacts/deva-vani/2026-11-05-release-0.46.0.md` + 会话消息（升级前先写业务 agent allow.txt、核对 clone_dir；
+  升级后实测 3 个场景回报 = P-0129 验收第 4 项）。
+- 下一步：P-0129 Phase C/D/F → 0.47.0；P-0129 保持 in-progress。
+
 ### 2026-11-05 — P-0129 Phase E：STATE 解析 + .gitignore 受管块，版本 0.46.0（未发布）
 
 - **F6**：session-context 条目改用 `^### \d{4}-\d{2}-\d{2}`（与 `rotate_state._ENTRY_RE` 一致），STATE 模板注释不再被当成条目；
@@ -38,20 +46,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   （一次性迁移，不删、不当 drift 上送）；被删掉的条款下次 install 自动重新种子化。
 - **测试**：新增 `test_installer_mixed_clauses.py` 5 例（走真实 `install()`，只替身签名校验）；反向校准：HEAD 旧 installer
   连续 install 两次后 7/7 → 0/7。全量 pytest 276 passed；hub upgrade 后 18 条款完好，doctor OK。
-
-### 2026-11-05 — P-0129 Phase A：agent 身份改为按 config 推导 + guard 加固
-
-- **起因**：deva-vani core 报告 8 个问题（`artifacts/deva-vani/2026-11-05-issues-from-deva-vani.md`），本仓库核实全部属实，
-  另找到 F7/F8。owner 批准 P-0129（10 项 F1–F10，分 A/B/E → 0.46.0、C/D/F → 0.47.0）。
-- **F1（安全）**：`_guard_common` 新增 `load_topology / resolve_agent / detect_role / identity_failure`：
-  身份 = clone 目录名对照 config `agents[].clone_dir`（单 agent 配置即唯一 agent），不再看分支、不调 git；
-  无法解析 → `<unresolved>`，edit-write-guard 拦截所有写并写明原因。5 处写死的上游角色表全部删除：
-  session-context、merge-audit、`proposal_lib.detect_agent`、`regen_constitution.detect_role`（两个 tool 按路径加载
-  同一份 `_guard_common`）。scope-guard 改为按 hook 所在 clone 判定（原来按 cwd）。
-- **F7**：跨仓库 Bash 模式改为 `<项目目录>/<clone>` + `../<clone>`，由真实 clone 位置推导；仍不含 core clone（沿用原策略）。
-- **F8**：非 core 不得 Edit/Write 自己的 `.claude/hooks/**`、`.claude/settings{,.local}.json`。
-- **doctor**：身份无法解析 → exit 10；OK 行带 `agent=`。条款 art_09 / art_12 去业务化并写入身份规则；
-  `/proposal` 文档、core-manual 同步。`.role` 不再被读取（hub 的 `.role` 文件与宪法第二条表格待 /iterate-constitution 清理）。
-- **测试**：新增 `test_agent_identity.py` 23 例（deva-vani 形状 4 clone 嵌套布局，含真实 guard 子进程）；
-  反向校准：0.45.1 旧 guard 对"越权 Edit / 改自身 guard / Bash 写兄弟 clone"三场景都 exit 0。
-  全量 pytest 271 passed，脚本风格 28 个文件全部通过；upgrade + doctor OK（agent=core）。
