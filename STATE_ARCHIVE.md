@@ -6,6 +6,17 @@
 
 ---
 
+### 2026-11-05 — P-0130 Phase B：knowledge `owner` 改为取自 config
+
+- **G2**：`contracts/knowledge_frontmatter_schema.md` 1.2.0 → 1.3.0，§3.2 不再列上游角色表，`owner` = config `agents[].name`
+  ∪ 字面 `core`（core agent 别名，shipped 文档都写 `owner: core`）；新增 §8.3 发布说明。`audit_knowledge.load_owner_enum`
+  取代 `parse_enum(... 3.2 ...)`，缺 config 即 FATAL；`migrate_knowledge_frontmatter` 删 `VALID_OWNERS`，改为 `load_valid_owners` 显式传参。
+- **偏差**：原计划的 carrier_class 必填切换 "v1.3.0" 在 5 个文件里被引用 11 次，统一顺延为 v1.4.0（只改编号、不改范围），
+  以符合契约自己的 SemVer（新增 owner 值 = minor）。
+- **测试**：`test_config_derived_enums.py` 新增 5 例 knowledge（含 `core_agent_name: lead` 时 `owner: core` 仍有效、缺 config FATAL）；
+  `test_audit_index_absent.py` 夹具补 config。hub `audit_knowledge` Failed 0（owner_enum=['core']）；全量 pytest 320 passed，脚本风格全过。
+
+
 ### 2026-11-05 — P-0130 Phase A：提案 `agent` 改为取自 config
 
 - **起因**：deva-vani 报 knowledge owner / check_agent_roles 写死上游角色；本仓库按角色名 token 扫描找到同族 6 处（G1–G6），

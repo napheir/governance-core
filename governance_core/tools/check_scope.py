@@ -54,22 +54,57 @@ def _topology_or_exit():
         print(f"[FATAL] agent topology unresolved: {exc}")
         sys.exit(1)
 
-def same_as_master(path: str) -> bool:
+def same_as_master(path: str, staged: bool = False) -> bool:
+    """Return True if `path` equals master's version (change came from master).
+
+    staged=True (the pre-commit gate) compares the STAGED content with master:
+    comparing HEAD there (master..HEAD) passed any staged edit to a file whose
+    committed version still matched master -- e.g. a business agent rewriting
+    its own agent_rules/<agent>.allow.txt in the commit under check (P-0129).
+    staged=False (baseline mode) compares the committed HEAD.
+    A missing `master` ref or any git error counts as "not the same".
     """
-    Return True if file content at HEAD equals master (i.e., change only comes from merging master).
-    """
+    cmd = (["git", "diff", "--cached", "--quiet", "master", "--", path]
+           if staged else
+           ["git", "diff", "--quiet", "master..HEAD", "--", path])
     try:
-        # git diff --quiet master..HEAD -- <path>
-        r = subprocess.run(
-            ["git", "diff", "--quiet", "master..HEAD", "--", path],
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-            check=False,
-        )
+        r = subprocess.run(cmd, cwd=ROOT, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, check=False)
         return r.returncode == 0
     except Exception:
         # Conservative: if we can't verify, do NOT skip.
         return False
+
+
+def in_merge() -> bool:
+    """Return True while a merge is being concluded (MERGE_HEAD exists).
+
+    Uses rev-parse rather than ROOT/.git/MERGE_HEAD so worktrees (where .git
+    is a file) are handled.
+    """
+    r = subprocess.run(
+        ["git", "rev-parse", "-q", "--verify", "MERGE_HEAD"],
+        cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return r.returncode == 0
+
+
+def same_as_merge_head(path: str) -> bool:
+    """Return True if the staged content of `path` equals MERGE_HEAD's.
+
+    During a merge commit (pre-commit runs only when the merge did not
+    auto-commit, e.g. after conflict resolution) HEAD is still the pre-merge
+    commit, so same_as_master()'s master..HEAD comparison flags every file
+    the merge brings in. The staged version equal to the merged-in commit
+    means the change came from the merge, not from this agent (P-0129 F9).
+    """
+    r = subprocess.run(
+        ["git", "diff", "--cached", "--quiet", "MERGE_HEAD", "--", path],
+        cwd=ROOT, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        check=False,
+    )
+    return r.returncode == 0
 
 
 def run(cmd: str) -> str:
@@ -216,7 +251,7 @@ def main():
                     or f == "tools/check_scope.py"
                     or f == "tools/print_startup_pack.ps1"
             ):
-                if same_as_master(f):
+                if same_as_master(f, args.staged_only):
                     continue
 
         if is_under(f, deny):
@@ -224,17 +259,19 @@ def main():
         elif not is_under(f, allow):
             violations.append((f, "OUT_OF_SCOPE"))
 
-    # During merge commits, filter out files identical to master.
-    # These are merge imports (core infrastructure), not agent modifications.
-    merge_head = ROOT / ".git" / "MERGE_HEAD"
-    if merge_head.exists() and violations and args.agent != "core":
+    # During merge commits, filter out files whose staged content equals the
+    # merged-in commit (MERGE_HEAD) or master: these are merge imports (core
+    # infrastructure), not agent modifications. A file the agent changed while
+    # resolving the merge matches neither and stays a violation.
+    if violations and in_merge():
         filtered = []
         for f, reason in violations:
-            if not same_as_master(f):
+            if not (same_as_merge_head(f) or same_as_master(f, args.staged_only)):
                 filtered.append((f, reason))
         skipped = len(violations) - len(filtered)
         if skipped:
-            print(f"[INFO] Merge detected: {skipped} scope-external file(s) identical to master (allowed)")
+            print(f"[INFO] Merge detected: {skipped} scope-external file(s) "
+                  f"identical to the merged-in commit (allowed)")
         violations = filtered
 
     if violations:

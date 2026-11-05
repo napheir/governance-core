@@ -145,3 +145,69 @@ def test_core_commit_anything_passes(tmp_path: Path) -> None:
     assert _install(clone) == 0
     res = _commit_file(clone, "anywhere/file.txt")
     assert res.returncode == 0, res.stdout + res.stderr
+
+
+def _git_nohooks(repo: Path, *args: str) -> subprocess.CompletedProcess:
+    """Fixture-setup git call with hooks disabled (not an agent action)."""
+    return _git(repo, "-c", "core.hooksPath=.no-hooks", *args)
+
+
+def _merge_fixture(tmp_path: Path) -> Path:
+    """Business clone: feature/platform behind a master core-infra change,
+    merged with --no-commit so the final `git commit` runs pre-commit (the
+    path a conflicted /sync-repos merge takes)."""
+    clone = _clone(tmp_path, "agent-platform")
+    assert _install(clone) == 0
+    (clone / "agent_rules" / "platform.allow.txt").write_text("services/\n",
+                                                              encoding="utf-8")
+    assert _git_nohooks(clone, "add", "-A").returncode == 0
+    assert _git_nohooks(clone, "commit", "-q", "-m", "base").returncode == 0
+    assert _git(clone, "checkout", "-q", "-b", "feature/platform").returncode == 0
+    (clone / "services").mkdir()
+    (clone / "services" / "app.py").write_text("x = 1\n", encoding="utf-8")
+    assert _git_nohooks(clone, "add", "-A").returncode == 0
+    assert _git_nohooks(clone, "commit", "-q", "-m", "platform").returncode == 0
+    assert _git(clone, "checkout", "-q", "master").returncode == 0
+    tool = clone / "tools" / "rotate_state.py"
+    tool.write_text(tool.read_text(encoding="utf-8") + "\n# core change\n",
+                    encoding="utf-8")
+    assert _git_nohooks(clone, "commit", "-q", "-am", "core infra").returncode == 0
+    assert _git(clone, "checkout", "-q", "feature/platform").returncode == 0
+    assert _git(clone, "merge", "--no-commit", "--no-ff", "master").returncode == 0
+    return clone
+
+
+def test_merge_commit_importing_core_changes_passes(tmp_path: Path) -> None:
+    """Files staged exactly as MERGE_HEAD has them are merge imports."""
+    clone = _merge_fixture(tmp_path)
+    res = _git(clone, "commit", "-q", "-m", "merge master")
+    assert res.returncode == 0, res.stdout + res.stderr
+
+
+def test_merge_commit_with_agent_edit_to_core_file_rejected(tmp_path: Path) -> None:
+    """An out-of-scope edit slipped into the merge resolution is still caught."""
+    clone = _merge_fixture(tmp_path)
+    other = clone / "tools" / "check_scope.py"
+    other.write_text(other.read_text(encoding="utf-8") + "\n# sneaky\n",
+                     encoding="utf-8")
+    assert _git(clone, "add", "--", "tools/check_scope.py").returncode == 0
+    res = _git(clone, "commit", "-q", "-m", "merge master")
+    assert res.returncode != 0, res.stdout + res.stderr
+    assert "tools/check_scope.py" in res.stdout + res.stderr
+
+
+def test_business_commit_widening_own_allow_list_rejected(tmp_path: Path) -> None:
+    """The agent_rules/ master-equality skip compares STAGED content: an
+    agent cannot widen its own scope through the commit under check."""
+    clone = _clone(tmp_path, "agent-platform")
+    assert _install(clone) == 0
+    allow = clone / "agent_rules" / "platform.allow.txt"
+    allow.write_text("services/\n", encoding="utf-8")
+    assert _git_nohooks(clone, "add", "-A").returncode == 0
+    assert _git_nohooks(clone, "commit", "-q", "-m", "base").returncode == 0
+    assert _git(clone, "checkout", "-q", "-b", "feature/platform").returncode == 0
+    allow.write_text("services/\ntools/\n", encoding="utf-8")
+    assert _git(clone, "add", "--", "agent_rules/platform.allow.txt").returncode == 0
+    res = _git(clone, "commit", "-q", "-m", "widen my scope")
+    assert res.returncode != 0, res.stdout + res.stderr
+    assert "agent_rules/platform.allow.txt" in res.stdout + res.stderr

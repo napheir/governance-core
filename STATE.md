@@ -17,6 +17,17 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-05 — P-0129 F9 实施缺陷修复：提交门禁的合并与暂存比较（0.48.1，未发布）
+
+- **发现**：deva-vani 报升级顺序后，本仓库先探测 0.47.0 门禁在业务 clone 的 `/sync-repos` 合并上的行为（`artifacts/p0129/probe_merge_gate.py`）：
+  合并未自动提交（冲突 / `--no-commit`）时，pre-commit 把从 master 合入的 core 文件判 OUT_OF_SCOPE —— `check_scope.same_as_master`
+  比的是 `master..HEAD`，而 pre-commit 时 HEAD 还是合并前。写测试时又暴露同根漏洞：`agent_rules/*` 等特殊文件"与 master 相同即放行"
+  比的也是 HEAD 而非暂存区，`--staged-only` 下业务 agent 可在本次提交里改写自己的 `allow.txt`（扩权）。
+- **修复**（`check_scope.py`）：`same_as_master(path, staged)`：staged 模式比暂存区 vs master；新增 `in_merge()`（rev-parse，兼容 worktree）
+  与 `same_as_merge_head()`（暂存区 vs MERGE_HEAD），合并过滤改用二者；均设 `cwd=ROOT`。属 P-0129 F9 范围内修复（P-0129 仍 in-progress）。
+- **测试**：`test_installer_commit_gate.py` +3（合并导入通过、合并中夹带越界改动被拒、改写自身 allow.txt 被拒，均经真实 hook）；
+  反向校准：0.48.0 的 check_scope 上 3 例全 FAIL。全量 pytest 337 passed，脚本风格全过。版本 0.48.0 → 0.48.1。**发布待 owner 确认**。
+
 ### 2026-11-05 — 发布 v0.48.0 + 归档 P-0130
 
 - P-0130 验收 1–6 通过（第 6 项提案内写的 cmd 引号转义有误，同一门禁直接执行 exit 1 = 干净；已记入完成 note），reconcile 后
@@ -41,13 +52,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - **测试**：新增 `test_check_agent_roles.py` 7 例、`test_audit_hooks.py` 7 例（clone 由真实 `install()` 生成，含 installer 写的 projectRoot
   settings.json 不误报）。全量 pytest 334 passed，脚本风格全过；hub 上 doctor / audit_proposals / audit_knowledge / audit_hooks /
   check_agent_roles 全部通过。版本 0.47.0 → 0.48.0，wheel 干净。**发布待 owner 确认**。
-
-### 2026-11-05 — P-0130 Phase B：knowledge `owner` 改为取自 config
-
-- **G2**：`contracts/knowledge_frontmatter_schema.md` 1.2.0 → 1.3.0，§3.2 不再列上游角色表，`owner` = config `agents[].name`
-  ∪ 字面 `core`（core agent 别名，shipped 文档都写 `owner: core`）；新增 §8.3 发布说明。`audit_knowledge.load_owner_enum`
-  取代 `parse_enum(... 3.2 ...)`，缺 config 即 FATAL；`migrate_knowledge_frontmatter` 删 `VALID_OWNERS`，改为 `load_valid_owners` 显式传参。
-- **偏差**：原计划的 carrier_class 必填切换 "v1.3.0" 在 5 个文件里被引用 11 次，统一顺延为 v1.4.0（只改编号、不改范围），
-  以符合契约自己的 SemVer（新增 owner 值 = minor）。
-- **测试**：`test_config_derived_enums.py` 新增 5 例 knowledge（含 `core_agent_name: lead` 时 `owner: core` 仍有效、缺 config FATAL）；
-  `test_audit_index_absent.py` 夹具补 config。hub `audit_knowledge` Failed 0（owner_enum=['core']）；全量 pytest 320 passed，脚本风格全过。
