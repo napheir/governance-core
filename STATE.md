@@ -28,6 +28,8 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   `artifacts/deva-vani/bootstrap.py`（gitignored）：`new --no-bootstrap` → 带码 + overrides install →
   `expand --no-backup`。仓内 trial 全程通过（4 clone 各 install + doctor OK），已删 trial。
   修 `new` 属 multi-agent-template 仓库，待单开会话。
-- **待 owner**：正式 bootstrap 写仓外，须 owner 以 `!` 运行（会话边界）。
+- **正式 bootstrap**：写仓外，由 owner 以 `!` 运行（会话边界）——已完成：`workshop-claude/deva-vani/`
+  下 `agent-{core,platform,experience,content}` 各 install + doctor OK，`shared_state/` 已初始化，
+  授权码文件已删。下一步在 `deva-vani/agent-core` 新会话写宪法 + 五份数据契约。
 - **品牌方规划页**：Artifact https://claude.ai/artifact/46mE3sQcbvMKdm7meggrBk （源
   `artifacts/deva-vani/brand-plan.html`，私有，需 owner 分享）。
