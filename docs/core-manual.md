@@ -469,6 +469,16 @@ pruned):
   projects (the hub) get no anchor. `doctor` warns when a multi-clone clone
   lacks it. This widening is safe only because identity is config-derived
   (P-0129 Phase A).
+- **Total constitution seed** — when `constitution/total.md` is absent,
+  install renders `governance_core/default_config/constitution_total.md.template`
+  (project name, ritual phrase, agent table; one summary + pointer per
+  clause, then a "项目条款" placeholder) and generates `CLAUDE.md` through the
+  project's own `tools/regen_constitution.py`, so `--check` is in sync from the
+  first session. An existing `total.md` is never touched; a `CLAUDE.md`
+  without the regen banner (hand-written) is never overwritten. When a new
+  clause is added to `governance_core/clauses/`, add its section to the
+  template too — `test_installer_constitution_seed.py` fails otherwise.
+  `doctor` warns when `total.md` references no `.governance/clauses/` file.
 
 ## 11. Candidate pipeline (P-0065)
 

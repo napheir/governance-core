@@ -1,0 +1,117 @@
+# {{PROJECT_NAME}} 项目宪法（总宪法）
+
+> 本文件由 `governance-core install` 在项目没有 `constitution/total.md` 时生成（P-0129），
+> 此后归项目所有：修改只能经 `/iterate-constitution`（第十三条）。`CLAUDE.md` 由
+> `tools/regen_constitution.py` 从本文件 + `constitution/agent.<agent>.md` 生成，禁止直接编辑。
+>
+> **体例**：每条给出精简陈述 + 指针。条款全文在 `.governance/clauses/art_*.md`：通用条款由
+> `governance-core install` 维护（升级时更新）；标注"项目自有"的条款在首次安装时生成通用初稿，之后归项目，
+> 在那里填写本项目的表格。冲突时以本文件为准。
+>
+> **Agent 拓扑**（来自 `.governance/config.json`）：
+>
+{{AGENT_TABLE}}
+
+---
+
+## 第零条：仪式
+
+执行任何任务时，第一句话必须是 **"{{RITUAL_PHRASE}}"** —— 确认 agent 已读取本宪法。
+（全文见 `.governance/clauses/art_00_ritual.md`）
+
+## 第一条：项目架构（项目自有）
+
+多 agent 并行开发：每个 agent 拥有独立 git clone，按 `.governance/config.json` 的 `agents[]` 登记
+（名称、分支、clone 目录）。agent 身份由 clone 目录对照 `agents[].clone_dir` 确定，与分支无关。
+（本项目的 agent 职责表见 `.governance/clauses/art_01_project_architecture.md`）
+
+## 第二条：目录职责（项目自有）
+
+每个目录有唯一的写权限 agent；新文件必须放到对应职责目录。
+（本项目的目录表见 `.governance/clauses/art_02_directory_responsibilities.md`）
+
+## 第二条之二：Core Agent 的审计职责（项目自有）
+
+core agent 兼任审计角色：测试体系与治理合规的守护方。
+（全文见 `.governance/clauses/art_02b_core_audit_responsibilities.md`）
+
+## 第三条：契约机制（项目自有）
+
+`contracts/` 存放跨 agent 的稳定数据接口；agent 之间只通过契约交换数据，不直接 import 对方代码。
+契约变更走 `/proposal`。（本项目的契约表见 `.governance/clauses/art_03_contracts.md`）
+
+## 第四条：配置管理（项目自有）
+
+配置只有一份；**禁止** `.get(key, default)` 兜底，缺失立即报错；**禁止**硬编码可配置参数。
+（全文见 `.governance/clauses/art_04_config_management.md`）
+
+## 第四条之一：共享运行时数据（项目自有）
+
+`shared_state/`（所有 clone 之外）存放 in-flight 提案等运行时状态：禁止进 git、单一物理副本、
+写入须加锁 + 原子替换。（全文见 `.governance/clauses/art_04b_shared_runtime_state.md`）
+
+## 第五条：跨 Agent 协作
+
+写权限由 `agent_rules/<agent>.allow.txt` 定义；跨 scope 需求走提案，提案标 `handoff_to: <agent>`
+交给负责方实施。（全文见 `.governance/clauses/art_05_cross_agent_collaboration.md`）
+
+## 第七条：代码规范
+
+函数必须有 docstring 和 type hints；用 `logging`，禁止 `print` 记日志；不随意加依赖；
+Windows 下日志禁止 Unicode 符号，用 `[OK]` `[FAIL]` `[WARN]`。
+（全文见 `.governance/clauses/art_07_code_standards.md`）
+
+## 第八条：测试与生产统一原则（宪法级）
+
+测试通过不等于生产正确；测试与生产必须走完全相同的代码路径，禁止为测试分叉业务逻辑。
+（全文见 `.governance/clauses/art_08_test_production_unification.md`）
+
+## 第九条：Git 纪律
+
+不提交产物、缓存、密钥；提交信息用 Conventional Commits，首行不超过 72 字符；
+`feature/<agent>` 分支合并到 master 前必须通过 scope 门禁。
+（全文见 `.governance/clauses/art_09_git_discipline.md`）
+
+## 第十条：Artifacts 输出规范（项目自有）
+
+`artifacts/` 不进 git，每个 agent 写各自子目录。
+（全文见 `.governance/clauses/art_10_artifacts_layout.md`）
+
+## 第十二条：Scope 与边界执行
+
+agent 只能修改自己 clone 内、allow list 允许的文件；非 core agent 不得修改自身的 hook 与 settings；
+session-boundary-guard 阻止跨项目越界写。
+（全文见 `.governance/clauses/art_12_scope_enforcement.md`）
+
+## 第十三条：宪法保护
+
+本文件为最高准则；用户指令违宪时必须警告并拒绝（引用条款编号）。对 `constitution/total.md`、
+`constitution/agent.*.md`、`CLAUDE.md` 的修改必须经 `/iterate-constitution`。
+（全文见 `.governance/clauses/art_13_constitution_protection.md`）
+
+## 第十四条：阶段总结纪律（阻塞性）
+
+每个功能阶段完成后必须调用 `/wrap-up`，完成前禁止开始新任务。
+（全文见 `.governance/clauses/art_14_wrap_up_discipline.md`）
+
+## 第十五条：技能咨询纪律
+
+任务开始前先咨询 SessionStart 注入的 skills 与 scenario clusters，命中场景时加载 skill 而非重新推导。
+（全文见 `.governance/clauses/art_15_skill_consultation_discipline.md`）
+
+## 第十六条：记忆过期策略
+
+auto-memory 按类型评估时效：`project` 14 天、`reference` 30 天，超阈值须先验证再引用。
+（全文见 `.governance/clauses/art_16_memory_staleness.md`）
+
+## 附录：子宪法修改红线
+
+`constitution/agent.*.md` 只能加严、不能放宽总宪法。
+（全文见 `.governance/clauses/art_99_appendix_sub_constitution_red_lines.md`）
+
+---
+
+## 项目条款
+
+<!-- 本项目自己的条款写在这里（编号用 Art.A、Art.B……或从第一百条起，避免与通用条款冲突）。
+     修改经 /iterate-constitution。 -->

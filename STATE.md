@@ -17,6 +17,18 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-05 — P-0129 Phase D：新项目生成总宪法初稿（F4）
+
+- **问题**：新消费者的 `constitution/total.md` / `agent.md` 是 stub，regen 出的 `CLAUDE.md` 没有任何条款；Claude Code 只加载 `CLAUDE.md`，
+  通用条款到不了上下文，启动即 STALE。
+- **修复**：新模板 `governance_core/default_config/constitution_total.md.template`（现有 `default_config/*.template` glob 已覆盖打包，
+  未按提案新建 `templates/`，记为偏差）：每条通用条款一节"精简陈述 + `.governance/clauses/` 指针"、agent 拓扑表、项目条款占位。
+  `installer._seed_constitution`：`total.md` 缺失才生成，再用项目自己的 `tools/regen_constitution.py` 生成 `CLAUDE.md`；
+  已有 `total.md` 不动，无 regen banner 的手写 `CLAUDE.md` 不覆盖。doctor 对不含任何条款指针的 `total.md` 告警。
+- **限制**：mab 模板自带 stub `total.md`，所以 mab 新建的项目要等 mab 停发该 stub 后才受益（mab 侧，非本提案）。
+- **测试**：新增 `test_installer_constitution_seed.py` 6 例（含模板对每个条款文件的指针完整性、装后 `regen --check` 为 OK）。
+  全量 pytest 298 passed，脚本风格全过；hub upgrade 后宪法不变，doctor OK。
+
 ### 2026-11-05 — P-0129 Phase C：多 clone 自动生成会话边界锚（F3）
 
 - **问题**：新装多 clone 消费者没有 `.claude/settings.json` 的 `projectRoot: "../"`，会话边界只到 clone，`../shared_state/` 提案写不了；
@@ -34,15 +46,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 已通知 deva-vani：`artifacts/deva-vani/2026-11-05-release-0.46.0.md` + 会话消息（升级前先写业务 agent allow.txt、核对 clone_dir；
   升级后实测 3 个场景回报 = P-0129 验收第 4 项）。
 - 下一步：P-0129 Phase C/D/F → 0.47.0；P-0129 保持 in-progress。
-
-### 2026-11-05 — P-0129 Phase E：STATE 解析 + .gitignore 受管块，版本 0.46.0（未发布）
-
-- **F6**：session-context 条目改用 `^### \d{4}-\d{2}-\d{2}`（与 `rotate_state._ENTRY_RE` 一致），STATE 模板注释不再被当成条目；
-  hub SessionStart 实测已不再列出 `### YYYY-MM-DD`。
-- **F10**：installer 在 `.gitignore` 维护起止标记之间的运行时块（cache / usage.json / direction_check_ts / settings.local.json /
-  audit / installed_files.json / candidate-outbox）；保留原换行风格、块外逐字节不变、标记损坏则不动。doctor 对"已被跟踪的运行时文件"
-  给 note（非告警）——hub 自身会提示 `.claude/settings.local.json`（历史上一直跟踪，属预期）。hub `.gitignore` 已由 upgrade 写入该块。
-- **F5**：`.role` 在 Phase A 已停止读取；hub 的 `.role` 文件与宪法第二条表格条目留待 /iterate-constitution。
-- **版本**：0.45.1 → 0.46.0（Phase A+B+E）。wheel 检查：顶层仅 `governance_core*`，无 `maintainer/`。
-- **测试**：新增 `test_installer_gitignore_block.py` 8 例、`test_session_context_state.py` 2 例；全量 pytest 286 passed，
-  脚本风格全部通过；upgrade + doctor OK。**发布待 owner 确认**（core-A3）。
