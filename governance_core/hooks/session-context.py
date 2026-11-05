@@ -90,9 +90,13 @@ def _read_recent_state(root, max_entries=2):
     except OSError:
         return ""
 
-    # Extract entries (### headers)
+    # Extract entries: a dated "### YYYY-MM-DD" header -- the same entry
+    # definition as tools/rotate_state.py (_ENTRY_RE). A bare "### " also
+    # matched the "### YYYY-MM-DD -- <short title>" format example inside
+    # the seeded STATE.md HTML comment (P-0129 F6).
     entries = re.split(r"(?=^### )", content, flags=re.MULTILINE)
-    entries = [e.strip() for e in entries if e.strip().startswith("### ")]
+    entries = [e.strip() for e in entries
+               if re.match(r"### \d{4}-\d{2}-\d{2}", e.strip())]
 
     if not entries:
         return "  (no recent entries)"

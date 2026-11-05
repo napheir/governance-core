@@ -541,6 +541,91 @@ def _prune_stale(project_root: Path,
     return pruned
 
 
+# P-0129 F10: runtime state written by the governance hooks / tools. Kept as
+# a marker-delimited block in the consumer's .gitignore; the installer owns
+# only the lines between the markers.
+GITIGNORE_BLOCK_BEGIN = "# >>> governance-core runtime (managed by governance-core install) >>>"
+GITIGNORE_BLOCK_END = "# <<< governance-core runtime <<<"
+GITIGNORE_RUNTIME_PATTERNS = (
+    "/.claude/cache/",
+    "/.claude/skills/learned/.usage.json",
+    "/.claude/hooks/.direction_check_ts",
+    "/.claude/settings.local.json",
+    "/audit/",
+    "/.governance/installed_files.json",
+    "/.governance/candidate-outbox/",
+)
+
+
+def _update_gitignore_text(existing: str) -> str | None:
+    """Return `existing` with the managed runtime block replaced or appended.
+
+    The block uses the file's own line ending (CRLF if present, else LF), and
+    every byte outside the markers is preserved. Returns None when a begin
+    marker has no end marker -- a hand-damaged block is left for a human
+    rather than guessed at.
+    """
+    eol = "\r\n" if "\r\n" in existing else "\n"
+    block = eol.join([
+        GITIGNORE_BLOCK_BEGIN,
+        "# Runtime state written by governance hooks / tools -- never commit.",
+        *GITIGNORE_RUNTIME_PATTERNS,
+        GITIGNORE_BLOCK_END,
+    ]) + eol
+    start = existing.find(GITIGNORE_BLOCK_BEGIN)
+    if start != -1:
+        end = existing.find(GITIGNORE_BLOCK_END, start)
+        if end == -1:
+            return None
+        line_end = existing.find("\n", end)
+        stop = len(existing) if line_end == -1 else line_end + 1
+        return existing[:start] + block + existing[stop:]
+    if not existing:
+        return block
+    sep = "" if existing.endswith("\n") else eol
+    return existing + sep + eol + block
+
+
+def _configure_gitignore(project_root: Path) -> None:
+    """Ensure .gitignore carries the current managed runtime block (F10)."""
+    path = project_root / ".gitignore"
+    existing = ""
+    if path.exists():
+        with open(path, encoding="utf-8", newline="") as f:
+            existing = f.read()
+    updated = _update_gitignore_text(existing)
+    if updated is None:
+        logger.warning("[gitignore] '%s' marker without '%s' -- managed block "
+                       "left unchanged; repair it by hand",
+                       GITIGNORE_BLOCK_BEGIN, GITIGNORE_BLOCK_END)
+        return
+    if updated == existing:
+        logger.info("[gitignore] runtime block up to date")
+        return
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(updated)
+    logger.info("[gitignore] runtime block written")
+
+
+def _tracked_runtime_files(project_root: Path) -> list[str]:
+    """Return runtime-state paths that git still tracks (best-effort).
+
+    .gitignore does not untrack files committed before the block existed;
+    doctor lists them so the owner can `git rm --cached` them.
+    """
+    specs = [p.lstrip("/").rstrip("/") for p in GITIGNORE_RUNTIME_PATTERNS]
+    try:
+        out = subprocess.run(
+            ["git", "-C", str(project_root), "ls-files", "-z", "--", *specs],
+            capture_output=True, encoding="utf-8", errors="replace",
+            timeout=10, check=False)
+    except (OSError, subprocess.SubprocessError):
+        return []
+    if out.returncode != 0:
+        return []
+    return [p for p in out.stdout.split("\0") if p]
+
+
 def _configure_gitattributes(project_root: Path) -> None:
     """Append the per-branch agent.md merge=ours driver to .gitattributes."""
     ga = project_root / ".gitattributes"
@@ -980,6 +1065,7 @@ def install(
 
     if not dry_run:
         _configure_gitattributes(project_root)
+        _configure_gitignore(project_root)
         _seed_state_md(project_root, cfg)
         _write_settings_local_json(project_root)
 
@@ -1154,6 +1240,13 @@ def doctor(project_root: Path) -> int:
                       "current terms (required in this version)")
         return 8
     _report_auth_lifecycle(auth_payload, project_root)
+    # P-0129 F10: runtime files committed before the .gitignore block existed
+    # stay tracked; informational (not an install defect).
+    tracked_runtime = _tracked_runtime_files(project_root)
+    if tracked_runtime:
+        logger.info("[doctor] note: runtime files still tracked by git (now "
+                    "gitignored): %s -- untrack with: git rm --cached <path>",
+                    tracked_runtime)
     # P-0097 (gc #85): repo-deletion root-cause check. Best-effort + ADVISORY:
     # loud-warn if the active gh token carries the delete_repo OAuth scope --
     # without which GitHub rejects every deletion regardless of how issued. Does

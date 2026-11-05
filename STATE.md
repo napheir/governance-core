@@ -17,6 +17,18 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-05 — P-0129 Phase E：STATE 解析 + .gitignore 受管块，版本 0.46.0（未发布）
+
+- **F6**：session-context 条目改用 `^### \d{4}-\d{2}-\d{2}`（与 `rotate_state._ENTRY_RE` 一致），STATE 模板注释不再被当成条目；
+  hub SessionStart 实测已不再列出 `### YYYY-MM-DD`。
+- **F10**：installer 在 `.gitignore` 维护起止标记之间的运行时块（cache / usage.json / direction_check_ts / settings.local.json /
+  audit / installed_files.json / candidate-outbox）；保留原换行风格、块外逐字节不变、标记损坏则不动。doctor 对"已被跟踪的运行时文件"
+  给 note（非告警）——hub 自身会提示 `.claude/settings.local.json`（历史上一直跟踪，属预期）。hub `.gitignore` 已由 upgrade 写入该块。
+- **F5**：`.role` 在 Phase A 已停止读取；hub 的 `.role` 文件与宪法第二条表格条目留待 /iterate-constitution。
+- **版本**：0.45.1 → 0.46.0（Phase A+B+E）。wheel 检查：顶层仅 `governance_core*`，无 `maintainer/`。
+- **测试**：新增 `test_installer_gitignore_block.py` 8 例、`test_session_context_state.py` 2 例；全量 pytest 286 passed，
+  脚本风格全部通过；upgrade + doctor OK。**发布待 owner 确认**（core-A3）。
+
 ### 2026-11-05 — P-0129 Phase B：混合条款从诞生起归项目所有（F2）
 
 - **问题**：0.45.x 首次 install 把 7 条 `MIXED_CLAUSES` 登记进 `installed_files.json`；第二次 install 跳过已存在副本，
@@ -43,20 +55,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - **测试**：新增 `test_agent_identity.py` 23 例（deva-vani 形状 4 clone 嵌套布局，含真实 guard 子进程）；
   反向校准：0.45.1 旧 guard 对"越权 Edit / 改自身 guard / Bash 写兄弟 clone"三场景都 exit 0。
   全量 pytest 271 passed，脚本风格 28 个文件全部通过；upgrade + doctor OK（agent=core）。
-
-### 2026-11-05 — 新消费者 deva-vani：签发授权码 + bootstrap 绕行方案
-
-- **背景**：owner 要为 Deva-Vani（丝巾品牌：官网 / App / 内容工厂 / 后续电商）新建多 agent 项目，
-  拓扑 core + platform + experience + content，建在 `workshop-claude/deva-vani/`。
-- **授权**：`maintainer/issue_auth_code.py --consumer-id deva-vani`（schema 2，到期 2027-11-05），
-  登记进 `consumer_registry.json`；码只落 gitignored 文件，未打印。
-- **发现**：`multi-agent-bootstrap new`（0.1.0a0）调 `governance-core install` 不带 `--auth-code` /
-  `--accept-candidate-uplink`，过不了 P-0065 授权门；`expand` 已适配。绕行驱动脚本
-  `artifacts/deva-vani/bootstrap.py`（gitignored）：`new --no-bootstrap` → 带码 + overrides install →
-  `expand --no-backup`。仓内 trial 全程通过（4 clone 各 install + doctor OK），已删 trial。
-  修 `new` 属 multi-agent-template 仓库，待单开会话。
-- **正式 bootstrap**：写仓外，由 owner 以 `!` 运行（会话边界）——已完成：`workshop-claude/deva-vani/`
-  下 `agent-{core,platform,experience,content}` 各 install + doctor OK，`shared_state/` 已初始化，
-  授权码文件已删。下一步在 `deva-vani/agent-core` 新会话写宪法 + 五份数据契约。
-- **品牌方规划页**：Artifact https://claude.ai/artifact/46mE3sQcbvMKdm7meggrBk （源
-  `artifacts/deva-vani/brand-plan.html`，私有，需 owner 分享）。

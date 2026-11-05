@@ -94,3 +94,14 @@ htmlcov/
 # durable record; this is transient staging. (maintainer/consumer_registry.json
 # IS committed -- it is the durable curation ledger, not staging.)
 /candidates/
+
+# >>> governance-core runtime (managed by governance-core install) >>>
+# Runtime state written by governance hooks / tools -- never commit.
+/.claude/cache/
+/.claude/skills/learned/.usage.json
+/.claude/hooks/.direction_check_ts
+/.claude/settings.local.json
+/audit/
+/.governance/installed_files.json
+/.governance/candidate-outbox/
+# <<< governance-core runtime <<<
