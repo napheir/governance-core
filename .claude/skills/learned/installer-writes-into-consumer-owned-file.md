@@ -37,7 +37,8 @@ When an installer or upgrade tool must put content into a file the consumer also
 
 ## Notes
 
-- Instances in governance-core: _configure_gitignore (runtime block, P-0129 F10), _ensure_boundary_anchor (settings.json projectRoot, F3), _configure_gitattributes (merge=ours line)
+- Instances in governance-core: _configure_gitignore (runtime block, P-0129 F10), _ensure_boundary_anchor (settings.json projectRoot, F3), _install_pre_commit (whole-file hook owned only while it carries our marker line; foreign hook and core.hooksPath left alone, F9), _configure_gitattributes (merge=ours line)
+- A whole file can be "owned" by a marker line instead of a block: refresh it only while the marker is present, so the owner takes it over by deleting one line
 - Path.write_text on Windows translates newlines to CRLF and read_text folds CRLF to LF; both silently rewrite every line of a LF or CRLF file
 - Recording a seeded file in the manifest is what deleted deva-vani's mixed clauses on the second install (P-0129 F2): same root cause, different file
 - .gitignore additions do not untrack files already committed; report them (git rm --cached) instead of untracking automatically
