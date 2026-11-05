@@ -82,7 +82,17 @@ VALID_STATUS = {
     "implemented", "superseded", "upstreamed", "rejected",
 }
 
-VALID_AGENTS = {"core", "rules", "trade", "data", "research"}
+# Contract v1.6.0 (P-0130): `agent` is an agent name of this project's
+# .governance/config.json -- no fixed enum. In-flight proposals must name a
+# current config agent; archived / legacy ones need only a well-formed name
+# (the agent may since have been retired; Check 21 warns).
+AGENT_NAME_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
+
+
+def _config_agents(repo_root: Path) -> set:
+    """Agent names from <repo_root>/.governance/config.json (fail loud, Art.4)."""
+    from governance_core.config import load_proposals_config
+    return set(load_proposals_config(repo_root)["agents"])
 
 # State -> required additional fields
 REQUIRED_BY_STATUS = {
@@ -171,7 +181,8 @@ def _is_new_scheme(filename: str) -> bool:
 
 
 def _validate_one(rel_path: str, full_path: Path, repo_root: Path,
-                  region: str, is_new_scheme: bool) -> list:
+                  region: str, is_new_scheme: bool,
+                  valid_agents: set | None = None) -> list:
     """Validate one proposal file. Returns list of error strings (empty = ok).
 
     Args:
@@ -180,6 +191,8 @@ def _validate_one(rel_path: str, full_path: Path, repo_root: Path,
         repo_root: agent-core repo root (for git rev-parse + superseded_by resolve)
         region: 'in-flight' | 'archive' | 'legacy' (for error context)
         is_new_scheme: True if filename has p-NNNN- prefix (v1.1.0 rules apply)
+        valid_agents: config agent names; in-flight `agent` must be one of
+            them. None skips the membership check (form check still applies).
     """
     errors = []
     try:
@@ -209,11 +222,15 @@ def _validate_one(rel_path: str, full_path: Path, repo_root: Path,
         errors.append(f"status '{status}' not in enum {sorted(VALID_STATUS)}")
         return errors
 
-    # v1.1.0: agent enum
+    # v1.6.0 (P-0130): agent is a config agent name (was a fixed upstream enum)
     if is_new_scheme and "agent" in fm:
-        if fm["agent"] not in VALID_AGENTS:
+        agent = str(fm["agent"])
+        if not AGENT_NAME_RE.match(agent):
+            errors.append(f"agent '{agent}' is not a valid agent name")
+        elif (region == "in-flight" and valid_agents is not None
+              and agent not in valid_agents):
             errors.append(
-                f"agent '{fm['agent']}' not in enum {sorted(VALID_AGENTS)}"
+                f"agent '{agent}' not in config agents {sorted(valid_agents)}"
             )
 
     # Check 4: state-conditional fields
@@ -465,6 +482,30 @@ def _check_cross_branch_archive_collision(repo_root: Path) -> list:
                 f"SoT (feature branch self-archive must merge into master)"
             )
     return errors
+
+
+def _check_archived_agents(regions: dict, valid_agents: set) -> list:
+    """Check 21 (P-0130): WARN-only -- archived / legacy proposals whose
+    `agent` is not in the current config (e.g. a retired agent).
+
+    History stays valid: only in-flight proposals must name a current agent.
+    """
+    warnings = []
+    for region in ("archive", "legacy"):
+        for path in regions[region]:
+            try:
+                fm, err = _parse_frontmatter(path.read_text(encoding="utf-8"))
+            except (OSError, UnicodeDecodeError):
+                continue
+            if err or not isinstance(fm, dict) or "agent" not in fm:
+                continue
+            agent = str(fm["agent"])
+            if AGENT_NAME_RE.match(agent) and agent not in valid_agents:
+                warnings.append(
+                    f"[agent] {path.name}: agent '{agent}' is not in the current "
+                    f"config agents {sorted(valid_agents)} (retired agent?)"
+                )
+    return warnings
 
 
 def _check_archive_author_match(archive: list, repo_root: Path) -> list:
@@ -949,6 +990,7 @@ def main() -> int:
     )
 
     fail_count = 0
+    valid_agents = _config_agents(repo_root)
 
     # Per-file checks
     for region, files in regions.items():
@@ -959,7 +1001,8 @@ def main() -> int:
                 # in-flight files live outside repo_root
                 rel = str(full)
             is_new = _is_new_scheme(full.name) or region == "in-flight"
-            errors = _validate_one(rel, full, repo_root, region, is_new)
+            errors = _validate_one(rel, full, repo_root, region, is_new,
+                                   valid_agents)
             if errors:
                 fail_count += 1
                 sys.stdout.write(f"FAIL [{region}]: {rel}\n")
@@ -1012,6 +1055,8 @@ def main() -> int:
     _prop_index = _build_proposal_index(regions)
     warnings += _check_open_handoffs(_prop_index)
     warnings += _check_missing_handoff_to(_prop_index, regions["in-flight"], repo_root)
+    # Check 21: archived agent not in current config (WARN, P-0130).
+    warnings += _check_archived_agents(regions, valid_agents)
     for w in warnings:
         sys.stdout.write(f"WARN: {w}\n")
 

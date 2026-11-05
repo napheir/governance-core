@@ -17,6 +17,15 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-05 — P-0130 Phase A：提案 `agent` 改为取自 config
+
+- **起因**：deva-vani 报 knowledge owner / check_agent_roles 写死上游角色；本仓库按角色名 token 扫描找到同族 6 处（G1–G6），
+  起草 P-0130，owner 批准（Q1–Q4 按默认：归档不在册 WARN、`core` 别名、audit_hooks 改 v2、一次发布 0.48.0）。
+- **G1**：`contracts/proposal_frontmatter_schema.md` 1.5.0 → 1.6.0，`agent` 取值 = config `agents[].name`；`audit_proposals.py`
+  删 `VALID_AGENTS`，改用 `_config_agents`（`load_proposals_config`）：in-flight 不在册 FAIL，归档/legacy 只做形式校验
+  `^[a-z][a-z0-9_-]*$`，不在册由新增 Check 21 WARN。`_validate_one` 新增可选参数 `valid_agents`（旧调用方不受影响）。
+- **测试**：新增 `test_config_derived_enums.py` 7 例（提案部分）；hub `audit_proposals` 仍 0 failures；全量 pytest 314 passed，脚本风格全过。
+
 ### 2026-11-05 — 发布 v0.47.0（P-0129 Phase C/D/F）
 
 - owner 确认后推送 master（5 commits）并 `gh release create v0.47.0`；release workflow 41995202256：build / publish-pypi success。
@@ -38,15 +47,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - **dogfood**：hub upgrade 后装上 pre-commit，本提交即经过该门禁（core → PASS）。
 - **测试**：新增 `test_installer_commit_gate.py` 9 例（含经真实 hook 的 `git commit`：业务越界被拒、加规则后通过、core 任意通过）。
   全量 pytest 307 passed，脚本风格全过；版本 0.46.0 → 0.47.0，wheel 含两个模板、无 `maintainer/`。**发布待 owner 确认**。
-
-### 2026-11-05 — P-0129 Phase D：新项目生成总宪法初稿（F4）
-
-- **问题**：新消费者的 `constitution/total.md` / `agent.md` 是 stub，regen 出的 `CLAUDE.md` 没有任何条款；Claude Code 只加载 `CLAUDE.md`，
-  通用条款到不了上下文，启动即 STALE。
-- **修复**：新模板 `governance_core/default_config/constitution_total.md.template`（现有 `default_config/*.template` glob 已覆盖打包，
-  未按提案新建 `templates/`，记为偏差）：每条通用条款一节"精简陈述 + `.governance/clauses/` 指针"、agent 拓扑表、项目条款占位。
-  `installer._seed_constitution`：`total.md` 缺失才生成，再用项目自己的 `tools/regen_constitution.py` 生成 `CLAUDE.md`；
-  已有 `total.md` 不动，无 regen banner 的手写 `CLAUDE.md` 不覆盖。doctor 对不含任何条款指针的 `total.md` 告警。
-- **限制**：mab 模板自带 stub `total.md`，所以 mab 新建的项目要等 mab 停发该 stub 后才受益（mab 侧，非本提案）。
-- **测试**：新增 `test_installer_constitution_seed.py` 6 例（含模板对每个条款文件的指针完整性、装后 `regen --check` 为 OK）。
-  全量 pytest 298 passed，脚本风格全过；hub upgrade 后宪法不变，doctor OK。

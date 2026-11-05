@@ -1,6 +1,6 @@
 # Contract: proposals/**/*.md Frontmatter Schema
 
-**Version**: 1.5.0
+**Version**: 1.6.0
 **Status**: active
 **Owner**: core
 **Consumers**: all agents (write proposals, read status), `tools/audit_proposals.py` (validation), `.claude/hooks/session-context.py` (filter pending list), `.claude/commands/proposal.md` (skill that mutates status)
@@ -14,6 +14,14 @@ location semantics).
 
 ## Version history
 
+- **1.6.0** (2026-11-05, P-0130): `agent` is no longer a fixed enum of the
+  upstream roles (`core, rules, trade, data, research`); its values are the
+  agent names in this project's `.governance/config.json` `agents[]` (§2). An
+  in-flight proposal must name a current config agent (hard failure); an
+  archived / legacy one needs only a well-formed name (`^[a-z][a-z0-9_-]*$`)
+  and is WARNed (auditor Check 21) when its agent is no longer in config.
+  Relaxation for consumers whose agents are not the upstream ones; no
+  migration.
 - **1.5.0** (2026-10-15, P-0128 Phase B, candidate #139): optional field
   `handoff_to` (§4.6, §5.8) marks a cross-agent research->implementation
   handoff. The handoff stays OPEN (auditor Check 19, WARN) until the target
@@ -78,7 +86,7 @@ Constraints:
 | Field | Type | Semantics |
 |-------|------|-----------|
 | `id` | string | `P-NNNN` (uppercase P, hyphen, 4-digit zero-padded monotonic). Must equal filename `p-NNNN-` prefix (lowercased) and body H1 `# Proposal P-NNNN:` token (three-way consistency, see §5.4). Allocated by `/proposal create` under filelock. **Required since v1.1.0.** Legacy proposals without `id` are grandfathered (see §6). |
-| `agent` | enum | Owner agent. One of `core`, `rules`, `trade`, `data`, `research`. Determines `shared_state/proposals/<agent>/` write path. **Required since v1.1.0.** Legacy grandfathered. |
+| `agent` | string | Owner agent: an agent name from this project's `.governance/config.json` `agents[]` (v1.6.0+; was a fixed upstream enum). In-flight proposals must name a current config agent; archived / legacy ones need only a well-formed name (`^[a-z][a-z0-9_-]*$`; a retired agent is WARNed, Check 21). Determines `shared_state/proposals/<agent>/` write path. **Required since v1.1.0.** Legacy grandfathered. |
 | `status` | enum | See §3.1 |
 | `created` | ISO date | `YYYY-MM-DD`; date the proposal was first written |
 
