@@ -6,6 +6,17 @@
 
 ---
 
+### 2026-11-05 — P-0129 Phase B：混合条款从诞生起归项目所有（F2）
+
+- **问题**：0.45.x 首次 install 把 7 条 `MIXED_CLAUSES` 登记进 `installed_files.json`；第二次 install 跳过已存在副本，
+  `_prune_stale` 把它们当陈旧文件删除（deva-vani 四个 clone 全部缺失）。
+- **修复**（`installer.py`）：`_render_clauses` 返回 `(managed, seeded)`，混合条款只在缺失时种子化、不进清单；
+  新增 `_is_business_owned_clause`，`_prune_stale` 与 `_capture_drift` 对旧清单里已登记的混合条款跳过
+  （一次性迁移，不删、不当 drift 上送）；被删掉的条款下次 install 自动重新种子化。
+- **测试**：新增 `test_installer_mixed_clauses.py` 5 例（走真实 `install()`，只替身签名校验）；反向校准：HEAD 旧 installer
+  连续 install 两次后 7/7 → 0/7。全量 pytest 276 passed；hub upgrade 后 18 条款完好，doctor OK。
+
+
 ### 2026-11-05 — P-0129 Phase A：agent 身份改为按 config 推导 + guard 加固
 
 - **起因**：deva-vani core 报告 8 个问题（`artifacts/deva-vani/2026-11-05-issues-from-deva-vani.md`），本仓库核实全部属实，

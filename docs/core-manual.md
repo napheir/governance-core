@@ -458,6 +458,17 @@ pruned):
   list, edit `GITIGNORE_RUNTIME_PATTERNS`; consumers get it on upgrade.
   `doctor` notes runtime files git still tracks (`.gitignore` does not
   untrack) — the hub's own `.claude/settings.local.json` is one, by design.
+- **Session-boundary anchor** (multi-clone only) — when config has more than
+  one agent and `shared_state_root` sits next to the clone
+  (`<project>/<clone>` + `<project>/shared_state`), install adds
+  `"projectRoot": "../"` to the clone's `.claude/settings.json`, so
+  session-boundary-guard's boundary is the project directory and
+  `../shared_state/` proposals are writable without
+  `CLAUDE_BOUNDARY_OVERRIDE`. Only that key is added; other keys stay; an
+  owner-set `projectRoot` with another value is left alone. Single-agent
+  projects (the hub) get no anchor. `doctor` warns when a multi-clone clone
+  lacks it. This widening is safe only because identity is config-derived
+  (P-0129 Phase A).
 
 ## 11. Candidate pipeline (P-0065)
 

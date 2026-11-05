@@ -626,6 +626,69 @@ def _tracked_runtime_files(project_root: Path) -> list[str]:
     return [p for p in out.stdout.split("\0") if p]
 
 
+# P-0129 F3: session-boundary anchor for multi-clone projects. A clone's
+# .claude/settings.json declaring projectRoot "../" makes session-boundary-guard
+# use the project directory (all clones + shared_state/) as the boundary, so
+# proposals in ../shared_state/ are writable without CLAUDE_BOUNDARY_OVERRIDE.
+# Safe only because agent identity is config-derived (Phase A): the wider
+# boundary does not widen what a business agent's guards allow.
+BOUNDARY_ANCHOR_KEY = "projectRoot"
+BOUNDARY_ANCHOR_VALUE = "../"
+
+
+def _boundary_anchor_wanted(project_root: Path, config: dict[str, Any]) -> bool:
+    """Return True for a multi-clone layout: >1 agent, shared_state is a sibling.
+
+    The anchor is only meaningful when the clones and shared_state_root sit
+    in the same project directory (<project>/<clone>, <project>/shared_state).
+    Single-agent projects and non-standard layouts get no anchor.
+    """
+    if "agents" not in config or len(config["agents"]) < 2:
+        return False
+    if "shared_state_root" not in config:
+        return False
+    shared_parent = Path(config["shared_state_root"]).resolve().parent
+    return (os.path.normcase(str(shared_parent))
+            == os.path.normcase(str(project_root.resolve().parent)))
+
+
+def _ensure_boundary_anchor(project_root: Path, config: dict[str, Any]) -> None:
+    """Idempotently add projectRoot "../" to .claude/settings.json (F3).
+
+    Only the one key is added; every other key is kept. An existing
+    projectRoot with another value is the owner's choice and is left alone
+    (logged). An unparseable settings.json is never rewritten.
+    """
+    if not _boundary_anchor_wanted(project_root, config):
+        return
+    path = project_root / CLAUDE_DIR / "settings.json"
+    data: dict[str, Any] = {}
+    if path.exists():
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("[boundary] %s unreadable (%s); projectRoot anchor "
+                           "not written", path, exc)
+            return
+        if not isinstance(data, dict):
+            logger.warning("[boundary] %s is not a JSON object; projectRoot "
+                           "anchor not written", path)
+            return
+    if BOUNDARY_ANCHOR_KEY in data:
+        if data[BOUNDARY_ANCHOR_KEY] != BOUNDARY_ANCHOR_VALUE:
+            logger.warning("[boundary] %s declares %s=%r (expected %r); left "
+                           "unchanged", path, BOUNDARY_ANCHOR_KEY,
+                           data[BOUNDARY_ANCHOR_KEY], BOUNDARY_ANCHOR_VALUE)
+        else:
+            logger.info("[boundary] projectRoot anchor up to date")
+        return
+    data[BOUNDARY_ANCHOR_KEY] = BOUNDARY_ANCHOR_VALUE
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with open(path, "w", encoding="utf-8", newline="") as f:
+        f.write(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
+    logger.info("[boundary] wrote projectRoot anchor to %s", path)
+
+
 def _configure_gitattributes(project_root: Path) -> None:
     """Append the per-branch agent.md merge=ours driver to .gitattributes."""
     ga = project_root / ".gitattributes"
@@ -1066,6 +1129,7 @@ def install(
     if not dry_run:
         _configure_gitattributes(project_root)
         _configure_gitignore(project_root)
+        _ensure_boundary_anchor(project_root, cfg)
         _seed_state_md(project_root, cfg)
         _write_settings_local_json(project_root)
 
@@ -1242,6 +1306,23 @@ def doctor(project_root: Path) -> int:
     _report_auth_lifecycle(auth_payload, project_root)
     # P-0129 F10: runtime files committed before the .gitignore block existed
     # stay tracked; informational (not an install defect).
+    # P-0129 F3: a multi-clone clone without the boundary anchor confines its
+    # session to the clone, so ../shared_state proposals are unwritable.
+    if _boundary_anchor_wanted(project_root, cfg):
+        anchor_path = project_root / CLAUDE_DIR / "settings.json"
+        anchor_ok = False
+        if anchor_path.exists():
+            try:
+                anchor = json.loads(anchor_path.read_text(encoding="utf-8"))
+                anchor_ok = (isinstance(anchor, dict)
+                             and BOUNDARY_ANCHOR_KEY in anchor)
+            except (json.JSONDecodeError, OSError):
+                anchor_ok = False
+        if not anchor_ok:
+            logger.warning("[doctor] multi-clone layout but %s has no %s -- "
+                           "the session boundary stops at this clone; run "
+                           "governance-core upgrade", anchor_path,
+                           BOUNDARY_ANCHOR_KEY)
     tracked_runtime = _tracked_runtime_files(project_root)
     if tracked_runtime:
         logger.info("[doctor] note: runtime files still tracked by git (now "

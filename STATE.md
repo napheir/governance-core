@@ -17,6 +17,16 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-05 — P-0129 Phase C：多 clone 自动生成会话边界锚（F3）
+
+- **问题**：新装多 clone 消费者没有 `.claude/settings.json` 的 `projectRoot: "../"`，会话边界只到 clone，`../shared_state/` 提案写不了；
+  补这个文件又被 classify 闸门拦，只能 `CLAUDE_BOUNDARY_OVERRIDE` 解开。
+- **修复**（`installer.py`）：`_ensure_boundary_anchor` 在 agents > 1 且 `shared_state_root` 与 clone 同在项目目录下时，幂等加入该键；
+  保留其他键，已有不同值不动（告警），JSON 无法解析不改写。单 agent（hub）与非标准布局不写。doctor 对缺锚的多 clone 告警（不影响退出码）。
+  安全前提是 Phase A 的按 config 判定身份。core-manual 同步。
+- **测试**：新增 `test_installer_topology_anchor.py` 6 例（真实 `install()`；含端到端：装完后 `derive_session_boundary` 解析到项目目录）。
+  全量 pytest 292 passed，脚本风格全过；hub upgrade 后无 settings.json（单 agent），doctor OK。
+
 ### 2026-11-05 — 发布 v0.46.0（P-0129 Phase A/B/E）
 
 - owner 确认后推送 master（8 commits）并 `gh release create v0.46.0`；release workflow 41991242166：build / publish-pypi success。
@@ -36,13 +46,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - **版本**：0.45.1 → 0.46.0（Phase A+B+E）。wheel 检查：顶层仅 `governance_core*`，无 `maintainer/`。
 - **测试**：新增 `test_installer_gitignore_block.py` 8 例、`test_session_context_state.py` 2 例；全量 pytest 286 passed，
   脚本风格全部通过；upgrade + doctor OK。**发布待 owner 确认**（core-A3）。
-
-### 2026-11-05 — P-0129 Phase B：混合条款从诞生起归项目所有（F2）
-
-- **问题**：0.45.x 首次 install 把 7 条 `MIXED_CLAUSES` 登记进 `installed_files.json`；第二次 install 跳过已存在副本，
-  `_prune_stale` 把它们当陈旧文件删除（deva-vani 四个 clone 全部缺失）。
-- **修复**（`installer.py`）：`_render_clauses` 返回 `(managed, seeded)`，混合条款只在缺失时种子化、不进清单；
-  新增 `_is_business_owned_clause`，`_prune_stale` 与 `_capture_drift` 对旧清单里已登记的混合条款跳过
-  （一次性迁移，不删、不当 drift 上送）；被删掉的条款下次 install 自动重新种子化。
-- **测试**：新增 `test_installer_mixed_clauses.py` 5 例（走真实 `install()`，只替身签名校验）；反向校准：HEAD 旧 installer
-  连续 install 两次后 7/7 → 0/7。全量 pytest 276 passed；hub upgrade 后 18 条款完好，doctor OK。
