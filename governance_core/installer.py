@@ -285,33 +285,46 @@ def _copy_tree(src: Path, dst: Path, dry_run: bool = False) -> list[Path]:
     return written
 
 
+def _is_business_owned_clause(rel: str) -> bool:
+    """Return True if repo-relative POSIX `rel` is a mixed clause (P-0063 A).
+
+    Mixed clauses belong to the project from birth: they are never recorded
+    in installed_files.json, never drift-captured and never pruned (P-0129 F2).
+    """
+    prefix = CLAUSES_REL + "/"
+    return rel.startswith(prefix) and rel[len(prefix):] in MIXED_CLAUSES
+
+
 def _render_clauses(project_root: Path, config: dict[str, Any],
-                    dry_run: bool = False) -> list[Path]:
+                    dry_run: bool = False) -> tuple[list[Path], list[Path]]:
     """Copy clauses to .governance/clauses/ with placeholder substitution.
 
-    Returns the clause files written. Substitution: `如君所愿` ->
-    config ritual_phrase. Mixed clauses (P-0063 方案 A) are business-owned --
-    a generic stub is rendered on first install but an existing copy is
-    never overwritten (so they are not recorded as install-managed here).
+    Substitution: `如君所愿` -> config ritual_phrase. Returns
+    (managed, seeded): `managed` are install-managed clauses (recorded in
+    the manifest, overwritten on every install); `seeded` are mixed clauses
+    (P-0063 方案 A) rendered as a generic stub only when absent. Seeded
+    files are business-owned from birth and are NOT recorded in the manifest
+    -- recording them made the next install, which skips the existing copy,
+    prune them as stale (P-0129 F2).
     """
     src = PKG_ROOT / "clauses"
     dst = project_root / CLAUSES_REL
     if not dry_run:
         dst.mkdir(parents=True, exist_ok=True)
-    written: list[Path] = []
+    managed: list[Path] = []
+    seeded: list[Path] = []
     ritual = config.get("ritual_phrase", "Acknowledged")
     for s in src.glob("art_*.md"):
         dst_file = dst / s.name
-        # Mixed clauses are business-owned (P-0063 方案 A): render a generic
-        # stub on first install, but never overwrite an existing copy.
-        if s.name in MIXED_CLAUSES and dst_file.exists():
-            continue
+        is_mixed = s.name in MIXED_CLAUSES
+        if is_mixed and dst_file.exists():
+            continue  # the project's copy -- never overwritten
         if not dry_run:
             content = s.read_text(encoding="utf-8")
             content = content.replace("如君所愿", ritual)
             dst_file.write_text(content, encoding="utf-8")
-        written.append(dst_file)
-    return written
+        (seeded if is_mixed else managed).append(dst_file)
+    return managed, seeded
 
 
 def _content_sha256(path: Path) -> str:
@@ -433,6 +446,10 @@ def _capture_drift(project_root: Path, consumer_id: str,
         path = project_root / entry["path"]
         if not path.exists():
             continue
+        if _is_business_owned_clause(entry["path"]):
+            # P-0129 F2: a pre-0.46 manifest recorded mixed clauses; the
+            # project's edits to them are its own content, not drift to uplink.
+            continue
         current = _content_sha256(path)
         if current == entry["baseline_sha256"]:
             continue
@@ -494,10 +511,11 @@ def _prune_stale(project_root: Path,
         rel = entry["path"]
         if rel in new_paths:
             continue
-        if rel in STALE_PRUNE_EXEMPT:
+        if rel in STALE_PRUNE_EXEMPT or _is_business_owned_clause(rel):
             # P-0075: released to business ownership at the 0.7.0 boundary.
-            # The file stays on disk; the new manifest naturally omits it
-            # (no source -> not in `installed`), so future prunes never look
+            # P-0129 F2: a mixed clause recorded by a pre-0.46 install is the
+            # project's file, not a stale one. Either way the file stays on
+            # disk and the new manifest omits it, so future prunes never look
             # at this path again.
             logger.info("[prune] released to business ownership: %s", rel)
             continue
@@ -953,9 +971,12 @@ def install(
                     n += 1
         counts[dst_sub] = n
 
-    clause_files = _render_clauses(project_root, cfg, dry_run=dry_run)
+    clause_files, seeded_clauses = _render_clauses(project_root, cfg,
+                                                   dry_run=dry_run)
     counts[".governance/clauses"] = len(clause_files)
     installed.extend((p, "clause") for p in clause_files)
+    if seeded_clauses:
+        counts[".governance/clauses (seeded, project-owned)"] = len(seeded_clauses)
 
     if not dry_run:
         _configure_gitattributes(project_root)
