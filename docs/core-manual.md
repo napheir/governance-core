@@ -435,6 +435,30 @@ Mechanic for the maintainer adding a removal:
 *ownership transferred* at a version line. Paths that genuinely no longer
 make sense (e.g. an old hook replaced by a new one) should just be pruned.
 
+### Seeded, project-owned files (P-0129)
+
+Some files are rendered by install but belong to the project from birth and
+are **never** recorded in `installed_files.json` (so never drift-captured or
+pruned):
+
+- **Mixed clauses** (`installer.MIXED_CLAUSES`, the 7 `art_*` clauses with
+  project business tables) — seeded as a generic stub only when absent;
+  the project's copy is never overwritten. Before 0.46.0 they were recorded
+  on first install and pruned by the second (`_render_clauses` now returns
+  `(managed, seeded)`); `_is_business_owned_clause` makes `_prune_stale` /
+  `_capture_drift` skip them in an older manifest (one-shot migration). A
+  clause lost to the old prune is re-seeded on the next install.
+- **`.gitignore` runtime block** — install keeps the lines between
+  `# >>> governance-core runtime ... >>>` and `# <<< governance-core runtime
+  <<<` equal to `installer.GITIGNORE_RUNTIME_PATTERNS` (cache, usage
+  counter, direction-check stamp, `settings.local.json`, `audit/`,
+  `installed_files.json`, `candidate-outbox/`). Everything outside the markers
+  is preserved byte-for-byte, the file's line ending is kept, and a begin
+  marker without an end marker is left alone with a warning. To change the
+  list, edit `GITIGNORE_RUNTIME_PATTERNS`; consumers get it on upgrade.
+  `doctor` notes runtime files git still tracks (`.gitignore` does not
+  untrack) — the hub's own `.claude/settings.local.json` is one, by design.
+
 ## 11. Candidate pipeline (P-0065)
 
 governance-core is the convergence hub for common-layer improvements: the
