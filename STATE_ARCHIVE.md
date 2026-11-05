@@ -6,6 +6,15 @@
 
 ---
 
+### 2026-11-05 — 发布 v0.46.0（P-0129 Phase A/B/E）
+
+- owner 确认后推送 master（8 commits）并 `gh release create v0.46.0`；release workflow 41991242166：build / publish-pypi success。
+- 核实已发布状态：`gh release list` Latest = v0.46.0；PyPI JSON latest = 0.46.0（wheel + sdist）。
+- 已通知 deva-vani：`artifacts/deva-vani/2026-11-05-release-0.46.0.md` + 会话消息（升级前先写业务 agent allow.txt、核对 clone_dir；
+  升级后实测 3 个场景回报 = P-0129 验收第 4 项）。
+- 下一步：P-0129 Phase C/D/F → 0.47.0；P-0129 保持 in-progress。
+
+
 ### 2026-11-05 — P-0129 Phase E：STATE 解析 + .gitignore 受管块，版本 0.46.0（未发布）
 
 - **F6**：session-context 条目改用 `^### \d{4}-\d{2}-\d{2}`（与 `rotate_state._ENTRY_RE` 一致），STATE 模板注释不再被当成条目；

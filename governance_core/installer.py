@@ -813,6 +813,117 @@ def _seed_constitution(project_root: Path, config: dict[str, Any]) -> None:
     _regen_claude_md(project_root)
 
 
+# P-0129 F9: commit-time scope gate. Each non-core agent gets a seeded (empty,
+# commented) allow list -- business-owned, never in the manifest -- and every
+# clone gets a pre-commit stub that runs tools/check_scope.py --staged-only.
+ALLOW_SEED_TEMPLATE = (
+    "# Write scope for agent '{agent}' (seeded by governance-core install, P-0129).\n"
+    "# One repo-relative path prefix per line, e.g.  services/api/\n"
+    "# Lines starting with '#' are comments. An empty list allows nothing:\n"
+    "# edit-write-guard blocks every write outside .claude/ and shared_state/,\n"
+    "# and the pre-commit gate rejects every staged file.\n"
+    "# Maintained by the core agent ('{core}'); changes go through /proposal.\n"
+)
+PRE_COMMIT_TEMPLATE = PKG_ROOT / "default_config" / "pre-commit.template"
+PRE_COMMIT_MARKER = "# governance-core pre-commit gate"
+
+
+def _seed_allow_lists(project_root: Path, config: dict[str, Any]) -> list[str]:
+    """Seed agent_rules/<agent>.allow.txt for each non-core agent if absent.
+
+    Returns the agent names seeded. The core agent has no allow list (no
+    scope restriction). Existing files are never touched.
+    """
+    seeded = []
+    rules_dir = project_root / "agent_rules"
+    for agent in config["agents"]:
+        name = agent["name"]
+        if name == config["core_agent_name"]:
+            continue
+        allow = rules_dir / f"{name}.allow.txt"
+        if allow.exists():
+            continue
+        rules_dir.mkdir(parents=True, exist_ok=True)
+        allow.write_text(ALLOW_SEED_TEMPLATE.format(
+            agent=name, core=config["core_agent_name"]), encoding="utf-8")
+        seeded.append(name)
+    if seeded:
+        logger.info("[scope] seeded empty allow lists (deny-all) for: %s -- "
+                    "core must fill them", seeded)
+    return seeded
+
+
+def _allow_rule_count(project_root: Path, agent: str) -> int:
+    """Number of non-comment rules in agent_rules/<agent>.allow.txt (0 if absent)."""
+    allow = project_root / "agent_rules" / f"{agent}.allow.txt"
+    if not allow.exists():
+        return 0
+    return sum(1 for line in allow.read_text(encoding="utf-8").splitlines()
+               if line.strip() and not line.strip().startswith("#"))
+
+
+def _git_hooks_dir(project_root: Path) -> Path | None:
+    """Return <git-dir>/hooks when project_root is a git work-tree root.
+
+    None when it is not a repo root, git is unavailable, or core.hooksPath is
+    set (the owner manages hooks elsewhere -- e.g. a hook framework).
+    """
+    def _git(*args: str) -> subprocess.CompletedProcess | None:
+        try:
+            return subprocess.run(["git", "-C", str(project_root), *args],
+                                  capture_output=True, encoding="utf-8",
+                                  errors="replace", timeout=10, check=False)
+        except (OSError, subprocess.SubprocessError):
+            return None
+    top = _git("rev-parse", "--show-toplevel")
+    if top is None or top.returncode != 0:
+        return None
+    if (os.path.normcase(str(Path(top.stdout.strip()).resolve()))
+            != os.path.normcase(str(project_root.resolve()))):
+        return None  # a subdirectory of some other repo
+    hooks_path = _git("config", "--get", "core.hooksPath")
+    if hooks_path is not None and hooks_path.returncode == 0 and hooks_path.stdout.strip():
+        logger.warning("[pre-commit] core.hooksPath is set (%s); scope gate not "
+                       "installed -- call tools/check_scope.py --staged-only "
+                       "from your hook manager", hooks_path.stdout.strip())
+        return None
+    git_dir = _git("rev-parse", "--git-dir")
+    if git_dir is None or git_dir.returncode != 0:
+        return None
+    path = Path(git_dir.stdout.strip())
+    if not path.is_absolute():
+        path = project_root / path
+    return path / "hooks"
+
+
+def _install_pre_commit(project_root: Path) -> None:
+    """Install / refresh the pre-commit scope gate stub (F9).
+
+    Written when absent or when the existing hook carries our marker; a
+    foreign pre-commit hook is never overwritten (doctor reports it). Always
+    LF line endings -- a CRLF shell script fails to run.
+    """
+    hooks_dir = _git_hooks_dir(project_root)
+    if hooks_dir is None:
+        return
+    hook = hooks_dir / "pre-commit"
+    stub = PRE_COMMIT_TEMPLATE.read_text(encoding="utf-8")
+    if hook.exists():
+        current = hook.read_text(encoding="utf-8", errors="replace")
+        if PRE_COMMIT_MARKER not in current:
+            logger.warning("[pre-commit] %s exists and is not governance-core's; "
+                           "left unchanged -- add: python tools/check_scope.py "
+                           "--staged-only", hook)
+            return
+        if current.replace("\r\n", "\n") == stub:
+            return
+    hooks_dir.mkdir(parents=True, exist_ok=True)
+    with open(hook, "w", encoding="utf-8", newline="\n") as f:
+        f.write(stub)
+    os.chmod(hook, 0o755)
+    logger.info("[pre-commit] scope gate installed at %s", hook)
+
+
 # --- Hook auto-wiring (P-0067) ----------------------------------------------
 
 HOOKS_MANIFEST_REL = "hooks/hooks_manifest.json"
@@ -1204,6 +1315,8 @@ def install(
         _ensure_boundary_anchor(project_root, cfg)
         _seed_state_md(project_root, cfg)
         _seed_constitution(project_root, cfg)
+        _seed_allow_lists(project_root, cfg)
+        _install_pre_commit(project_root)
         _write_settings_local_json(project_root)
 
     # P-0070: prune autonomy-layer files dropped from the package source,
@@ -1406,6 +1519,26 @@ def doctor(project_root: Path) -> int:
                        "-- the generic clauses never reach CLAUDE.md; add a "
                        "summary + pointer per clause via /iterate-constitution",
                        CLAUSES_REL)
+    # P-0129 F9: commit-time scope gate + allow lists.
+    empty_scopes = [a["name"] for a in cfg["agents"]
+                    if a["name"] != cfg["core_agent_name"]
+                    and _allow_rule_count(project_root, a["name"]) == 0]
+    if empty_scopes:
+        logger.warning("[doctor] agents with an empty allow list (can write "
+                       "nothing outside .claude/ and shared_state/): %s -- "
+                       "core fills agent_rules/<agent>.allow.txt",
+                       empty_scopes)
+    git_hooks_dir = _git_hooks_dir(project_root)
+    if git_hooks_dir is not None:
+        hook = git_hooks_dir / "pre-commit"
+        if not hook.exists():
+            logger.warning("[doctor] no pre-commit scope gate at %s -- run "
+                           "governance-core upgrade", hook)
+        elif PRE_COMMIT_MARKER not in hook.read_text(encoding="utf-8",
+                                                     errors="replace"):
+            logger.warning("[doctor] %s is not governance-core's scope gate; "
+                           "make sure it runs tools/check_scope.py "
+                           "--staged-only", hook)
     tracked_runtime = _tracked_runtime_files(project_root)
     if tracked_runtime:
         logger.info("[doctor] note: runtime files still tracked by git (now "

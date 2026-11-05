@@ -479,6 +479,21 @@ pruned):
   clause is added to `governance_core/clauses/`, add its section to the
   template too — `test_installer_constitution_seed.py` fails otherwise.
   `doctor` warns when `total.md` references no `.governance/clauses/` file.
+- **Allow-list seeds + pre-commit scope gate** — for each non-core agent
+  without `agent_rules/<agent>.allow.txt`, install writes a commented, empty
+  (deny-all) seed; the core agent gets none (no scope restriction). In a git
+  work-tree root, install writes `.git/hooks/pre-commit` from
+  `default_config/pre-commit.template`: a `sh` stub (LF endings) that runs
+  `tools/check_scope.py --staged-only`. `check_scope.py` now resolves the
+  agent from config when `--agent` is omitted, passes the core agent outright,
+  and skips `#` comment lines like edit-write-guard. The stub is refreshed on
+  upgrade while its marker line is present; a foreign `pre-commit` is never
+  overwritten, and with `core.hooksPath` set nothing is installed (call
+  `check_scope.py --staged-only` from your hook manager). `doctor` warns on
+  empty allow lists and a missing / foreign gate. The legacy
+  `check_constitution_change.py` is deliberately NOT wired in: it needs the
+  commit message (absent at pre-commit time) and would reject every
+  `CLAUDE.md` commit; constitution edits are guarded by edit-write-guard L5.
 
 ## 11. Candidate pipeline (P-0065)
 

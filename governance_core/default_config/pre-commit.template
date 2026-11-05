@@ -1,0 +1,13 @@
+#!/bin/sh
+# governance-core pre-commit gate (managed by governance-core install; P-0129)
+# Rejects a commit whose staged files fall outside this clone's agent scope
+# (agent_rules/<agent>.allow.txt; the core agent always passes). The agent is
+# this clone's config-derived identity. Reinstalled on every upgrade while
+# this marker line is present -- delete the marker to take ownership.
+TOP=$(git rev-parse --show-toplevel) || exit 1
+PY=$(command -v python || command -v python3)
+if [ -z "$PY" ]; then
+    echo "[governance-core pre-commit] [FAIL] python not found on PATH" >&2
+    exit 1
+fi
+exec "$PY" "$TOP/tools/check_scope.py" --staged-only
