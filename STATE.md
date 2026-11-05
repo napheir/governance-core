@@ -17,7 +17,17 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
-### 2026-11-05 — 实施 P-0132 Phase A+B：码移出 git、按码吊销、停用 schema 1（0.49.0，未发布）
+### 2026-11-05 — 发布 v0.49.0（P-0131 + P-0132 A/B）
+
+- owner「发布，然后休息，明天再继续其他工作」：推送 4 commits（e69569f..7739fe3），`gh release create v0.49.0`；workflow 42046609426
+  build / publish-pypi success；`gh release list` Latest = v0.49.0；PyPI 版本端点含 wheel + sdist。0.48.5 未单独发布（并入 0.49.0）。
+- 已通知 deva-vani。他们撤回换码请求（owner 决定旧码继续有效）；计划：四个 clone 升级 → core `--remove-config-auth-code` 并提交 →
+  /sync-repos → 删其 Art.4 例外。明天继续，升级前由其 owner 看预览确认。
+- **明天待办**：P-0132 Phase C（hub 重签码用 `--out`、删 config 旧码、按指纹吊销 `99411b5a` 并推 feed，每步 owner 确认）；
+  editable 安装隔离（owner 决定）；edit-write-guard `shared_state/` 放行他 agent 提案目录（安全，勿公开，建议单独提案）；
+  scope-guard `python -c` 内 `.replace(` 误报（低）；旧遗留：mab 问题、条款残留、hook 接线冲突。
+
+### 2026-11-05 — 实施 P-0132 Phase A+B：码移出 git、按码吊销、停用 schema 1（0.49.0）
 
 - **A 存储**：新增 `auth/store.py`（`.governance/auth_code` 单行、原子写；随 auth 包 vendored 进 `_gc_auth`）。installer 取码顺序
   `--auth-code` → 码文件 → config 旧码（仅迁移来源）；config 只写 `consumer_id` / `verified_at`，旧码保留到
@@ -56,14 +66,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 文档：`/sync-repos`、core-manual、skill `verify-guard-fires-in-its-target-context` 各补一段。
 - deva-vani 回报 P-0129 验收第 1–3 项全部 BLOCKED（第 4 项早已通过）→ P-0129 可结案；另报 edit-write-guard 对 `shared_state/`
   一律放行（可写他 agent 的提案目录），请勿公开，待处理。
-
-### 2026-11-05 — 起草 P-0132（授权码泄露修复，A + C）
-
-- owner 选 A + C（码移出 git + 按码吊销 / 停用 schema 1；不轮换密钥、不重签其他消费者、不 yank）。P-0132 已起草并提交评审（pending）。
-  三个 phase：A 契约 `contracts/authorization_schema.md` + `.governance/auth_code`（gitignored）存储与迁移；B feed 条目加 `code_sha256`
-  （保留 consumer_id 兼容旧客户端）、`SUPPORTED_SCHEMAS = (2,)`、安装时尽力查 feed、revoke 工具按码吊销；C 发布 0.49.0 后由维护者
-  重签 hub 码、删 config 里的码、吊销 `99411b5a`，每步人工确认。
-- trade-agent 的码不在本机，trade_agent 仓库各分支都没跟踪 config；注册表登记时间晚于 schema 2 成为默认值、expiry = 签发日 + 365，
-  判断为 schema 2，验收里要求 owner 在 trade 项目跑一次 doctor 确认。owner 问 trade 码是否快过期：2027-05-19 到期，还剩 195 天；
-  hub / auto-tax / trade 三个码都在 2027-05-18~19 到期。
-- 验收命令逐条预跑：三条都还选不中测试（实施前失败）。
