@@ -815,7 +815,8 @@ def _seed_constitution(project_root: Path, config: dict[str, Any]) -> None:
 
 # P-0129 F9: commit-time scope gate. Each non-core agent gets a seeded (empty,
 # commented) allow list -- business-owned, never in the manifest -- and every
-# clone gets a pre-commit stub that runs tools/check_scope.py --staged-only.
+# clone gets a pre-commit stub that runs tools/check_scope.py --staged-only,
+# plus a pre-merge-commit stub: an automatic merge commit runs no pre-commit.
 ALLOW_SEED_TEMPLATE = (
     "# Write scope for agent '{agent}' (seeded by governance-core install, P-0129).\n"
     "# One repo-relative path prefix per line, e.g.  services/api/\n"
@@ -826,6 +827,15 @@ ALLOW_SEED_TEMPLATE = (
 )
 PRE_COMMIT_TEMPLATE = PKG_ROOT / "default_config" / "pre-commit.template"
 PRE_COMMIT_MARKER = "# governance-core pre-commit gate"
+PRE_MERGE_COMMIT_TEMPLATE = PKG_ROOT / "default_config" / "pre-merge-commit.template"
+PRE_MERGE_COMMIT_MARKER = "# governance-core pre-merge-commit gate"
+# (git hook name, stub template, ownership marker, what a foreign hook must run)
+COMMIT_GATES = (
+    ("pre-commit", PRE_COMMIT_TEMPLATE, PRE_COMMIT_MARKER,
+     "python tools/check_scope.py --staged-only"),
+    ("pre-merge-commit", PRE_MERGE_COMMIT_TEMPLATE, PRE_MERGE_COMMIT_MARKER,
+     "python tools/check_scope.py --merge-commit"),
+)
 
 
 def _seed_allow_lists(project_root: Path, config: dict[str, Any]) -> list[str]:
@@ -896,32 +906,35 @@ def _git_hooks_dir(project_root: Path) -> Path | None:
     return path / "hooks"
 
 
-def _install_pre_commit(project_root: Path) -> None:
-    """Install / refresh the pre-commit scope gate stub (F9).
+def _install_commit_gates(project_root: Path) -> None:
+    """Install / refresh the commit-time scope gate stubs (F9).
 
-    Written when absent or when the existing hook carries our marker; a
-    foreign pre-commit hook is never overwritten (doctor reports it). Always
-    LF line endings -- a CRLF shell script fails to run.
+    One stub per COMMIT_GATES entry: pre-commit for ordinary commits and
+    merge commits concluded by `git commit`, pre-merge-commit for automatic
+    merge commits (which never run pre-commit). Each is written when absent
+    or when the existing hook carries its marker; a foreign hook is never
+    overwritten (doctor reports it). Always LF line endings -- a CRLF shell
+    script fails to run.
     """
     hooks_dir = _git_hooks_dir(project_root)
     if hooks_dir is None:
         return
-    hook = hooks_dir / "pre-commit"
-    stub = PRE_COMMIT_TEMPLATE.read_text(encoding="utf-8")
-    if hook.exists():
-        current = hook.read_text(encoding="utf-8", errors="replace")
-        if PRE_COMMIT_MARKER not in current:
-            logger.warning("[pre-commit] %s exists and is not governance-core's; "
-                           "left unchanged -- add: python tools/check_scope.py "
-                           "--staged-only", hook)
-            return
-        if current.replace("\r\n", "\n") == stub:
-            return
-    hooks_dir.mkdir(parents=True, exist_ok=True)
-    with open(hook, "w", encoding="utf-8", newline="\n") as f:
-        f.write(stub)
-    os.chmod(hook, 0o755)
-    logger.info("[pre-commit] scope gate installed at %s", hook)
+    for name, template, marker, command in COMMIT_GATES:
+        hook = hooks_dir / name
+        stub = template.read_text(encoding="utf-8")
+        if hook.exists():
+            current = hook.read_text(encoding="utf-8", errors="replace")
+            if marker not in current:
+                logger.warning("[%s] %s exists and is not governance-core's; "
+                               "left unchanged -- add: %s", name, hook, command)
+                continue
+            if current.replace("\r\n", "\n") == stub:
+                continue
+        hooks_dir.mkdir(parents=True, exist_ok=True)
+        with open(hook, "w", encoding="utf-8", newline="\n") as f:
+            f.write(stub)
+        os.chmod(hook, 0o755)
+        logger.info("[%s] scope gate installed at %s", name, hook)
 
 
 # --- Hook auto-wiring (P-0067) ----------------------------------------------
@@ -1316,7 +1329,7 @@ def install(
         _seed_state_md(project_root, cfg)
         _seed_constitution(project_root, cfg)
         _seed_allow_lists(project_root, cfg)
-        _install_pre_commit(project_root)
+        _install_commit_gates(project_root)
         _write_settings_local_json(project_root)
 
     # P-0070: prune autonomy-layer files dropped from the package source,
@@ -1530,15 +1543,15 @@ def doctor(project_root: Path) -> int:
                        empty_scopes)
     git_hooks_dir = _git_hooks_dir(project_root)
     if git_hooks_dir is not None:
-        hook = git_hooks_dir / "pre-commit"
-        if not hook.exists():
-            logger.warning("[doctor] no pre-commit scope gate at %s -- run "
-                           "governance-core upgrade", hook)
-        elif PRE_COMMIT_MARKER not in hook.read_text(encoding="utf-8",
-                                                     errors="replace"):
-            logger.warning("[doctor] %s is not governance-core's scope gate; "
-                           "make sure it runs tools/check_scope.py "
-                           "--staged-only", hook)
+        for name, _template, marker, command in COMMIT_GATES:
+            hook = git_hooks_dir / name
+            if not hook.exists():
+                logger.warning("[doctor] no %s scope gate at %s -- run "
+                               "governance-core upgrade", name, hook)
+            elif marker not in hook.read_text(encoding="utf-8",
+                                              errors="replace"):
+                logger.warning("[doctor] %s is not governance-core's scope "
+                               "gate; make sure it runs: %s", hook, command)
     tracked_runtime = _tracked_runtime_files(project_root)
     if tracked_runtime:
         logger.info("[doctor] note: runtime files still tracked by git (now "

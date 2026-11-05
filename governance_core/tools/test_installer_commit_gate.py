@@ -211,3 +211,96 @@ def test_business_commit_widening_own_allow_list_rejected(tmp_path: Path) -> Non
     res = _git(clone, "commit", "-q", "-m", "widen my scope")
     assert res.returncode != 0, res.stdout + res.stderr
     assert "agent_rules/platform.allow.txt" in res.stdout + res.stderr
+
+
+def test_pre_merge_commit_installed_lf_and_idempotent(tmp_path: Path) -> None:
+    clone = _clone(tmp_path, "agent-core")
+    assert _install(clone) == 0
+    hook = clone / ".git" / "hooks" / "pre-merge-commit"
+    data = hook.read_bytes()
+    assert installer.PRE_MERGE_COMMIT_MARKER.encode() in data
+    assert b"--merge-commit" in data
+    assert b"\r\n" not in data
+    assert _install(clone) == 0
+    assert hook.read_bytes() == data
+
+
+def _auto_merge_fixture(tmp_path: Path, name: str = "agent-platform",
+                        agent_edit: bool = False) -> Path:
+    """Clone on feature/platform; branch core-next (not master -- like a
+    fetched origin/master ahead of a stale local master) carries a core
+    infra change. agent_edit: feature/platform also changed that core file
+    (committed before the gate), in a region git merges cleanly."""
+    clone = _clone(tmp_path, name)
+    assert _install(clone) == 0
+    (clone / "agent_rules" / "platform.allow.txt").write_text("services/\n",
+                                                              encoding="utf-8")
+    tool = clone / "tools" / "rotate_state.py"
+    tool.write_text(tool.read_text(encoding="utf-8") + "\n# core section\n\n"
+                    + "\n" * 20 + "# end\n", encoding="utf-8")
+    assert _git_nohooks(clone, "add", "-A").returncode == 0
+    assert _git_nohooks(clone, "commit", "-q", "-m", "base").returncode == 0
+    assert _git(clone, "checkout", "-q", "-b", "feature/platform").returncode == 0
+    (clone / "services").mkdir()
+    (clone / "services" / "app.py").write_text("x = 1\n", encoding="utf-8")
+    assert _git_nohooks(clone, "add", "-A").returncode == 0
+    assert _git_nohooks(clone, "commit", "-q", "-m", "platform").returncode == 0
+    if agent_edit:
+        text = tool.read_text(encoding="utf-8")
+        tool.write_text(text.replace("# end\n", "# end\n# agent edit\n"),
+                        encoding="utf-8")
+        assert _git_nohooks(clone, "commit", "-q", "-am", "agent").returncode == 0
+    assert _git(clone, "checkout", "-q", "-b", "core-next", "master").returncode == 0
+    text = tool.read_text(encoding="utf-8")
+    tool.write_text(text.replace("# core section\n", "# core section v2\n"),
+                    encoding="utf-8")
+    assert _git_nohooks(clone, "commit", "-q", "-am", "core infra").returncode == 0
+    target = "core-next" if name == "agent-core" else "feature/platform"
+    assert _git(clone, "checkout", "-q", target).returncode == 0
+    return clone
+
+
+def _merge_head(clone: Path) -> bool:
+    return _git(clone, "rev-parse", "-q", "--verify", "MERGE_HEAD").returncode == 0
+
+
+def test_auto_merge_of_core_changes_deferred_then_concluded(tmp_path: Path) -> None:
+    """A conflict-free merge runs pre-merge-commit, not pre-commit. Imports it
+    cannot attribute (MERGE_HEAD not written yet) defer the commit; `git
+    commit` then concludes it through the MERGE_HEAD-aware pre-commit gate."""
+    clone = _auto_merge_fixture(tmp_path)
+    res = _git(clone, "merge", "--no-edit", "core-next")
+    assert res.returncode != 0, res.stdout + res.stderr
+    assert "[DEFER]" in res.stdout + res.stderr
+    assert _merge_head(clone)
+    res = _git(clone, "commit", "--no-edit")
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert not _merge_head(clone)
+
+
+def test_auto_merge_carrying_agent_edit_to_core_file_rejected(tmp_path: Path) -> None:
+    """The clean 3-way result of a core file the agent also changed equals
+    neither side: no longer committed unchecked by an automatic merge."""
+    clone = _auto_merge_fixture(tmp_path, agent_edit=True)
+    res = _git(clone, "merge", "--no-edit", "core-next")
+    assert res.returncode != 0, res.stdout + res.stderr
+    res = _git(clone, "commit", "--no-edit")
+    assert res.returncode != 0, res.stdout + res.stderr
+    assert "tools/rotate_state.py" in res.stdout + res.stderr
+
+
+def test_auto_merge_from_current_master_commits(tmp_path: Path) -> None:
+    """Imports identical to master are recognized without MERGE_HEAD."""
+    clone = _auto_merge_fixture(tmp_path)
+    assert _git(clone, "branch", "-f", "master", "core-next").returncode == 0
+    res = _git(clone, "merge", "--no-edit", "master")
+    assert res.returncode == 0, res.stdout + res.stderr
+    assert not _merge_head(clone)
+
+
+def test_core_auto_merge_commits(tmp_path: Path) -> None:
+    clone = _auto_merge_fixture(tmp_path, name="agent-core")
+    assert _git(clone, "checkout", "-q", "-b", "side", "master").returncode == 0
+    assert _commit_file(clone, "anywhere/file.txt").returncode == 0
+    res = _git(clone, "merge", "--no-edit", "core-next")
+    assert res.returncode == 0, res.stdout + res.stderr

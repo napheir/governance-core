@@ -36,8 +36,14 @@ git stash
 
 ```bash
 git fetch origin master
-git merge origin/master --no-edit
+git merge --no-ff --no-commit origin/master
 ```
+
+`--no-commit` 让每次 merge 都在 Step 4 经 pre-commit 门禁提交。若用普通
+`git merge`：无冲突时 git 会自动提交，此时运行的是 pre-merge-commit 而不是
+pre-commit（governance-core 0.48.3+ 两者都装）。pre-merge-commit 运行时
+MERGE_HEAD 尚未写入，它只能认出与本地 `master` 相同的文件；其余越界文件会让
+这次自动提交 `[DEFER]`（exit 1）。merge 仍保持暂存状态，照常进入 Step 4 即可。
 
 ### Step 3: 自动解决冲突
 
@@ -74,6 +80,8 @@ git checkout --ours -- CLAUDE.md && git add CLAUDE.md
 git add -u
 git commit --no-edit
 ```
+
+若 `git rev-parse -q --verify MERGE_HEAD` 失败（已是最新；或用了普通 `git merge`，已 fast-forward / 自动提交），跳过本步。
 
 **不要用 `--no-verify`**（governance-core 0.48.1+）：结束 merge 的这次 commit 时 MERGE_HEAD
 仍存在，pre-commit 的 `check_scope.py --staged-only` 把"暂存内容与 MERGE_HEAD 完全一致"的

@@ -1,0 +1,15 @@
+#!/bin/sh
+# governance-core pre-merge-commit gate (managed by governance-core install; P-0129)
+# An automatic (conflict-free) merge commit runs this hook, not pre-commit.
+# git writes MERGE_HEAD only after this hook, so scope-external files that
+# are not identical to master defer the commit: the merge stays staged and
+# `git commit` concludes it through the pre-commit gate. The core agent
+# always passes. Reinstalled on every upgrade while this marker line is
+# present -- delete the marker to take ownership.
+TOP=$(git rev-parse --show-toplevel) || exit 1
+PY=$(command -v python || command -v python3)
+if [ -z "$PY" ]; then
+    echo "[governance-core pre-merge-commit] [FAIL] python not found on PATH" >&2
+    exit 1
+fi
+exec "$PY" "$TOP/tools/check_scope.py" --merge-commit

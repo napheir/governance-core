@@ -523,6 +523,18 @@ pruned):
   `master..HEAD`, which let an agent widen its own allow list), and during a
   merge commit a file staged exactly as `MERGE_HEAD` has it is a merge import,
   not an agent change.
+  Since 0.48.3 install also writes `.git/hooks/pre-merge-commit`
+  (`default_config/pre-merge-commit.template`, runs
+  `check_scope.py --merge-commit`): a conflict-free `git merge` commits on its
+  own and never runs pre-commit, so before this the gate did not see automatic
+  merge commits. git writes `MERGE_HEAD` only *after* pre-merge-commit, so
+  there only files identical to master count as imports; any other
+  scope-external file defers the commit (`[DEFER]`, exit 1). git keeps the
+  merge staged, and `git commit --no-edit` concludes it through the
+  `MERGE_HEAD`-aware pre-commit gate. To skip the deferral, merge with
+  `--no-ff --no-commit` and then commit. Fast-forward merges create no commit
+  and run neither hook; they only move the branch onto commits that were
+  already gated where they were made.
 
 ## 11. Candidate pipeline (P-0065)
 

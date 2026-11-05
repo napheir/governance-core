@@ -7,10 +7,18 @@ Enforce agent file-scope constraints against a fixed baseline commit.
 Usage:
     python tools/check_scope.py --agent <agent>
     python tools/check_scope.py --staged-only      # pre-commit gate
+    python tools/check_scope.py --merge-commit     # pre-merge-commit gate
 
 Without --agent the agent is this clone's config-derived identity (P-0129,
 shared _guard_common.resolve_agent). The config's core agent has no scope
 restriction (same as the guards) and always passes.
+
+--merge-commit runs for an automatic (conflict-free) merge commit, which
+never runs pre-commit. git writes MERGE_HEAD only after that hook, so a
+merge import cannot be told from an agent edit there: scope-external files
+not identical to master defer the commit (exit 1). git keeps the merge
+staged; `git commit` concludes it through the pre-commit gate, which
+compares them with MERGE_HEAD.
 """
 
 import argparse
@@ -196,7 +204,12 @@ def main():
                              "from .governance/config.json)")
     parser.add_argument("--staged-only", action="store_true",
                         help="check only staged files (for pre-commit hook)")
+    parser.add_argument("--merge-commit", action="store_true",
+                        help="automatic merge commit (pre-merge-commit hook); "
+                             "implies --staged-only")
     args = parser.parse_args()
+    if args.merge_commit:
+        args.staged_only = True
 
     guard_common, topology = _topology_or_exit()
     if args.agent is None:
@@ -273,6 +286,23 @@ def main():
             print(f"[INFO] Merge detected: {skipped} scope-external file(s) "
                   f"identical to the merged-in commit (allowed)")
         violations = filtered
+
+    # Automatic merge commit: MERGE_HEAD does not exist yet, so only files
+    # identical to master can be recognized as imports here. Defer the rest
+    # to the pre-commit gate instead of judging them.
+    if violations and args.merge_commit:
+        pending = [(f, r) for f, r in violations if not same_as_master(f, True)]
+        if pending:
+            print(f"\n[DEFER] Automatic merge commit stopped: {len(pending)} "
+                  f"scope-external file(s) not identical to master:\n")
+            for f, reason in pending:
+                print(f"  - {f:60s}  [{reason}]")
+            print("\nThe merge is staged and not committed. Conclude it with")
+            print("  git commit --no-edit")
+            print("(the pre-commit gate allows files identical to the merged-in")
+            print("commit), or abandon it with: git merge --abort")
+            sys.exit(1)
+        violations = []
 
     if violations:
         print("\n[FAIL] Scope violations detected:\n")

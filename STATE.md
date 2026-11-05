@@ -17,6 +17,25 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-05 — 自动 merge 提交门禁 + 子宪法审计误报（0.48.3，未发布）
+
+- **背景**：deva-vani 四个 clone 已升到 0.48.2，三项修复全部确认；`/sync-repos` 不加 `--no-verify` 实测通过（`--no-ff --no-commit` 后 `git commit`）。
+  另报两个问题。
+- **自动 merge 不经门禁**（P-0129 F9 覆盖缺口）：无冲突的 `git merge` 自动提交，运行的是 pre-merge-commit 而非 pre-commit。
+  探测（`artifacts/p0129/probe_pre_merge_commit.py`）：pre-merge-commit 运行时 MERGE_HEAD / MERGE_MSG 都还没写，只有 `GIT_REFLOG_ACTION`；
+  hook 失败后 git 才写 MERGE_HEAD 并保留暂存的 merge。→ 新增 `check_scope.py --merge-commit`：与 master 相同的文件放行，
+  其余越界文件 `[DEFER]` exit 1，由 `git commit` 经 MERGE_HEAD 感知的 pre-commit 收尾。installer 用 `COMMIT_GATES` 表装两个 stub
+  （新模板 `default_config/pre-merge-commit.template`），doctor 两个都查。
+- **audit_sub_constitutions 误报**：`git log --all --grep=docs(constitution)` 把 merge 进来的 core 总宪法提交也算上，并对整份 CLAUDE.md
+  跑正则（附录反放宽文字命中 `豁免.*红线`）。改为：只扫 regen 实际使用的子宪法文件（`agent.<name>.md`，缺则 legacy `agent.md`），
+  HEAD 上的路径限定历史（默认历史简化排除未改变本分支该文件的 core 提交），只对新增行跑正则。旧版连业务 agent 自己的放宽也漏报。
+- **文档**：`/sync-repos` Step 2 改 `git merge --no-ff --no-commit`，说明普通 merge 的 DEFER 行为、MERGE_HEAD 不存在时跳过 Step 4；
+  core-manual 补 0.48.3 说明；skill `verify-guard-fires-in-its-target-context` 补第三种提交上下文。
+- **测试**：+7（pre-merge-commit 安装、自动 merge DEFER 后 commit 收尾、自动 merge 夹带越界三方合并结果被拒、master 最新时自动提交、
+  core 自动 merge、merge 进来的 core 宪法提交不报、业务 agent 放宽自身子宪法被报）；对 0.48.2 反向校准 5 例 FAIL，
+  另 2 例两版都过（防过度拦截）。全量 pytest 347 passed，脚本风格 28 个全过；wheel 含新模板。版本 0.48.2 → 0.48.3。**发布待 owner 确认**。
+- **未处理、待 owner 定**：merge 导入豁免不看来源——任何分支 merge 进来、与 MERGE_HEAD 相同的文件都放行（含其他业务 agent 的分支）。
+
 ### 2026-11-05 — 发布 v0.48.2（deva-vani 升级反馈修复）
 
 - owner 确认后推送 1 commit（8921f45），`gh release create v0.48.2`；workflow 42023042411：build / publish-pypi success。
@@ -35,10 +54,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   补充"master 停止跟踪的文件会被 merge 删除、upgrade 前该 clone 无 hook 注册"；更正"config.json 是 gitignored"的不实描述。
 - **测试**：+3（core 角色在业务 clone 不报、相对路径身份解析、嵌套布局找到兄弟 clone）；对 HEAD 旧代码反向校准 3 例全 FAIL。
   全量 pytest 340 passed，脚本风格全过。版本 0.48.1 → 0.48.2。**发布待 owner 确认**。
-
-### 2026-11-05 — 发布 v0.48.1（提交门禁修复）
-
-- owner 确认后推送 2 commits，`gh release create v0.48.1`；workflow 42008760054：build / publish-pypi success。
-- 核实：`gh release list` Latest = v0.48.1；PyPI 项目级 JSON 一度仍显示 0.48.0（CDN 缓存），版本端点 `/pypi/governance-core/0.48.1/json`
-  与 simple 索引均已含 wheel + sdist —— 以版本端点 / simple 索引为准。
-- 已通知 deva-vani：业务 clone 直接升到 0.48.1，P-0129 验收第 4 项在 0.48.1 上做。

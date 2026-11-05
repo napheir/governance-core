@@ -6,6 +6,14 @@
 
 ---
 
+### 2026-11-05 — 发布 v0.48.1（提交门禁修复）
+
+- owner 确认后推送 2 commits，`gh release create v0.48.1`；workflow 42008760054：build / publish-pypi success。
+- 核实：`gh release list` Latest = v0.48.1；PyPI 项目级 JSON 一度仍显示 0.48.0（CDN 缓存），版本端点 `/pypi/governance-core/0.48.1/json`
+  与 simple 索引均已含 wheel + sdist —— 以版本端点 / simple 索引为准。
+- 已通知 deva-vani：业务 clone 直接升到 0.48.1，P-0129 验收第 4 项在 0.48.1 上做。
+
+
 ### 2026-11-05 — P-0129 F9 实施缺陷修复：提交门禁的合并与暂存比较（0.48.1，未发布）
 
 - **发现**：deva-vani 报升级顺序后，本仓库先探测 0.47.0 门禁在业务 clone 的 `/sync-repos` 合并上的行为（`artifacts/p0129/probe_merge_gate.py`）：

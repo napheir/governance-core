@@ -6,10 +6,18 @@ Usage:
     python tools/audit_sub_constitutions.py [--verbose]
 
 功能：
-1. 检查各 agent clone 的 git log 中的宪法修改
-2. 对比修改内容与总宪法核心条款（CLAUDE.md 附录定义）
+1. 找出各 agent clone 中修改过**该 agent 自己子宪法文件**的提交
+2. 对比这些提交**新增的行**与总宪法核心条款（CLAUDE.md 附录定义）
 3. 生成审计报告，标记潜在违规
 4. 如有 HIGH 违规，返回 exit code 1
+
+子宪法文件与 regen_constitution 取用的一致：constitution/agent.<name>.md，
+不存在时用 legacy constitution/agent.md。只走该 clone 当前分支（HEAD）的
+路径限定历史：git 默认的历史简化沿 TREESAME 父提交走，经 master merge
+进来、并未改变本分支子宪法的 core 提交（总宪法 / agent.core.md）不在其中。
+曾经扫 `git log --all --grep=docs(constitution)` 并对整份 CLAUDE.md 跑正则：
+core 的总宪法提交随 merge 进入每个业务 clone，附录里"禁止修改、放宽或豁免"
+这类反放宽文字被判为放宽（deva-vani, 0.48.2）。
 """
 
 import json
@@ -101,10 +109,22 @@ def run_command(cmd: List[str], cwd: Path) -> str:
         return f"ERROR: {e}"
 
 
-def get_constitution_commits(agent_dir: Path) -> List[Dict[str, str]]:
-    """获取某 agent 的所有子宪法修改 commit"""
+def sub_constitution_path(agent_dir: Path, agent: str) -> str:
+    """Return the repo-relative sub-constitution file of `agent` ("" if none).
+
+    Same choice as regen_constitution.resolve_agent_path: the per-role
+    constitution/agent.<agent>.md, else the legacy constitution/agent.md.
+    """
+    for rel in (f"constitution/agent.{agent}.md", "constitution/agent.md"):
+        if (agent_dir / rel).is_file():
+            return rel
+    return ""
+
+
+def get_constitution_commits(agent_dir: Path, rel_path: str) -> List[Dict[str, str]]:
+    """获取当前分支上修改过子宪法文件 `rel_path` 的所有非 merge 提交"""
     output = run_command(
-        ["git", "log", "--all", "--grep=docs(constitution)", "--oneline", "--no-merges"],
+        ["git", "log", "--oneline", "--no-merges", "--", rel_path],
         cwd=agent_dir
     )
 
@@ -122,13 +142,14 @@ def get_constitution_commits(agent_dir: Path) -> List[Dict[str, str]]:
     return commits
 
 
-def get_constitution_diff(agent_dir: Path, commit_hash: str) -> str:
-    """获取某个 commit 对 CLAUDE.md 的修改内容"""
+def get_constitution_diff(agent_dir: Path, commit_hash: str, rel_path: str) -> str:
+    """返回某个 commit 在子宪法文件 `rel_path` 中新增的行（换行分隔）"""
     output = run_command(
-        ["git", "show", f"{commit_hash}:CLAUDE.md"],
+        ["git", "show", "--format=", "--unified=0", commit_hash, "--", rel_path],
         cwd=agent_dir
     )
-    return output
+    return "\n".join(line[1:] for line in output.splitlines()
+                     if line.startswith("+") and not line.startswith("+++"))
 
 
 def check_violates_core(diff_content: str) -> List[Dict[str, Any]]:
@@ -249,8 +270,13 @@ def main():
 
         print(f"[INFO] 检查 {clone_dir} ({agent})...")
 
+        rel_path = sub_constitution_path(agent_dir, agent)
+        if not rel_path:
+            print(f"   无子宪法文件（constitution/agent.{agent}.md / agent.md），跳过")
+            continue
+
         # 获取所有子宪法修改 commit
-        commits = get_constitution_commits(agent_dir)
+        commits = get_constitution_commits(agent_dir, rel_path)
 
         if not commits:
             print(f"   未发现子宪法修改记录")
@@ -259,8 +285,8 @@ def main():
         print(f"   发现 {len(commits)} 个子宪法修改")
 
         for commit in commits:
-            # 获取 commit 的完整 diff
-            diff_content = get_constitution_diff(agent_dir, commit["hash"])
+            # 该 commit 在子宪法文件中新增的行
+            diff_content = get_constitution_diff(agent_dir, commit["hash"], rel_path)
 
             # 提取 commit 元数据
             metadata = extract_commit_metadata(agent_dir, commit["hash"])
