@@ -6,19 +6,17 @@ Source of truth:
                                   to all clones via sync_infra.py
   constitution/agent.<role>.md  — this clone's agent-specific articles
                                   (per-role file, owned by that agent only)
-  .role                         — single-line file at repo root with this
-                                  clone's role string (`core`, `rules`,
-                                  `trade`, `data`, `research`); not git-tracked
-                                  (.gitignore'd); per-clone setup
+  .governance/config.json       — agents[].clone_dir decides this clone's
+                                  role (P-0129; the old `.role` file is
+                                  retired and no longer read)
 
 Generated:
   CLAUDE.md  — banner + total.md content + agent.<role>.md content.
                DO NOT edit directly; pre-commit hook blocks it.
 
-Role detection precedence:
-  1. `.role` file at repo root (canonical)
-  2. Fall back to clone directory basename (`agent-<role>`)
-  3. If neither works, blocking error (exit 1)
+Role detection: the clone directory name matched against config
+agents[].clone_dir (single-agent config -> its only agent); unresolvable ->
+blocking error (exit 1). Shared with the guards via _guard_common.
 
 Backward-compat during migration (Phase 1-3):
   - if `agent.<role>.md` doesn't exist but legacy `agent.md` does, use legacy
@@ -53,56 +51,47 @@ AGENT_SECTION_HEADER = (
 )
 
 
-def detect_role(root: Path) -> str:
-    """Detect this clone's role.
+def _load_guard_common():
+    """Load the hooks' _guard_common module by path (single identity impl).
 
-    Order:
-      1. Read `.role` file at repo root (canonical).
-      2. Fall back to clone directory basename matching `agent-<role>`.
-      3. If neither works, exit 1 with a recovery hint.
-
-    The `.role` file is per-clone (in .gitignore) and the canonical source.
-    Directory-name fallback is for transition convenience only and writes a
-    stderr warning so the operator knows to set up `.role`.
+    Installed layout: .claude/hooks/_guard_common.py beside the repo's
+    tools/; package-source layout: governance_core/hooks/. Returns None if
+    neither exists.
     """
-    role_file = root / ".role"
-    if role_file.is_file():
-        role = role_file.read_text(encoding="utf-8").strip()
-        if role:
-            return role
+    import importlib.util
+    here = Path(__file__).resolve().parent
+    for candidate in (here.parent / ".claude" / "hooks" / "_guard_common.py",
+                      here.parent / "hooks" / "_guard_common.py"):
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_gc_guard_common", candidate)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+    return None
 
-    dirname = root.name.lower()
-    if dirname.startswith("agent-"):
-        guessed = dirname[6:]
-        print(
-            f"[WARN] {root.name}: .role file missing or empty; using clone "
-            f"directory name fallback ('{guessed}'). "
-            f"Fix: echo {guessed} > {role_file}",
-            file=sys.stderr,
-        )
-        return guessed
 
-    # P-0059 Phase 2.3c: derive agent enum from .governance/config.json if available
-    agent_hint = "<core|...>"
+def detect_role(root: Path) -> str:
+    """Detect this clone's agent from .governance/config.json (P-0129).
+
+    The clone directory is matched against agents[].clone_dir; a
+    single-agent config resolves to its only agent. Same implementation as
+    the guards (_guard_common.resolve_agent). The `.role` file is retired
+    and no longer read. Exits 1 with the concrete reason when identity
+    cannot be resolved.
+    """
+    guard_common = _load_guard_common()
+    if guard_common is None:
+        print("[ERROR] Cannot locate _guard_common.py (.claude/hooks/ "
+              "missing?). Run: governance-core upgrade", file=sys.stderr)
+        sys.exit(1)
     try:
-        import json
-        cfg_path = root / ".governance" / "config.json"
-        if cfg_path.exists():
-            cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-            names = [a["name"] for a in cfg.get("agents", [])]
-            if names:
-                agent_hint = "<" + "|".join(names) + ">"
-    except Exception:
-        pass  # fallback to hardcoded hint
-
-    print(
-        f"[ERROR] Cannot detect role for {root}.\n"
-        f"  .role file missing or empty: {role_file}\n"
-        f"  Directory name '{dirname}' does not start with 'agent-'.\n"
-        f"  Fix: echo {agent_hint} > {role_file}",
-        file=sys.stderr,
-    )
-    sys.exit(1)
+        return guard_common.resolve_agent(str(root))
+    except guard_common.TopologyError as exc:
+        print(f"[ERROR] Cannot detect agent for {root}: {exc}\n"
+              "  Fix .governance/config.json agents[].clone_dir, then "
+              "run: governance-core doctor", file=sys.stderr)
+        sys.exit(1)
 
 
 def resolve_agent_path(root: Path, role: str) -> Path:

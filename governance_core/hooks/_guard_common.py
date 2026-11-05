@@ -1,96 +1,204 @@
-"""Shared utilities for scope-guard.py and edit-write-guard.py.
+"""Shared utilities for the PreToolUse guards (scope / edit-write / data-source).
 
-Both guards (Bash matcher + Edit/Write matcher) need:
-  - branch-to-role mapping (master → core, feature/<x>-* → x)
+Every guard needs:
+  - agent identity: which agent owns the clone this hook is installed in
   - block() helper that prints a uniform banner to stderr + exit 2
-  - cross-repo path patterns (other clones)
+  - cross-repo path patterns (the project's other clones)
 
-Extracted on 2026-04-28 per Phase 3 of
-proposals/slim_constitution_via_registry_and_router.md to remove ~80 lines
-of duplicated logic. Each guard still has its own matcher + tool-specific
-checks; only the shared cross-cutting concerns live here.
+Identity (P-0129) is derived from .governance/config.json, NOT from the git
+branch: the clone directory name is matched against agents[].clone_dir, and a
+single-agent config resolves to its only agent. Identity therefore does not
+change when a clone checks out another branch, and needs no git call. An
+identity that cannot be resolved (config missing / malformed, clone not
+registered) raises TopologyError; detect_role() maps it to UNRESOLVED_ROLE,
+which guards treat as the most restricted role -- the 0.45.x fallback
+"unknown branch -> core" granted full authority to every agent of a consumer
+whose roles were absent from a hard-coded upstream table.
+
+Stdlib-only and self-contained: fail-closed hooks must not import
+governance_core (knowledge/governance/runtime-import-discipline.md). Tools
+that need the agent identity (proposal_lib, regen_constitution, the
+pre-commit gate) load THIS file by path, so there is one implementation.
 
 Sync: this file is in sync_infra.ALWAYS_COPY_FILES, so every clone has
 its own copy (each guard resolves _REPO_ROOT relative to its own clone).
 """
 import json
 import os
-import subprocess
 import sys
-from pathlib import Path
+
+# Role token for the agent named by config core_agent_name (governance
+# authority: guards bypass their scope layers for it).
+CORE_ROLE = "core"
+
+# Role token for a clone whose identity cannot be resolved. No allow-list
+# file can carry this name, so it is denied everything a role needs rules for.
+UNRESOLVED_ROLE = "<unresolved>"
 
 
-def _load_cross_repo_patterns():
-    """Derive cross-repo block patterns from .governance/config.json.
+class TopologyError(Exception):
+    """This clone's agent identity cannot be resolved from config.json."""
 
-    Pattern format: '<install-root-basename>/<clone-dir>' lowercased, matched
-    as a substring against paths. Returns [] on any error — fail-open, the
-    same posture as detect_role(): a config outage must not spuriously block.
+
+def hook_repo_root() -> str:
+    """Return the root of the repo this module is installed in.
+
+    Installed layout: <repo>/.claude/hooks/_guard_common.py. Package-source
+    layout: <repo>/governance_core/hooks/_guard_common.py. Both are two
+    levels below the repo root.
     """
+    return os.path.normpath(
+        os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+    )
+
+
+def _root(repo_root: str) -> str:
+    """Normalize `repo_root`; empty means the repo this module lives in."""
+    return os.path.normpath(repo_root or hook_repo_root())
+
+
+def load_topology(repo_root: str) -> dict:
+    """Load the agent topology from <repo_root>/.governance/config.json.
+
+    Returns {"agents": [<agent dict>, ...], "core": <core_agent_name>}; each
+    agent dict has at least non-empty str "name" and "clone_dir".
+
+    Raises:
+        TopologyError: config missing / unreadable / not an object, a
+            required field missing or ill-typed, or core_agent_name not
+            among agents[].name. Membership is tested explicitly (no
+            fallback defaults, Art.4).
+    """
+    cfg_path = os.path.join(repo_root, ".governance", "config.json")
     try:
-        repo_root = Path(__file__).resolve().parent.parent.parent
-        cfg_path = repo_root / ".governance" / "config.json"
-        if not cfg_path.exists():
-            return []
-        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-        root_name = Path(cfg.get("install_root", "")).name.lower()
-        if not root_name:
-            return []
-        core_name = cfg.get("core_agent_name", "core")
-        return [
-            f"{root_name}/{a['clone_dir'].lower()}"
-            for a in cfg.get("agents", [])
-            if a.get("name") != core_name and a.get("clone_dir")
-        ]
-    except Exception:
-        return []
+        with open(cfg_path, encoding="utf-8") as f:
+            cfg = json.load(f)
+    except FileNotFoundError:
+        raise TopologyError(f"config not found: {cfg_path}") from None
+    except (OSError, ValueError) as exc:
+        raise TopologyError(f"config unreadable: {cfg_path} ({exc})") from None
+    if not isinstance(cfg, dict):
+        raise TopologyError(f"config is not a JSON object: {cfg_path}")
+    for key in ("agents", "core_agent_name"):
+        if key not in cfg:
+            raise TopologyError(f"config has no '{key}': {cfg_path}")
+    agents = cfg["agents"]
+    if not isinstance(agents, list) or not agents:
+        raise TopologyError(f"config 'agents' must be a non-empty list: {cfg_path}")
+    for agent in agents:
+        if (not isinstance(agent, dict)
+                or "name" not in agent or "clone_dir" not in agent
+                or not isinstance(agent["name"], str)
+                or not isinstance(agent["clone_dir"], str)
+                or not agent["name"] or not agent["clone_dir"]):
+            raise TopologyError(
+                f"config agents[] entry needs non-empty 'name' and "
+                f"'clone_dir': {agent!r}"
+            )
+    core = cfg["core_agent_name"]
+    if core not in {a["name"] for a in agents}:
+        raise TopologyError(
+            f"core_agent_name {core!r} is not one of agents[].name"
+        )
+    return {"agents": agents, "core": core}
 
 
-# Cross-repo patterns blocked for non-core agents. shared_state/ is
-# intentionally absent — see the shared-runtime-state clause. Derived from
-# .governance/config.json; empty (fail-open) when config is missing.
-CROSS_REPO_PATTERNS = _load_cross_repo_patterns()
+def _resolve(root: str) -> tuple:
+    """Return (agent name, topology) for the clone at normalized `root`."""
+    topo = load_topology(root)
+    agents = topo["agents"]
+    if len(agents) == 1:
+        return agents[0]["name"], topo
+    clone = os.path.basename(root).lower()
+    for agent in agents:
+        if agent["clone_dir"].lower() == clone:
+            return agent["name"], topo
+    registered = ", ".join(a["clone_dir"] for a in agents)
+    raise TopologyError(
+        f"clone directory '{os.path.basename(root)}' is not registered in "
+        f"config agents[].clone_dir ({registered})"
+    )
 
-# Branches mapped to "core" (unrestricted)
-CORE_BRANCHES = {"master", "main"}
 
-# Branch-prefix → role
-ROLE_PREFIX_MAP = {
-    "feature/trade": "trade",
-    "feature/models": "models",
-    "feature/data": "data",
-    "feature/simu": "simu",
-    "feature/rules": "rules",
-    "feature/research": "research",
-}
+def resolve_agent(repo_root: str = "") -> str:
+    """Return the agent name that owns the clone at `repo_root`.
+
+    Rules, in order: a single-agent config -> its only agent; otherwise the
+    agent whose clone_dir equals the clone directory name (case-insensitive).
+
+    Args:
+        repo_root: clone root; empty -> the repo this module is installed in.
+
+    Raises:
+        TopologyError: identity cannot be resolved (see load_topology).
+    """
+    return _resolve(_root(repo_root))[0]
 
 
 def detect_role(repo_root: str = "") -> str:
-    """Detect agent role from current git branch.
+    """Return the guard role for the clone at `repo_root`.
+
+    CORE_ROLE for the config's core agent, the agent name for any other
+    agent, UNRESOLVED_ROLE when identity cannot be resolved (fail-closed:
+    the caller treats it as the most restricted role).
 
     Args:
-        repo_root: Optional cwd for git invocation. Empty → use $CWD.
-
-    Fail-open semantics: any error / unknown branch returns "core" so the
-    guard does NOT spuriously block during git outage or detached HEAD.
+        repo_root: clone root; empty -> the repo this module is installed in
+            (the hook's own clone, never the process cwd).
     """
     try:
-        kwargs = {"capture_output": True, "text": True, "timeout": 5}
-        if repo_root:
-            kwargs["cwd"] = repo_root
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"], **kwargs
-        )
-        branch = result.stdout.strip()
-    except (subprocess.TimeoutExpired, OSError):
-        return "core"
+        name, topo = _resolve(_root(repo_root))
+    except TopologyError:
+        return UNRESOLVED_ROLE
+    return CORE_ROLE if name == topo["core"] else name
 
-    if branch in CORE_BRANCHES:
-        return "core"
-    for prefix, role in ROLE_PREFIX_MAP.items():
-        if branch.startswith(prefix):
-            return role
-    return "core"
+
+def identity_failure(repo_root: str = "") -> str:
+    """Return why identity resolution fails for `repo_root` ("" if it works)."""
+    try:
+        _resolve(_root(repo_root))
+    except TopologyError as exc:
+        return str(exc)
+    return ""
+
+
+def sibling_clone_patterns(repo_root: str = "") -> list:
+    """Return Bash cross-repo block patterns for this project's other clones.
+
+    For each other non-core clone <c> sitting next to this clone under the
+    project directory <p>: '<p>/<c>' (matches absolute paths in Windows and
+    POSIX drive forms, and ../../<p>/<c>) and '../<c>' (sibling-relative).
+    Lowercased, '/'-separated, matched as substrings of the normalized
+    command. Derived from the real clone location, so it holds whether
+    config install_root names the project's parent or the clones' parent
+    (P-0129 F7).
+
+    The core clone is not listed: business clones legitimately reference
+    core (centrally referenced hooks / tools) -- the policy of the original
+    literal table, unchanged. Edit/Write into core stays blocked by
+    edit-write-guard's path-prefix check. Returns [] when the topology is
+    unresolvable; detect_role() reports that failure to the guard.
+    """
+    root = _root(repo_root)
+    try:
+        topo = load_topology(root)
+    except TopologyError:
+        return []
+    own = os.path.basename(root).lower()
+    project = os.path.basename(os.path.dirname(root)).lower()
+    patterns = []
+    for agent in topo["agents"]:
+        clone = agent["clone_dir"].lower()
+        if agent["name"] == topo["core"] or clone == own:
+            continue
+        patterns.append(f"{project}/{clone}")
+        patterns.append(f"../{clone}")
+    return patterns
+
+
+# Cross-repo patterns blocked for non-core agents. shared_state/ is
+# intentionally absent -- see the shared-runtime-state clause.
+CROSS_REPO_PATTERNS = sibling_clone_patterns()
 
 
 def block(guard_name: str, reason: str, detail: str) -> None:

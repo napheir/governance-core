@@ -19,13 +19,16 @@ Layer 2 is critical for bypassPermissions mode -- it ensures non-core
 agents cannot modify files outside their declared scope, even when all
 permission prompts are skipped.
 
-Branch-based role detection (consistent with scope-guard.py):
-  master / main       -> core   (governance authority, no restrictions)
-  feature/trade-*     -> trade  (restricted by trade.allow.txt)
-  feature/rules-*     -> rules  (restricted by rules.allow.txt)
-  feature/data-*      -> data   (restricted by data.allow.txt)
-  feature/research-*  -> research (restricted by research.allow.txt)
-  unknown             -> core   (fail-open to most permissive)
+Config-derived role detection (P-0129, shared with scope-guard.py via
+_guard_common): the clone this hook is installed in is matched against
+.governance/config.json agents[].clone_dir -- the git branch is not used.
+  config core_agent_name  -> core   (governance authority, no restrictions)
+  any other agent <name>  -> <name> (restricted by <name>.allow.txt)
+  unresolvable identity   -> blocked (fail-closed; run governance-core doctor)
+
+Non-core agents may write their own .claude/ working files but never the
+files that define their enforcement: .claude/hooks/** and
+.claude/settings{,.local}.json (P-0129 F8).
 
 Exit codes:
   0 = allow
@@ -48,7 +51,9 @@ _REPO_ROOT = os.path.normpath(os.path.join(_HOOK_DIR, "..", ".."))
 sys.path.insert(0, _HOOK_DIR)
 try:
     from _guard_common import (  # noqa: E402
+        UNRESOLVED_ROLE as _UNRESOLVED_ROLE,
         detect_role as _detect_role_shared,
+        identity_failure as _identity_failure,
         block as _block_shared,
     )
 except ImportError as exc:
@@ -70,9 +75,21 @@ _SHARED_STATE_ROOT = os.path.normpath(os.path.join(_REPO_ROOT, "..", "shared_sta
 _allow_cache = {}
 
 
+# P-0129 F8: files that define a clone's own enforcement. Non-core agents
+# may not write them, even though the rest of .claude/ is theirs.
+_SELF_PROTECTED_PREFIXES = (".claude/hooks/",)
+_SELF_PROTECTED_FILES = {".claude/settings.json", ".claude/settings.local.json"}
+
+
 def _detect_role() -> str:
-    """Detect agent role from current git branch (delegates to shared)."""
+    """Detect this clone's agent role from config (delegates to shared)."""
     return _detect_role_shared(_REPO_ROOT)
+
+
+def _is_self_protected(rel_path: str) -> bool:
+    """Return True if `rel_path` is a guard / hook-wiring file of this clone."""
+    return (rel_path in _SELF_PROTECTED_FILES
+            or any(rel_path.startswith(p) for p in _SELF_PROTECTED_PREFIXES))
 
 
 def _load_allow_rules(role: str) -> list:
@@ -703,6 +720,19 @@ def main() -> None:
     if target.startswith(_user_claude_dir + os.sep):
         sys.exit(0)
 
+    # P-0129: an unresolvable identity is never silently promoted (0.45.x
+    # treated it as core). Block every repo / shared-state write with the
+    # concrete reason so the operator can repair config or the clone dir.
+    if role == _UNRESOLVED_ROLE:
+        _block(
+            "Edit/Write BLOCKED (agent identity unresolved)",
+            f"Target: {file_path}\n"
+            f"Reason: {_identity_failure(_REPO_ROOT)}\n\n"
+            "Identity comes from .governance/config.json: this clone's\n"
+            "directory name must equal one agents[].clone_dir.\n"
+            "Diagnose: governance-core doctor --project-root <this clone>"
+        )
+
     # Allow shared runtime state (<install-root>/shared_state/) — multi-clone
     # writable by design. Per CLAUDE.md 第四条之一, writers must use filelock
     # + atomic replace; the guard only governs path authorization.
@@ -723,7 +753,19 @@ def main() -> None:
     # Layer 2: Scope allowlist (within repo)
     rel_path = os.path.relpath(target, repo).replace("\\", "/")
 
-    # .claude/ directory is always writable by the agent working in this repo
+    # P-0129 F8: a non-core agent must not rewrite or unwire its own guards.
+    if _is_self_protected(rel_path):
+        _block(
+            f"Edit/Write BLOCKED (guard self-protection, role={role})",
+            f"Target: {rel_path}\n"
+            f"Role:   {role}\n\n"
+            ".claude/hooks/** and .claude/settings{,.local}.json define this\n"
+            "clone's enforcement; only core changes them (governance-core\n"
+            "upgrade / sync_infra). Request the change via a proposal with\n"
+            "handoff_to: core."
+        )
+
+    # The rest of .claude/ is writable by the agent working in this repo
     if rel_path.startswith(".claude/") or rel_path == ".claude":
         sys.exit(0)
 

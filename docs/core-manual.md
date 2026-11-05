@@ -102,8 +102,21 @@ Edits to `constitution/total.md`, `constitution/agent.core.md`, and
 `CLAUDE.md` must go through the `/iterate-constitution` skill
 (constitution 第十三条); `edit-write-guard` blocks direct Edit/Write of those
 three files. After authoring, `tools/regen_constitution.py` regenerates
-`CLAUDE.md` (which is generated — never hand-edit it). Role detection reads
-the `.role` file at the repo root (`core`).
+`CLAUDE.md` (which is generated — never hand-edit it). Role detection is
+config-derived (P-0129): the single agent in `.governance/config.json`
+resolves to `core`. The root `.role` file is retired and no longer read.
+
+### Agent identity (P-0129)
+
+One implementation, `governance_core/hooks/_guard_common.py`
+(`resolve_agent` / `detect_role`), is shared by every guard, session-context,
+merge-audit, `proposal_lib.detect_agent` and `regen_constitution` (tools load
+it by path). Rules: a single-agent config resolves to its only agent;
+otherwise the clone directory name must equal one `agents[].clone_dir`. The
+git branch never decides identity. An unresolvable identity is fail-closed:
+edit-write-guard blocks every write and names the reason;
+`governance-core doctor` exits 10 with the same reason. Non-core agents may
+not Edit/Write their own `.claude/hooks/**` or `.claude/settings*.json`.
 
 ## 6. Releasing
 

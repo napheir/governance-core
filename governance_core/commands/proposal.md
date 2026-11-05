@@ -113,7 +113,8 @@ scope (建议): 加 rules.allow.txt 一行 + Phase 0 走 /iterate-constitution
 6. **自动 emit** proposal_suggest 三路召回 ①②③ 到 stdout（P-0124；best-effort，
    召回失败只 WARN 不阻断 create）
 
-`--agent` 缺省时由 git 分支自动检测（master → core，feature/rules-* → rules，...）。
+`--agent` 缺省时按本 clone 的身份自动确定：clone 目录对照 `.governance/config.json` 的
+`agents[].clone_dir`（单 agent 配置即唯一 agent），与检出的分支无关；身份无法解析时报错，需显式传 `--agent`。
 
 Agent 收到 scaffold 路径后，**填充各段内容**（直接 Edit 文件 body 部分，不动 frontmatter）。
 

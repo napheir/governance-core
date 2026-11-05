@@ -18,12 +18,13 @@ Scope 外的文件对 agent 为**只读**（可通过 Read/Grep/Glob 访问，�
 ### 第2款 跨仓库写入禁止
 
 当多个仓库作为 Claude Code 的 working directories 挂载时：
-- **每个 agent 只能修改其启动仓库内的文件**
-- 从 `agent-trade/` 启动的 agent 不得修改 `agent-core/`、`agent-rules/`、`agent-data/` 中的文件
-- 从 `agent-rules/` 启动的 agent 不得修改 `agent-core/`、`agent-trade/`、`agent-data/` 中的文件
-- 从 `agent-data/` 启动的 agent 不得修改 `agent-core/`、`agent-rules/`、`agent-trade/`、`agent-research/` 中的文件
-- 从 `agent-research/` 启动的 agent 不得修改 `agent-core/`、`agent-rules/`、`agent-trade/`、`agent-data/` 中的文件
+- **每个 agent 只能修改其启动 clone 内的文件**：从 `agent-<x>/` 启动的业务 agent 不得修改任何兄弟 clone
+  （其他 `agent-*/`，含 `agent-core/`）中的文件
 - 唯一例外：core agent 从 `agent-core/` 工作目录启动时，可按需修改所有仓库
+- **agent 身份**由其 clone 目录对照 `.governance/config.json` 的 `agents[].clone_dir` 确定，与检出的分支无关；
+  身份无法解析时，写操作一律拦截（P-0129）
+- 非 core agent 不得修改定义自身执行机制的文件：`.claude/hooks/**`、`.claude/settings.json`、
+  `.claude/settings.local.json`
 
 ### 第3款 技术执行机制（四层 + 一层）
 

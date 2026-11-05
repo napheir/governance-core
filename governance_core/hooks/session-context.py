@@ -39,25 +39,43 @@ def _detect_repo_root():
 
 
 def _detect_role(root):
-    """Detect agent role from branch name."""
+    """Return (agent, branch, is_core, note) for the session's clone.
+
+    Identity is config-derived (P-0129, shared _guard_common): the clone
+    directory is matched against .governance/config.json agents[].clone_dir;
+    the branch is reported and checked against the agent's configured branch
+    but never decides identity. Read-only hook: an unresolvable identity is
+    reported in `note` instead of blocking.
+    """
     try:
         result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             capture_output=True, text=True, timeout=5, cwd=root,
         )
-        branch = result.stdout.strip()
+        branch = result.stdout.strip() or "unknown"
     except Exception:
-        return "core", "unknown"
+        branch = "unknown"
 
-    role_map = {
-        "master": "core", "main": "core",
-        "feature/rules": "rules", "feature/trade": "trade",
-        "feature/data": "data", "feature/research": "research",
-    }
-    for prefix, role in role_map.items():
-        if branch.startswith(prefix) or branch == prefix:
-            return role, branch
-    return "core", branch
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    try:
+        from _guard_common import TopologyError, load_topology, resolve_agent
+    except ImportError as exc:
+        return ("<unresolved>", branch, False,
+                f"[WARN] identity unresolved: cannot import _guard_common ({exc})")
+    try:
+        agent = resolve_agent(root)
+        topo = load_topology(root)
+    except TopologyError as exc:
+        return ("<unresolved>", branch, False,
+                f"[WARN] identity unresolved: {exc} -- run governance-core doctor")
+    note = ""
+    for entry in topo["agents"]:
+        if (entry["name"] == agent and "branch" in entry
+                and branch not in ("unknown", "HEAD")
+                and entry["branch"] != branch):
+            note = (f"[WARN] clone of agent '{agent}' is on branch '{branch}', "
+                    f"configured branch is '{entry['branch']}'")
+    return agent, branch, agent == topo["core"], note
 
 
 def _read_recent_state(root, max_entries=2):
@@ -620,16 +638,18 @@ def main():
     if not root:
         sys.exit(0)
 
-    role, branch = _detect_role(root)
+    role, branch, is_core, identity_note = _detect_role(root)
     state_summary = _read_recent_state(root)
     proposals = _check_proposals(root, role)
     open_handoffs = _check_open_handoffs(root, role)  # sender-anchored debt
     git_hygiene = _check_git_hygiene(root)
     skill_drift = _check_skill_drift(root)
-    cross_clone_drift = _check_cross_clone_drift(role)
+    cross_clone_drift = _check_cross_clone_drift("core" if is_core else role)
 
-    output = [
-        f"[Session Context] agent={role}, branch={branch}",
+    output = [f"[Session Context] agent={role}, branch={branch}"]
+    if identity_note:
+        output.append(identity_note)
+    output += [
         "Recent state:",
         state_summary,
     ]

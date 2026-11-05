@@ -34,15 +34,10 @@ MERGE_PATTERNS = [
 # Tools directory (relative to project root)
 SCOPE_CHECK = "tools/check_scope.py"
 
-# Agent role detection from branch name
-BRANCH_ROLE_MAP = {
-    "master": "core",
-    "main": "core",
-    "feature/rules": "rules",
-    "feature/trade": "trade",
-    "feature/data": "data",
-    "feature/research": "research",
-}
+# This hook's own clone (two levels above .claude/hooks/).
+_REPO_ROOT = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+)
 
 
 def is_merge_command(command: str) -> bool:
@@ -54,20 +49,22 @@ def is_merge_command(command: str) -> bool:
 
 
 def detect_role() -> str:
-    """Detect current agent role from git branch."""
-    try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, timeout=5,
-        )
-        branch = result.stdout.strip()
-    except Exception:
-        return "core"
+    """Return this clone's agent name from config ("" if unresolvable).
 
-    for prefix, role in BRANCH_ROLE_MAP.items():
-        if branch.startswith(prefix) or branch == prefix:
-            return role
-    return "core"
+    Config-derived identity (P-0129, shared _guard_common): the clone
+    directory is matched against .governance/config.json agents[].clone_dir;
+    the git branch is not used. Non-blocking hook: failure returns "" and
+    the caller skips the audit with a notice.
+    """
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    try:
+        from _guard_common import TopologyError, resolve_agent
+    except ImportError:
+        return ""
+    try:
+        return resolve_agent(_REPO_ROOT)
+    except TopologyError:
+        return ""
 
 
 def run_scope_audit(role: str) -> str:
@@ -134,6 +131,10 @@ def main() -> None:
     changed = count_changed_files()
 
     sys.stdout.write(f"[merge-audit] Detected merge operation ({changed} files changed).\n")
+    if not role:
+        sys.stdout.write("[merge-audit] Agent identity unresolved; scope audit "
+                         "skipped. Run: governance-core doctor\n")
+        sys.exit(0)
 
     audit_result = run_scope_audit(role)
     sys.stdout.write(audit_result + "\n")

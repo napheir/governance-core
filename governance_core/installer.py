@@ -1025,6 +1025,24 @@ def _report_auth_lifecycle(payload: dict[str, Any],
                 "REVOKED" if revoked else "not revoked")
 
 
+def _load_guard_common(project_root: Path):
+    """Load the guards' _guard_common module the way the hooks see it.
+
+    Prefers the installed copy (<project>/.claude/hooks/, what the guards
+    actually execute); falls back to the package source copy.
+    """
+    import importlib.util
+    for candidate in (project_root / CLAUDE_DIR / "hooks" / "_guard_common.py",
+                      PKG_ROOT / "hooks" / "_guard_common.py"):
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_gc_guard_common_doctor", candidate)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+    raise FileNotFoundError("no _guard_common.py in .claude/hooks/ or package")
+
+
 def doctor(project_root: Path) -> int:
     project_root = project_root.resolve()
     cfg_path = project_root / CONFIG_REL
@@ -1052,6 +1070,16 @@ def doctor(project_root: Path) -> int:
     if not clauses_dir.exists() or not list(clauses_dir.glob("art_*.md")):
         logger.error("[doctor] no clauses in .governance/clauses/")
         return 5
+    # P-0129: this clone's agent identity must resolve from config -- the
+    # guards fail closed (block every write) when it does not.
+    guard_common = _load_guard_common(project_root)
+    identity_err = guard_common.identity_failure(str(project_root))
+    if identity_err:
+        logger.error("[doctor] agent identity unresolved: %s -- this clone's "
+                     "directory name must equal one agents[].clone_dir",
+                     identity_err)
+        return 10
+    agent_name = guard_common.resolve_agent(str(project_root))
     # P-0067: verify every shipped hook is registered in settings.local.json
     settings_path = project_root / CLAUDE_DIR / "settings.local.json"
     if not settings_path.exists():
@@ -1126,9 +1154,9 @@ def doctor(project_root: Path) -> int:
         except (OSError, subprocess.SubprocessError) as _exc:
             logger.info("[doctor] token-scope check skipped: %s", _exc)
     logger.info("[doctor] OK: project=%s consumer_id=%r ritual_phrase=%r "
-                "agents=%d hooks=%d clauses=%d hooks_registered=%d",
+                "agent=%s agents=%d hooks=%d clauses=%d hooks_registered=%d",
                 cfg["project_name"], cfg["authorization"]["consumer_id"],
-                cfg["ritual_phrase"], len(cfg["agents"]),
+                cfg["ritual_phrase"], agent_name, len(cfg["agents"]),
                 len(list(hooks_dir.glob("*.py"))),
                 len(list(clauses_dir.glob("art_*.md"))),
                 len(registered))

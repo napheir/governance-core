@@ -35,10 +35,8 @@ chore(deps): upgrade numpy to 1.26
 
 ### 分支规范
 - `master` — 主分支，不直接推送
-- `feature/rules-algorithm` — rules-agent 工作分支
-- `feature/trade-strategy` — trade-agent 工作分支
-- `feature/data-analysis` — data-agent 工作分支
-- `feature/research` — research-agent 工作分支
+- `feature/<agent>` — 各业务 agent 的工作分支，按 `.governance/config.json` 的 `agents[].branch` 登记
+- 分支只决定代码落在哪里，**不决定 agent 身份**：身份由 clone 目录对照 `agents[].clone_dir` 确定（P-0129）
 - PR 合并到 master，合并前必须通过 scope gate
 
 ---

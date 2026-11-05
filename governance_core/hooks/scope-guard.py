@@ -12,15 +12,12 @@ Three enforcement layers (for non-core agents):
      commands, forces agents to use Edit/Write tools (which are guarded
      by edit-write-guard.py)
 
-Branch-based role detection:
-  master / main       -> core   (governance authority, no restrictions)
-  feature/trade-*     -> trade  (blocked from other agent repos)
-  feature/rules-*     -> rules  (blocked from other agent repos)
-  feature/data-*      -> data   (blocked from other agent repos)
-  feature/research-*  -> research (blocked from other agent repos)
-  feature/models-*    -> models (blocked from other agent repos)
-  feature/simu-*      -> simu   (blocked from other agent repos)
-  unknown             -> core   (fail-open to most permissive)
+Config-derived role detection (P-0129, via _guard_common): the clone this
+hook is installed in is matched against .governance/config.json
+agents[].clone_dir -- the git branch and the process cwd are not used.
+  config core_agent_name  -> core   (governance authority, no restrictions)
+  any other agent <name>  -> <name> (blocked from sibling agent repos)
+  unresolvable identity   -> <unresolved> (all non-core layers apply)
 
 Exit codes:
   0 = allow command
@@ -77,8 +74,16 @@ PYTHON_WRITE_PATTERNS = [
 _OWN_PATTERN = own_repo_pattern(__file__)
 
 
+# This hook's own clone (two levels above .claude/hooks/). Identity is
+# resolved for the clone the hook is installed in, never the process cwd.
+_REPO_ROOT = os.path.normpath(
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
+)
+
+
 def _detect_role() -> str:
-    return _detect_role_shared()
+    """Detect this clone's agent role from config (delegates to shared)."""
+    return _detect_role_shared(_REPO_ROOT)
 
 
 def _block(role, reason, detail):
@@ -140,7 +145,7 @@ def main():
             _block(role, "Bash command BLOCKED",
                    f"Command references {repo_name} which is outside "
                    f"your scope.\n"
-                   f"Current branch role: {role} (only core can access "
+                   f"Agent role: {role} (only core can access "
                    f"other repos)\n\n"
                    "For READ access: use Read/Grep/Glob tools (not Bash).\n"
                    "For WRITE access: request explicit user authorization.")

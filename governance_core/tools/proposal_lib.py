@@ -99,34 +99,48 @@ def _id_ledger_path() -> Path:
 # Agent detection
 # ---------------------------------------------------------------------------
 
-_ROLE_MAP = {
-    "master": "core",
-    "main": "core",
-    "feature/rules": "rules",
-    "feature/trade": "trade",
-    "feature/data": "data",
-    "feature/research": "research",
-}
+def _load_guard_common():
+    """Load the hooks' _guard_common module by path (single identity impl).
+
+    Installed layout: <repo>/.claude/hooks/_guard_common.py; package-source
+    layout: governance_core/hooks/_guard_common.py next to this tools/ dir.
+    """
+    import importlib.util
+    here = Path(__file__).resolve().parent
+    for candidate in (REPO_ROOT / ".claude" / "hooks" / "_guard_common.py",
+                      here.parent / "hooks" / "_guard_common.py"):
+        if candidate.is_file():
+            spec = importlib.util.spec_from_file_location(
+                "_gc_guard_common", candidate)
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module
+    raise RuntimeError(
+        "cannot locate _guard_common.py (.claude/hooks/ missing?); "
+        "run governance-core upgrade"
+    )
 
 
 def detect_agent() -> str:
-    """Detect current agent from git branch name.
+    """Return the agent that owns this clone (config-derived, P-0129).
 
-    Returns one of {core, rules, trade, data, research}. Falls back to 'core'
-    if branch is unrecognized (e.g., detached HEAD on master).
+    The clone directory is matched against .governance/config.json
+    agents[].clone_dir (a single-agent config resolves to its only agent);
+    the git branch is not used, so a business clone on `master` is still
+    that business agent.
+
+    Raises:
+        RuntimeError: identity cannot be resolved -- the 0.45.x fallback to
+            'core' filed business agents' proposals under core.
     """
+    guard_common = _load_guard_common()
     try:
-        result = subprocess.run(
-            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-            capture_output=True, text=True, timeout=5, cwd=REPO_ROOT,
-        )
-        branch = result.stdout.strip()
-    except Exception:
-        return "core"
-    for prefix, role in _ROLE_MAP.items():
-        if branch == prefix or branch.startswith(prefix):
-            return role
-    return "core"
+        return guard_common.resolve_agent(str(REPO_ROOT))
+    except guard_common.TopologyError as exc:
+        raise RuntimeError(
+            f"agent identity unresolved: {exc}. Pass --agent explicitly "
+            f"or run governance-core doctor"
+        ) from None
 
 
 # ---------------------------------------------------------------------------
@@ -1527,11 +1541,11 @@ def archive_proposal(proposal_id: str, force_agent: bool = False) -> tuple[Path,
 
     # P-0057 Phase 2: owner enforcement
     owner = fm.get("agent")
-    current = detect_agent()
+    current = None if force_agent else detect_agent()
     if not force_agent and owner != current:
         raise PermissionError(
-            f"Owner mismatch on archive: {proposal_id} agent={owner!r} but current "
-            f"branch detects agent={current!r}. Cross-owner archive blocked per "
+            f"Owner mismatch on archive: {proposal_id} agent={owner!r} but this "
+            f"clone resolves to agent={current!r}. Cross-owner archive blocked per "
             f"Art.5.1 (P-0057 Phase 2). If this is a legitimate core cleanup, "
             f"pass --force-agent."
         )
@@ -1944,10 +1958,14 @@ def _cmd_classify(args):
             "mode": "llm-deferred",
         }
 
+    try:
+        log_agent = detect_agent()
+    except RuntimeError:
+        log_agent = "<unresolved>"  # classify is advisory: log, don't fail
     entry = {
         "ts": _dt.datetime.now().astimezone().isoformat(timespec="seconds"),
         "session_id": _classify_session_id(),
-        "agent": detect_agent(),
+        "agent": log_agent,
         "paths": [p.replace("\\", "/") for p in args.path],
         "description": args.description,
         "verdict": result["verdict"],

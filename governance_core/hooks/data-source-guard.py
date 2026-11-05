@@ -26,8 +26,8 @@ Detection:
 Exemptions:
   1. Cross-repo or write-target is prepare_dataset.py / dataset_registry.py
      itself (code edits, not data reads)
-  2. Role is core or branch is master (governance authority — must be
-     able to read any data for audit)
+  2. Role is core -- the config's core_agent_name, resolved from the clone
+     (P-0129; governance authority -- must be able to read any data for audit)
   3. Subagent context (transcript_path contains /subagents/) — parent's
      Agent invocation already passed governance
   4. Interactive REPL session marker in transcript (python -i / Jupyter
@@ -258,7 +258,7 @@ def main() -> None:
 
     role = _detect_role()
 
-    # Core / master-branch authority bypass — governance must be able to
+    # Core authority bypass (config-derived identity) — governance must be able to
     # audit data freely. Subagent transcripts also bypass via _entry_allowed.
     if role == "core":
         sys.exit(0)
