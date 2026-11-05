@@ -535,6 +535,18 @@ pruned):
   `--no-ff --no-commit` and then commit. Fast-forward merges create no commit
   and run neither hook; they only move the branch onto commits that were
   already gated where they were made.
+  Since 0.48.5 (P-0131) core history comes from config, not a literal local
+  `master`: `upstream_branch` first, then `core_branches` (refs that do not
+  resolve are skipped; the first that does is the content reference). A
+  merge import passes only when it is core content: identical to that ref,
+  or staged as `MERGE_HEAD` has it with no merged-in commit outside core
+  history touching it (`git log --cc --name-only MERGE_HEAD ^HEAD ^<core
+  refs>`, which also lists files changed inside merge commits). Files that
+  another agent's commits bring in fail as `IMPORTED_OUT_OF_SCOPE: <hash>
+  <subject>`; when those commits are in fact already on the core branch, the
+  local core refs are stale -- `git fetch` and retry. `config.upstream_branch`
+  is now optional (`None` when unset) instead of defaulting to
+  `origin/master`.
 
 ## 11. Candidate pipeline (P-0065)
 

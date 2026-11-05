@@ -44,7 +44,9 @@ class GovernanceConfig:
     core_branches: tuple[str, ...]
     ritual_phrase: str
     agents: tuple[AgentSpec, ...]
-    upstream_branch: str
+    # Remote-tracking ref of the core branch (e.g. origin/master), or None
+    # when the config does not set one (optional; P-0131).
+    upstream_branch: str | None
     raw: dict[str, Any]
     # authorization.consumer_id from .governance/config.json, or None when the
     # config carries no authorization block / consumer_id. Defaulted last so
@@ -100,7 +102,8 @@ def load_config(project_root: str | Path | None = None) -> GovernanceConfig:
         core_branches=tuple(raw["core_branches"]),
         ritual_phrase=raw["ritual_phrase"],
         agents=agents,
-        upstream_branch=raw.get("upstream_branch", "origin/master"),
+        upstream_branch=(raw["upstream_branch"]
+                         if "upstream_branch" in raw else None),
         raw=raw,
         consumer_id=consumer_id,
     )

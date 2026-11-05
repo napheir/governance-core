@@ -227,10 +227,12 @@ def test_pre_merge_commit_installed_lf_and_idempotent(tmp_path: Path) -> None:
 
 def _auto_merge_fixture(tmp_path: Path, name: str = "agent-platform",
                         agent_edit: bool = False) -> Path:
-    """Clone on feature/platform; branch core-next (not master -- like a
-    fetched origin/master ahead of a stale local master) carries a core
-    infra change. agent_edit: feature/platform also changed that core file
-    (committed before the gate), in a region git merges cleanly."""
+    """Clone on feature/platform (own commit), local master stale at base.
+    core-next carries a core infra change; core-tip changes that file again
+    and is the fetched upstream (refs/remotes/origin/master = config
+    upstream_branch), so core-next is core history whose content differs
+    from the core ref. agent_edit: feature/platform also changed that core
+    file (committed before the gate), in a region git merges cleanly."""
     clone = _clone(tmp_path, name)
     assert _install(clone) == 0
     (clone / "agent_rules" / "platform.allow.txt").write_text("services/\n",
@@ -255,6 +257,13 @@ def _auto_merge_fixture(tmp_path: Path, name: str = "agent-platform",
     tool.write_text(text.replace("# core section\n", "# core section v2\n"),
                     encoding="utf-8")
     assert _git_nohooks(clone, "commit", "-q", "-am", "core infra").returncode == 0
+    assert _git(clone, "checkout", "-q", "-b", "core-tip").returncode == 0
+    text = tool.read_text(encoding="utf-8")
+    tool.write_text(text.replace("# core section v2\n", "# core section v3\n"),
+                    encoding="utf-8")
+    assert _git_nohooks(clone, "commit", "-q", "-am", "core infra 2").returncode == 0
+    assert _git(clone, "update-ref", "refs/remotes/origin/master",
+                "core-tip").returncode == 0
     target = "core-next" if name == "agent-core" else "feature/platform"
     assert _git(clone, "checkout", "-q", target).returncode == 0
     return clone
@@ -289,11 +298,12 @@ def test_auto_merge_carrying_agent_edit_to_core_file_rejected(tmp_path: Path) ->
     assert "tools/rotate_state.py" in res.stdout + res.stderr
 
 
-def test_auto_merge_from_current_master_commits(tmp_path: Path) -> None:
-    """Imports identical to master are recognized without MERGE_HEAD."""
+def test_auto_merge_from_upstream_ahead_of_stale_master_commits(tmp_path: Path) -> None:
+    """Imports identical to the core ref are recognized without MERGE_HEAD.
+    The core ref is config upstream_branch (origin/master), not a hard-coded
+    local master -- which /sync-repos leaves stale in business clones."""
     clone = _auto_merge_fixture(tmp_path)
-    assert _git(clone, "branch", "-f", "master", "core-next").returncode == 0
-    res = _git(clone, "merge", "--no-edit", "master")
+    res = _git(clone, "merge", "--no-edit", "origin/master")
     assert res.returncode == 0, res.stdout + res.stderr
     assert not _merge_head(clone)
 
@@ -303,4 +313,97 @@ def test_core_auto_merge_commits(tmp_path: Path) -> None:
     assert _git(clone, "checkout", "-q", "-b", "side", "master").returncode == 0
     assert _commit_file(clone, "anywhere/file.txt").returncode == 0
     res = _git(clone, "merge", "--no-edit", "core-next")
+    assert res.returncode == 0, res.stdout + res.stderr
+
+
+# --- P-0131: merge imports are attributed to their source commits ---------
+
+def _conclude(clone: Path, ref: str) -> subprocess.CompletedProcess:
+    """Merge `ref` with --no-ff --no-commit, then conclude via pre-commit."""
+    res = _git(clone, "merge", "--no-ff", "--no-commit", ref)
+    assert res.returncode == 0, res.stdout + res.stderr
+    return _git(clone, "commit", "--no-edit")
+
+
+def test_merge_from_upstream_core_history_passes(tmp_path: Path) -> None:
+    """The /sync-repos path: merging the fetched upstream imports core files."""
+    clone = _auto_merge_fixture(tmp_path)
+    res = _conclude(clone, "origin/master")
+    assert res.returncode == 0, res.stdout + res.stderr
+
+
+def test_merge_of_foreign_agent_branch_out_of_scope_commit_rejected(tmp_path: Path) -> None:
+    """Another business agent's branch: its out-of-scope commit is no longer
+    passed as a merge import just because it is staged as MERGE_HEAD."""
+    clone = _auto_merge_fixture(tmp_path)
+    assert _git(clone, "checkout", "-q", "-b", "feature/content", "master").returncode == 0
+    (clone / "content").mkdir()
+    (clone / "content" / "page.md").write_text("# page\n", encoding="utf-8")
+    assert _git_nohooks(clone, "add", "-A").returncode == 0
+    assert _git_nohooks(clone, "commit", "-q", "-m", "content: add page").returncode == 0
+    assert _git(clone, "checkout", "-q", "feature/platform").returncode == 0
+    res = _conclude(clone, "feature/content")
+    out = res.stdout + res.stderr
+    assert res.returncode != 0, out
+    assert "IMPORTED_OUT_OF_SCOPE" in out and "content: add page" in out, out
+
+
+def test_merge_of_foreign_agent_branch_evil_merge_resolution_rejected(tmp_path: Path) -> None:
+    """A file slipped into a merge commit on the other branch (differs from
+    both of its parents) is attributed to that merge commit."""
+    clone = _auto_merge_fixture(tmp_path)
+    assert _git(clone, "checkout", "-q", "-b", "feature/content", "master").returncode == 0
+    assert _git(clone, "merge", "--no-ff", "--no-commit", "core-next").returncode == 0
+    (clone / "tools" / "evil.py").write_text("x = 1\n", encoding="utf-8")
+    assert _git_nohooks(clone, "add", "-A").returncode == 0
+    assert _git_nohooks(clone, "commit", "-q", "-m", "content: sync core").returncode == 0
+    assert _git(clone, "checkout", "-q", "feature/platform").returncode == 0
+    res = _conclude(clone, "feature/content")
+    out = res.stdout + res.stderr
+    assert res.returncode != 0, out
+    assert "tools/evil.py" in out and "IMPORTED_OUT_OF_SCOPE" in out, out
+    assert "tools/rotate_state.py" not in out, out  # core history still passes
+
+
+def test_own_branch_pull_merge_with_core_history_passes(tmp_path: Path) -> None:
+    """Pulling the agent's own diverged remote branch, which itself merged
+    core history, is not mistaken for a foreign import."""
+    clone = _auto_merge_fixture(tmp_path)
+    assert _git(clone, "checkout", "-q", "-b", "remote-side").returncode == 0
+    (clone / "services" / "b.py").write_text("b = 1\n", encoding="utf-8")
+    assert _git_nohooks(clone, "add", "-A").returncode == 0
+    assert _git_nohooks(clone, "commit", "-q", "-m", "platform b").returncode == 0
+    assert _git_nohooks(clone, "merge", "-q", "--no-ff", "-m", "sync",
+                        "core-next").returncode == 0
+    assert _git(clone, "update-ref", "refs/remotes/origin/feature/platform",
+                "remote-side").returncode == 0
+    assert _git(clone, "checkout", "-q", "feature/platform").returncode == 0
+    (clone / "services" / "c.py").write_text("c = 1\n", encoding="utf-8")
+    assert _git_nohooks(clone, "add", "-A").returncode == 0
+    assert _git_nohooks(clone, "commit", "-q", "-m", "platform c").returncode == 0
+    res = _conclude(clone, "origin/feature/platform")
+    assert res.returncode == 0, res.stdout + res.stderr
+
+
+def test_merge_from_upstream_with_in_scope_conflict_resolution_passes(tmp_path: Path) -> None:
+    """deva-vani's first sync with real branch commits: a STATE.md conflict
+    (both sides prepended an entry) resolved by keeping both; in scope."""
+    clone = _auto_merge_fixture(tmp_path)
+    allow = clone / "agent_rules" / "platform.allow.txt"
+    allow.write_text("services/\nSTATE.md\n", encoding="utf-8")
+    assert _git_nohooks(clone, "commit", "-q", "-am", "scope").returncode == 0
+    state = clone / "STATE.md"
+    base = state.read_text(encoding="utf-8")
+    state.write_text("### platform entry\n" + base, encoding="utf-8")
+    assert _git_nohooks(clone, "commit", "-q", "-am", "platform state").returncode == 0
+    assert _git(clone, "checkout", "-q", "core-tip").returncode == 0
+    state.write_text("### core entry\n" + base, encoding="utf-8")
+    assert _git_nohooks(clone, "commit", "-q", "-am", "core state").returncode == 0
+    assert _git(clone, "update-ref", "refs/remotes/origin/master", "core-tip").returncode == 0
+    assert _git(clone, "checkout", "-q", "feature/platform").returncode == 0
+    res = _git(clone, "merge", "--no-ff", "--no-commit", "origin/master")
+    assert res.returncode != 0  # STATE.md conflict
+    state.write_text("### core entry\n### platform entry\n" + base, encoding="utf-8")
+    assert _git(clone, "add", "STATE.md").returncode == 0
+    res = _git(clone, "commit", "--no-edit")
     assert res.returncode == 0, res.stdout + res.stderr

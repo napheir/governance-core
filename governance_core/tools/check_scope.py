@@ -13,15 +13,21 @@ Without --agent the agent is this clone's config-derived identity (P-0129,
 shared _guard_common.resolve_agent). The config's core agent has no scope
 restriction (same as the guards) and always passes.
 
+Core history is config-derived (P-0131): `upstream_branch` and
+`core_branches`. During a merge commit a scope-external file passes only as
+core content -- identical to the core ref, or staged as MERGE_HEAD has it
+with no merged-in commit outside core history touching it. Files another
+agent's commits bring in are rejected as IMPORTED_OUT_OF_SCOPE.
+
 --merge-commit runs for an automatic (conflict-free) merge commit, which
 never runs pre-commit. git writes MERGE_HEAD only after that hook, so a
-merge import cannot be told from an agent edit there: scope-external files
-not identical to master defer the commit (exit 1). git keeps the merge
-staged; `git commit` concludes it through the pre-commit gate, which
-compares them with MERGE_HEAD.
+merge import cannot be attributed there: scope-external files not identical
+to the core ref defer the commit (exit 1). git keeps the merge staged;
+`git commit` concludes it through the pre-commit gate.
 """
 
 import argparse
+import json
 import importlib.util
 import subprocess
 import sys
@@ -62,19 +68,67 @@ def _topology_or_exit():
         print(f"[FATAL] agent topology unresolved: {exc}")
         sys.exit(1)
 
-def same_as_master(path: str, staged: bool = False) -> bool:
-    """Return True if `path` equals master's version (change came from master).
+def _git_ok(*args: str) -> bool:
+    """Return True when `git <args>` exits 0 in ROOT (any error -> False)."""
+    try:
+        r = subprocess.run(["git", *args], cwd=ROOT, stdout=subprocess.DEVNULL,
+                           stderr=subprocess.DEVNULL, check=False)
+    except OSError:
+        return False
+    return r.returncode == 0
 
-    staged=True (the pre-commit gate) compares the STAGED content with master:
-    comparing HEAD there (master..HEAD) passed any staged edit to a file whose
-    committed version still matched master -- e.g. a business agent rewriting
-    its own agent_rules/<agent>.allow.txt in the commit under check (P-0129).
-    staged=False (baseline mode) compares the committed HEAD.
-    A missing `master` ref or any git error counts as "not the same".
+
+def load_core_refs() -> list:
+    """Return the core-history refs that resolve in this clone (P-0131).
+
+    From .governance/config.json: `upstream_branch` first (optional; e.g.
+    origin/master, which /sync-repos fetches -- a business clone's local
+    core branch is usually stale), then each `core_branches` entry (required,
+    non-empty list of str, as in config.py). Refs that do not resolve to a
+    commit here are skipped. Exits 1 when `core_branches` is missing or
+    ill-typed (no default, Art.4).
     """
-    cmd = (["git", "diff", "--cached", "--quiet", "master", "--", path]
+    cfg_path = ROOT / ".governance" / "config.json"
+    try:
+        cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        print(f"[FATAL] cannot read {cfg_path}: {exc}")
+        sys.exit(1)
+    branches = cfg["core_branches"] if "core_branches" in cfg else None
+    if (not isinstance(branches, list) or not branches
+            or not all(isinstance(b, str) and b for b in branches)):
+        print(f"[FATAL] {cfg_path}: 'core_branches' must be a non-empty list "
+              f"of branch names")
+        sys.exit(1)
+    candidates = list(branches)
+    if "upstream_branch" in cfg and isinstance(cfg["upstream_branch"], str) \
+            and cfg["upstream_branch"]:
+        candidates.insert(0, cfg["upstream_branch"])
+    refs = []
+    for ref in candidates:
+        if ref not in refs and _git_ok("rev-parse", "-q", "--verify",
+                                       f"{ref}^{{commit}}"):
+            refs.append(ref)
+    return refs
+
+
+def same_as_core(path: str, staged: bool, core_ref) -> bool:
+    """Return True if `path` equals its version on `core_ref` (core content).
+
+    `core_ref` is the authoritative core ref (first of load_core_refs());
+    None -- no core ref resolves -- is never "the same".
+    staged=True (the pre-commit gate) compares the STAGED content: comparing
+    HEAD there passed any staged edit to a file whose committed version still
+    matched core -- e.g. a business agent rewriting its own
+    agent_rules/<agent>.allow.txt in the commit under check (P-0129).
+    staged=False (baseline mode) compares the committed HEAD.
+    Any git error counts as "not the same".
+    """
+    if core_ref is None:
+        return False
+    cmd = (["git", "diff", "--cached", "--quiet", core_ref, "--", path]
            if staged else
-           ["git", "diff", "--quiet", "master..HEAD", "--", path])
+           ["git", "diff", "--quiet", core_ref, "HEAD", "--", path])
     try:
         r = subprocess.run(cmd, cwd=ROOT, stdout=subprocess.DEVNULL,
                            stderr=subprocess.DEVNULL, check=False)
@@ -103,9 +157,10 @@ def same_as_merge_head(path: str) -> bool:
 
     During a merge commit (pre-commit runs only when the merge did not
     auto-commit, e.g. after conflict resolution) HEAD is still the pre-merge
-    commit, so same_as_master()'s master..HEAD comparison flags every file
-    the merge brings in. The staged version equal to the merged-in commit
-    means the change came from the merge, not from this agent (P-0129 F9).
+    commit, so a HEAD comparison flags every file the merge brings in. The
+    staged version equal to the merged-in commit means the change came from
+    the merge, not from this agent (P-0129 F9) -- but not that it came from
+    core: see foreign_import_commits().
     """
     r = subprocess.run(
         ["git", "diff", "--cached", "--quiet", "MERGE_HEAD", "--", path],
@@ -113,6 +168,42 @@ def same_as_merge_head(path: str) -> bool:
         check=False,
     )
     return r.returncode == 0
+
+
+def foreign_import_commits(core_refs: list) -> dict:
+    """Map each file the merge imports from outside core history to its commits.
+
+    Runs `git log --cc --name-only MERGE_HEAD ^HEAD ^<core ref>...`: the
+    commits this merge brings in that are not in core history, with the
+    files each changed -- for merge commits (`--cc`) only the files that
+    differ from every parent, i.e. conflict resolutions and edits slipped
+    into the merge. A file staged as MERGE_HEAD has it is a legitimate import
+    only if no such commit touched it (P-0131): before, any merged-in branch
+    -- another business agent's included -- passed whole.
+
+    Returns {path: ["<short hash> <subject>", ...]}. With no resolvable core
+    ref every incoming commit counts (fail-closed). A git failure exits 1.
+    """
+    sep = "\x1e"
+    cmd = ["git", "-c", "core.quotepath=false", "log", "--cc", "--name-only",
+           f"--format={sep}%h %s", "MERGE_HEAD", "^HEAD",
+           *[f"^{ref}" for ref in core_refs]]
+    try:
+        out = subprocess.check_output(cmd, cwd=ROOT, encoding="utf-8",
+                                      errors="replace",
+                                      stderr=subprocess.DEVNULL)
+    except (OSError, subprocess.CalledProcessError):
+        print("[FATAL] git log of the merged-in commits failed.")
+        sys.exit(1)
+    touched: dict = {}
+    commit = None
+    # split("\n"), not splitlines(): splitlines() also breaks on \x1e.
+    for line in out.split("\n"):
+        if line.startswith(sep):
+            commit = line[len(sep):]
+        elif line.strip() and commit is not None:
+            touched.setdefault(line.strip().replace("\\", "/"), []).append(commit)
+    return touched
 
 
 def run(cmd: str) -> str:
@@ -142,10 +233,9 @@ def load_rules(agent: str):
     ]
 
     deny = []
-    # IMPORTANT: 'core' is governance agent. It must be able to modify shared files
-    # (agent_rules/, tools/, .baseline_commit, etc.). Therefore, shared deny rules
-    # are NOT applied to core.
-    if agent != "core" and deny_file.exists():
+    # Only non-core agents reach here: main() passes the core agent before
+    # loading rules, so it is never subject to the shared deny list.
+    if deny_file.exists():
         deny = [
             line.strip().lstrip("\ufeff").replace("\\", "/")
             for line in deny_file.read_text(encoding="utf-8", errors="replace").splitlines()
@@ -251,50 +341,66 @@ def main():
         print("[OK] No file changes detected.")
         return
 
+    # Core history (config upstream_branch / core_branches); the first ref
+    # that resolves is the authoritative core content (P-0131).
+    core_refs = load_core_refs()
+    core_ref = core_refs[0] if core_refs else None
+
     violations = []
 
     for f in files:
         f = f.replace("\\", "/")
-        # Shared governance files may change due to merging master into an agent branch.
-        # If the file is identical to master, it is NOT an agent-owned modification and should be skipped.
-        if args.agent != "core":
-            if (
-                    f == ".baseline_commit"
-                    or f.startswith("agent_rules/")
-                    or f == "tools/check_scope.py"
-                    or f == "tools/print_startup_pack.ps1"
-            ):
-                if same_as_master(f, args.staged_only):
-                    continue
+        # Shared governance files reach agent branches through core merges.
+        # Identical to core, they are not an agent-owned modification.
+        if (
+                f == ".baseline_commit"
+                or f.startswith("agent_rules/")
+                or f == "tools/check_scope.py"
+                or f == "tools/print_startup_pack.ps1"
+        ):
+            if same_as_core(f, args.staged_only, core_ref):
+                continue
 
         if is_under(f, deny):
             violations.append((f, "DENY(shared)"))
         elif not is_under(f, allow):
             violations.append((f, "OUT_OF_SCOPE"))
 
-    # During merge commits, filter out files whose staged content equals the
-    # merged-in commit (MERGE_HEAD) or master: these are merge imports (core
-    # infrastructure), not agent modifications. A file the agent changed while
-    # resolving the merge matches neither and stays a violation.
+    # During merge commits a scope-external file passes when it is core
+    # content (identical to the core ref), or when it is staged exactly as
+    # the merged-in commit has it AND no merged-in commit outside core
+    # history touched it. A file another agent's commits brought in, or one
+    # changed while resolving the merge, stays a violation (P-0131).
+    imported_foreign = False
     if violations and in_merge():
+        foreign = foreign_import_commits(core_refs)
         filtered = []
         for f, reason in violations:
-            if not (same_as_merge_head(f) or same_as_master(f, args.staged_only)):
+            if same_as_core(f, args.staged_only, core_ref):
+                continue
+            if f in foreign:
+                commits = foreign[f]
+                more = f" +{len(commits) - 1} more" if len(commits) > 1 else ""
+                filtered.append((f, f"IMPORTED_OUT_OF_SCOPE: {commits[0]}{more}"))
+                imported_foreign = True
+            elif not same_as_merge_head(f):
                 filtered.append((f, reason))
         skipped = len(violations) - len(filtered)
         if skipped:
             print(f"[INFO] Merge detected: {skipped} scope-external file(s) "
-                  f"identical to the merged-in commit (allowed)")
+                  f"imported from core history (allowed)")
         violations = filtered
 
     # Automatic merge commit: MERGE_HEAD does not exist yet, so only files
-    # identical to master can be recognized as imports here. Defer the rest
-    # to the pre-commit gate instead of judging them.
+    # identical to the core ref can be recognized as imports here. Defer the
+    # rest to the pre-commit gate instead of judging them.
     if violations and args.merge_commit:
-        pending = [(f, r) for f, r in violations if not same_as_master(f, True)]
+        pending = [(f, r) for f, r in violations
+                   if not same_as_core(f, True, core_ref)]
         if pending:
             print(f"\n[DEFER] Automatic merge commit stopped: {len(pending)} "
-                  f"scope-external file(s) not identical to master:\n")
+                  f"scope-external file(s) not identical to "
+                  f"{core_ref or 'any core ref'}:\n")
             for f, reason in pending:
                 print(f"  - {f:60s}  [{reason}]")
             print("\nThe merge is staged and not committed. Conclude it with")
@@ -311,6 +417,13 @@ def main():
         print("\nAction:")
         print("  - Move changes into allowed directories")
         print("  - OR submit proposal for shared modules")
+        if imported_foreign:
+            print("  - IMPORTED_OUT_OF_SCOPE: the merge brings in commits that are "
+                  "not in core history")
+            print(f"    ({', '.join(core_refs) or 'no core ref resolves'}). "
+                  "Cross-agent changes reach this branch through core.")
+            print("    If those commits are already on the core branch, fetch it "
+                  "(git fetch) and retry.")
         sys.exit(1)
 
     print("[PASS] All modified files are within allowed scope.")

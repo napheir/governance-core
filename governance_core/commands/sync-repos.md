@@ -42,8 +42,14 @@ git merge --no-ff --no-commit origin/master
 `--no-commit` 让每次 merge 都在 Step 4 经 pre-commit 门禁提交。若用普通
 `git merge`：无冲突时 git 会自动提交，此时运行的是 pre-merge-commit 而不是
 pre-commit（governance-core 0.48.3+ 两者都装）。pre-merge-commit 运行时
-MERGE_HEAD 尚未写入，它只能认出与本地 `master` 相同的文件；其余越界文件会让
+MERGE_HEAD 尚未写入，它只能认出与 core 引用相同的文件；其余越界文件会让
 这次自动提交 `[DEFER]`（exit 1）。merge 仍保持暂存状态，照常进入 Step 4 即可。
+
+core 引用来自 config（governance-core 0.48.5+）：`upstream_branch`（如
+`origin/master`，Step 2 刚 fetch 过）优先，其次 `core_branches`。门禁只放行来自
+core 历史的导入；若 merge 带进了不在 core 历史里的提交（例如另一个业务 agent 的
+分支），这些提交触及的越界文件会被判 `IMPORTED_OUT_OF_SCOPE` 并点名提交。
+跨 agent 的改动应先进 master，再由本命令同步。
 
 ### Step 3: 自动解决冲突
 

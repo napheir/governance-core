@@ -17,6 +17,24 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-05 — 实施 P-0131：merge 导入按来源提交归属（0.48.5，未发布）
+
+- owner「OK，实施P-0131。批准P-0132，同意你的建议。完成131后可以你直接做132」：P-0132 pending → approved（Open Questions 按倾向）；
+  P-0131 → in-progress。
+- `check_scope.py`：`load_core_refs()` 从 config 取 `upstream_branch`（优先）+ `core_branches`，只留能解析的；`same_as_master` →
+  `same_as_core(path, staged, core_ref)`；`foreign_import_commits()` 用 `git log --cc --name-only MERGE_HEAD ^HEAD ^<core refs>`
+  列出非 core 历史的导入提交（含 merge 提交里的冲突解决 / 夹带）；merge 过滤：与 core 引用相同，或与 MERGE_HEAD 相同且无非 core 提交
+  触及，才放行，否则 `IMPORTED_OUT_OF_SCOPE: <hash> <subject>` 并提示 fetch；pre-merge-commit 的 DEFER 也改比 core 引用；
+  去掉 `"core"` / `"master"` 字面量。`config.py`：`upstream_branch: str | None`，去掉 `.get` 默认值。
+- 踩坑：`str.splitlines()` 也会在 `\x1e` 处断行，把 git log 的记录分隔符吃掉，导致归属为空（门禁放行）；改 `split("\n")`。
+- 测试：0.48.3 的自动 merge fixture 改为"core-next 属 core 历史、origin/master 指向更新的 core-tip"；+7（upstream 领先陈旧 master 时
+  自动 merge 直接提交、从 upstream 同步通过、合并其他 agent 分支的越界提交被拒、对方 merge 提交夹带越界被拒、pull 自己的分支通过、
+  deva-vani 的 STATE.md 冲突场景通过、硬编码检查 ×2）。对 0.48.4 反向校准：5 例 FAIL，放行类 6 例两版都过。
+  全量 pytest 357 passed，脚本风格 28 个全过。版本 0.48.4 → 0.48.5。**发布待 owner 确认**。
+- 文档：`/sync-repos`、core-manual、skill `verify-guard-fires-in-its-target-context` 各补一段。
+- deva-vani 回报 P-0129 验收第 1–3 项全部 BLOCKED（第 4 项早已通过）→ P-0129 可结案；另报 edit-write-guard 对 `shared_state/`
+  一律放行（可写他 agent 的提案目录），请勿公开，待处理。
+
 ### 2026-11-05 — 起草 P-0132（授权码泄露修复，A + C）
 
 - owner 选 A + C（码移出 git + 按码吊销 / 停用 schema 1；不轮换密钥、不重签其他消费者、不 yank）。P-0132 已起草并提交评审（pending）。
@@ -36,19 +54,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   auth-guard 对 schema 1 直接放行）与当前 schema 2 码（到期 2027-05-18，吊销只能按 consumer_id，会冻结 hub 自己）。
   deva-vani / trade_agent 仓库为 PRIVATE；其他公开仓库（multi-agent-template 等）当前无跟踪的 config。本机可见的消费者码全是 schema 2。
   吊销 feed URL 签在每个 schema 2 码里，指向 hub 公开仓库的 raw 地址。方案对比交 owner 讨论。
-
-### 2026-11-05 — 起草 P-0131 + rotate_state 归档标题修复（0.48.4）
-
-- **P-0131 已起草并提交评审（pending）**：merge 导入按来源提交归属。现状：`check_scope.py:279-290` 对与 MERGE_HEAD 相同的越界文件
-  整体放行、不看来源；core 分支写死为本地 `master`，而 config 已有 `core_branches` / `upstream_branch`（`config.py:103` 对后者用了
-  `.get` 默认值）。方案：从 config 推导 core 引用；只放行来自 core 历史的导入，非 core 提交（含 merge 提交的冲突解决 / 夹带改动，
-  `--diff-merges=dense-combined` 实测可列出）触及的越界文件判 `IMPORTED_OUT_OF_SCOPE` 并点名提交。三个 phase。
-  验收命令逐条预跑：`-k foreign` 会命中已有的 `test_foreign_pre_commit_left_alone`，改为 `-k foreign_agent_branch`。
-- **deva-vani 0.48.3 实测**：四个 clone 都有 pre-commit + pre-merge-commit，doctor / check_agent_roles / audit_sub_constitutions 全过；
-  `--no-ff --no-commit` + `git commit` 的 sync 通过；DEFER 路径尚未在真实 sync 中触发。
-- **rotate_state 首次归档写入上游标题**（deva-vani 报）：`ARCHIVE_HEADER` 写死 "# Trade Agent 项目状态文档 — Archive"，hub 自己的
-  STATE_ARCHIVE.md 也是这个标题。改为取 STATE.md 的 H1 加 " -- archive"（无 H1 时 "# STATE archive"）；已有归档保留原标题。
-  首次新建归档时 stats 带 `archive_created` 并 WARN 提示与 STATE.md 一起暂存；`/wrap-up` Step 2 写明 rotation 改动或新建
-  STATE_ARCHIVE.md 时必须一起 add。hub 归档标题已改。
-- **测试**：+3（`test_rotate_state_archive.py`），对旧版反向校准 3 例全 FAIL。全量 pytest 350 passed，脚本风格全过。
-  版本 0.48.3 → 0.48.4。**发布待 owner 确认**。

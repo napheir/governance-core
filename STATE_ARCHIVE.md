@@ -5,6 +5,23 @@
 
 ---
 
+### 2026-11-05 — 起草 P-0131 + rotate_state 归档标题修复（0.48.4）
+
+- **P-0131 已起草并提交评审（pending）**：merge 导入按来源提交归属。现状：`check_scope.py:279-290` 对与 MERGE_HEAD 相同的越界文件
+  整体放行、不看来源；core 分支写死为本地 `master`，而 config 已有 `core_branches` / `upstream_branch`（`config.py:103` 对后者用了
+  `.get` 默认值）。方案：从 config 推导 core 引用；只放行来自 core 历史的导入，非 core 提交（含 merge 提交的冲突解决 / 夹带改动，
+  `--diff-merges=dense-combined` 实测可列出）触及的越界文件判 `IMPORTED_OUT_OF_SCOPE` 并点名提交。三个 phase。
+  验收命令逐条预跑：`-k foreign` 会命中已有的 `test_foreign_pre_commit_left_alone`，改为 `-k foreign_agent_branch`。
+- **deva-vani 0.48.3 实测**：四个 clone 都有 pre-commit + pre-merge-commit，doctor / check_agent_roles / audit_sub_constitutions 全过；
+  `--no-ff --no-commit` + `git commit` 的 sync 通过；DEFER 路径尚未在真实 sync 中触发。
+- **rotate_state 首次归档写入上游标题**（deva-vani 报）：`ARCHIVE_HEADER` 写死 "# Trade Agent 项目状态文档 — Archive"，hub 自己的
+  STATE_ARCHIVE.md 也是这个标题。改为取 STATE.md 的 H1 加 " -- archive"（无 H1 时 "# STATE archive"）；已有归档保留原标题。
+  首次新建归档时 stats 带 `archive_created` 并 WARN 提示与 STATE.md 一起暂存；`/wrap-up` Step 2 写明 rotation 改动或新建
+  STATE_ARCHIVE.md 时必须一起 add。hub 归档标题已改。
+- **测试**：+3（`test_rotate_state_archive.py`），对旧版反向校准 3 例全 FAIL。全量 pytest 350 passed，脚本风格全过。
+  版本 0.48.3 → 0.48.4。**发布待 owner 确认**。
+
+
 ### 2026-11-05 — 发布 v0.48.3（自动 merge 提交门禁 + 子宪法审计）
 
 - owner 确认后推送 1 commit（e5e3dfb），`gh release create v0.48.3`；workflow 42028597542：build / publish-pypi success。
