@@ -28,15 +28,31 @@ DEFAULT_ROOT = Path(__file__).resolve().parent.parent
 
 _ENTRY_RE = re.compile(r"^### (\d{4}-\d{2}-\d{2})")
 
-ARCHIVE_HEADER = """# Trade Agent 项目状态文档 — Archive
+ARCHIVE_HEADER_TEMPLATE = """{title}
 
-> 此文件包含 STATE.md 的历史条目（超出滚动窗口的部分）。
-> 按时间倒序排列（最新在前）。
-> 由 `tools/rotate_state.py` 自动管理。
+> Entries rotated out of STATE.md (older than the rolling window, or over
+> the per-day cap). Newest first. Managed by `tools/rotate_state.py`.
 
 ---
 
 """
+
+
+def archive_header(state_header: str) -> str:
+    """Return the header written when STATE_ARCHIVE.md is first created.
+
+    The title is STATE.md's own H1 plus " -- archive" (the installer seeds
+    "# STATE -- <project>"), or "# STATE archive" when STATE.md has no H1.
+    A fixed upstream title ("Trade Agent ...") used to be written into every
+    consumer's first archive. Existing archives keep their header.
+
+    Args:
+        state_header: STATE.md text before its first dated entry.
+    """
+    for line in state_header.split("\n"):
+        if line.startswith("# "):
+            return ARCHIVE_HEADER_TEMPLATE.format(title=f"{line.rstrip()} -- archive")
+    return ARCHIVE_HEADER_TEMPLATE.format(title="# STATE archive")
 
 
 def parse_entries(content: str) -> tuple[str, list[tuple[str, str, list[str]]]]:
@@ -175,7 +191,8 @@ def rotate(
     archive_content = "\n".join(archive_parts)
 
     # Merge with existing archive if it exists
-    if archive_file.exists():
+    created = not archive_file.exists()
+    if not created:
         existing_archive = archive_file.read_text(encoding="utf-8")
         # Insert new archive entries after the header
         if "---\n" in existing_archive:
@@ -191,13 +208,19 @@ def rotate(
         else:
             merged = existing_archive + "\n" + archive_content
     else:
-        merged = ARCHIVE_HEADER + archive_content + "\n"
+        merged = archive_header(header) + archive_content + "\n"
 
     # Write files
     state_file.write_text(new_state, encoding="utf-8")
     archive_file.write_text(merged, encoding="utf-8")
+    if created:
+        # A new, untracked file: committing STATE.md without it drops the
+        # rotated entries from git (deva-vani, 0.48.3).
+        logger.warning("[rotate] created %s -- untracked: stage it together "
+                       "with STATE.md", archive_file)
 
     stats["action"] = "rotated"
+    stats["archive_created"] = created
     stats["state_lines"] = len(new_state.split("\n"))
     stats["archive_lines"] = len(merged.split("\n"))
     return stats

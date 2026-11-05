@@ -21,6 +21,9 @@ owner: core
 ## 2. Git 提交
 
 - `git add` 本阶段所有改动文件（逐个列出，不用 `git add -A`）
+- **Step 1 的 rotation 改动或新建了 `STATE_ARCHIVE.md` 时，必须与 `STATE.md` 一起 add**：
+  只提交 `STATE.md` 等于从 git 里删掉被轮转的条目。首次 rotation 新建的是未跟踪文件，
+  用 `git status --short STATE.md STATE_ARCHIVE.md` 确认两者都已暂存
 - 使用 Conventional Commits 格式提交（见宪法第九条）
 - 一个阶段对应一个提交，不拆散也不积压
 

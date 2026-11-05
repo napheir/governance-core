@@ -1,10 +1,16 @@
-# Trade Agent 项目状态文档 — Archive
+# STATE — governance-core -- archive
 
-> 此文件包含 STATE.md 的历史条目（超出滚动窗口的部分）。
-> 按时间倒序排列（最新在前）。
-> 由 `tools/rotate_state.py` 自动管理。
+> Entries rotated out of STATE.md (older than the rolling window, or over
+> the per-day cap). Newest first. Managed by `tools/rotate_state.py`.
 
 ---
+
+### 2026-11-05 — 发布 v0.48.2（deva-vani 升级反馈修复）
+
+- owner 确认后推送 1 commit（8921f45），`gh release create v0.48.2`；workflow 42023042411：build / publish-pypi success。
+- 核实：`gh release list` Latest = v0.48.2；PyPI 版本端点 `/pypi/governance-core/0.48.2/json` 含 wheel + sdist。
+- 已通知 deva-vani：四个 clone 升 0.48.2 后各跑一次 doctor / check_agent_roles / audit_sub_constitutions；P-0129 验收第 1–3 项待 agent-platform 会话实测回报。
+
 
 ### 2026-11-05 — deva-vani 升级反馈修复（0.48.2）
 
