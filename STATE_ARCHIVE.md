@@ -6,6 +6,22 @@
 
 ---
 
+### 2026-11-05 — P-0130 Phase C：check_agent_roles / audit_hooks v2 + 文档，版本 0.48.0（未发布）
+
+- **G3**：`check_agent_roles.py` 重写：agent / clone 根取自 config（单 agent = 本仓库，多 clone = `<父目录>/<clone_dir>`）；核心角色 =
+  `<agent>-*.md`；文件名前缀为**另一个** agent 名才算跨 scope（共享角色不报）；`main(root, argv)` 可测试。
+- **G4**：`audit_hooks.py` 重写：clone 取自 config，期望 hook = `hooks_manifest.json`（与 installer / doctor 同源，复用
+  `installer._load_hooks_manifest` / `_hook_file_of`）；检查存在、注册、重复、与 core 副本一致、settings.json 无 hooks/plugins；
+  删除写死的 5 clone 与已不存在的 `sensi-guard.py` / `pipeline-check.py`。**偏差**：删除 `_check_stale_local_refs` —— 它按字面
+  `agent-core` 判断 sync_infra 的集中引用模型，在 installer（`${CLAUDE_PROJECT_DIR}` 本地接线）装出的消费者里只会误报。
+- **G5**：skill `settings-json-merge-semantics` 第 3 条改为"settings.json 不放 hooks / enabledPlugins；只含 projectRoot 锚不是漂移"，
+  与 sync_infra / 0.47.0 一致。**G6**：`skill-scenario-clusters.md` 示例改为 `platform`；另把 `check_scope.py` 注释示例去业务化。
+- **门禁**：带引号的上游角色名 token grep 在 `governance_core/`（除测试与一次性迁移工具）为零。core-manual 新增 "Agent enums come from config"。
+- **测试**：新增 `test_check_agent_roles.py` 7 例、`test_audit_hooks.py` 7 例（clone 由真实 `install()` 生成，含 installer 写的 projectRoot
+  settings.json 不误报）。全量 pytest 334 passed，脚本风格全过；hub 上 doctor / audit_proposals / audit_knowledge / audit_hooks /
+  check_agent_roles 全部通过。版本 0.47.0 → 0.48.0，wheel 干净。**发布待 owner 确认**。
+
+
 ### 2026-11-05 — P-0130 Phase B：knowledge `owner` 改为取自 config
 
 - **G2**：`contracts/knowledge_frontmatter_schema.md` 1.2.0 → 1.3.0，§3.2 不再列上游角色表，`owner` = config `agents[].name`
