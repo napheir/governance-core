@@ -72,12 +72,14 @@ git checkout --ours -- CLAUDE.md && git add CLAUDE.md
 
 ```bash
 git add -u
-git commit --no-verify --no-edit
+git commit --no-edit
 ```
 
-**必须 `--no-verify`**：merge 引入的 scope 外文件会触发 pre-commit hook。
-这是合法操作 — `check_scope.py` 的 MERGE_HEAD 检测在 `git merge` 阶段生效，
-但 commit 阶段 MERGE_HEAD 已消费，需要 `--no-verify` 补偿。
+**不要用 `--no-verify`**（governance-core 0.48.1+）：结束 merge 的这次 commit 时 MERGE_HEAD
+仍存在，pre-commit 的 `check_scope.py --staged-only` 把"暂存内容与 MERGE_HEAD 完全一致"的
+文件识别为 merge 导入、放行。若 pre-commit 仍拒绝，说明有文件既不等于 master 版本也不等于
+本 clone 的允许范围——即冲突解决时夹带了越界改动：停下来报告，不要绕过。（0.47.0 / 0.48.0
+的门禁比较的是 `master..HEAD`，会误拦 merge 导入；遇到时先 `git merge --abort`，升级后重来。）
 
 ### Step 5: 恢复本地变更
 
@@ -99,13 +101,16 @@ upgrade` 安装的 hook / gc tool / gc command / clause 源 + `.governance/insta
 manifest）存在一个边界，须在 merge 后处理：
 
 - **文件内容：git merge 能正确携带。** 这些文件在多 clone 消费者里是 git-tracked 的，
-  merge 把 master 的新版本内容并入各 clone。`check_scope.py` 的 `MERGE_HEAD` 豁免 +
-  Step 4 的 `--no-verify` 正是为此设计——所以 git merge 是 gc-managed 文件内容到达
+  merge 把 master 的新版本内容并入各 clone。`check_scope.py` 的 `MERGE_HEAD` 豁免
+  正是为此设计——所以 git merge 是 gc-managed 文件内容到达
   clone 的**合法且正确**通道（不会"销毁本地 drift"：merge 走的是三方合并/冲突，不是
   无声覆盖）。
-- **manifest 不随 git 走。** `installed_files.json`（及含签名 auth_code 的 `config.json`）
-  是 **gitignored** 的，只由 `governance-core upgrade` 写。merge 后 clone 的文件已是新版，
-  但 manifest 仍停在旧 baseline / 旧 version。
+- **manifest 不随 git 走。** `installed_files.json`（0.46.0 起在 `.gitignore` 受管运行时块里）
+  只由 `governance-core upgrade` 写。merge 后 clone 的文件已是新版，但 manifest 仍停在旧
+  baseline / 旧 version。（`.governance/config.json` 目前仍是 git-tracked 的。）
+- **master 停止跟踪的文件会被 merge 删除。** 例如在 master 上 `git rm --cached
+  .claude/settings.local.json` 后，各 clone merge 时该文件被删，直到下一次 upgrade 重新生成前
+  **该 clone 没有任何 hook 注册**。所以这类 merge 之后要立即对该 clone 跑下面的 upgrade。
 
 **后果与对策**：这不破坏 clone 的功能（hook 跑的是新文件、包是新版本），但会让该 clone
 **下一次 `governance-core upgrade` 把 merge 进来的 gc-managed 文件误判为 drift**（噪音，

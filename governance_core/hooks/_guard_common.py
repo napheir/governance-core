@@ -53,8 +53,12 @@ def hook_repo_root() -> str:
 
 
 def _root(repo_root: str) -> str:
-    """Normalize `repo_root`; empty means the repo this module lives in."""
-    return os.path.normpath(repo_root or hook_repo_root())
+    """Absolute, normalized `repo_root`; empty means the repo this module lives in.
+
+    abspath matters for a relative argument: normpath('.') keeps '.', whose
+    basename is '' -- identity would always be unresolved for detect_role('.').
+    """
+    return os.path.normpath(os.path.abspath(repo_root or hook_repo_root()))
 
 
 def load_topology(repo_root: str) -> dict:

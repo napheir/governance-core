@@ -12,7 +12,9 @@ hard-coded here before, so the tool rejected every other project's agents).
 Checks:
 1. Each agent has at least one core role file named after it (<agent>-*.md)
 2. No cross-scope role files: a role file whose name prefix is ANOTHER
-   agent's name (shared roles such as design-system-owner.md are fine)
+   business agent's name. Shared roles (design-system-owner.md) and the core
+   agent's roles (core-auditor.md is installed into every clone; core roles
+   tracked on master reach business clones through merges) are fine.
 3. Role files have YAML frontmatter with name / description / tools
 
 Clone roots: a single-agent project checks this repo; a multi-clone project
@@ -39,7 +41,14 @@ def load_agent_roots(root: Path) -> dict:
     return {a.name: root.parent / a.clone_dir for a in cfg.agents}
 
 
-def check_agent(name: str, clone_root: Path, agent_names: set) -> list:
+def load_core_name(root: Path) -> str:
+    """Return the config's core agent name (fail loud)."""
+    from governance_core.config import load_config
+    return load_config(root).core_agent_name
+
+
+def check_agent(name: str, clone_root: Path, agent_names: set,
+                core_name: str) -> list:
     """Check one agent's role definitions. Returns list of issue strings."""
     issues = []
     roles_dir = clone_root / ".claude" / "agents"
@@ -65,8 +74,10 @@ def check_agent(name: str, clone_root: Path, agent_names: set) -> list:
             f"({name}-<role>.md)"
         )
 
-    # Check 2: no role file claimed by another agent's name
-    others = agent_names - {name}
+    # Check 2: no role file claimed by another BUSINESS agent's name. The core
+    # agent's roles are governance roles present in every clone (installer
+    # ships core-auditor.md everywhere; master-tracked core roles merge in).
+    others = agent_names - {name, core_name}
     for rf in role_files:
         prefix = rf.stem.split("-")[0]
         if prefix in others:
@@ -107,6 +118,7 @@ def main(root: Path = ROOT, argv: list | None = None) -> int:
 
     agent_roots = load_agent_roots(root)
     agent_names = set(agent_roots)
+    core_name = load_core_name(root)
     if args.agent:
         if args.agent not in agent_roots:
             print(f"Unknown agent: {args.agent}")
@@ -119,7 +131,7 @@ def main(root: Path = ROOT, argv: list | None = None) -> int:
     all_issues = []
     for name, clone_root in to_check.items():
         print(f"Checking {name}...")
-        issues = check_agent(name, clone_root, agent_names)
+        issues = check_agent(name, clone_root, agent_names, core_name)
         all_issues.extend(issues)
         if not issues:
             print(f"  [OK] {name}: all checks passed")

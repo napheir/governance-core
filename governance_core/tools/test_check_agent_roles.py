@@ -65,7 +65,7 @@ def test_missing_core_role_is_high(project: Path) -> None:
     (project / "agent-content" / ".claude" / "agents" / "content-specialist.md").unlink()
     roles = project / "agent-content" / ".claude" / "agents"
     (roles / "writer.md").write_text(ROLE.format(n="writer"), encoding="utf-8")
-    issues = car.check_agent("content", project / "agent-content", set(AGENTS))
+    issues = car.check_agent("content", project / "agent-content", set(AGENTS), "core")
     assert any("missing core role" in i for i in issues), issues
 
 
@@ -73,7 +73,7 @@ def test_role_named_after_other_agent_is_cross_scope(project: Path) -> None:
     roles = project / "agent-platform" / ".claude" / "agents"
     (roles / "content-writer.md").write_text(ROLE.format(n="content-writer"),
                                              encoding="utf-8")
-    issues = car.check_agent("platform", project / "agent-platform", set(AGENTS))
+    issues = car.check_agent("platform", project / "agent-platform", set(AGENTS), "core")
     assert any("cross-scope" in i and "content-writer.md" in i for i in issues), issues
 
 
@@ -81,7 +81,7 @@ def test_shared_role_is_not_cross_scope(project: Path) -> None:
     roles = project / "agent-core" / ".claude" / "agents"
     (roles / "design-system-owner.md").write_text(
         ROLE.format(n="design-system-owner"), encoding="utf-8")
-    issues = car.check_agent("core", project / "agent-core", set(AGENTS))
+    issues = car.check_agent("core", project / "agent-core", set(AGENTS), "core")
     assert not issues, issues
 
 
@@ -99,3 +99,14 @@ def test_single_agent_checks_this_repo(tmp_path: Path) -> None:
         ROLE.format(n="core-auditor"), encoding="utf-8")
     assert car.load_agent_roots(repo) == {"core": repo}
     assert car.main(repo, []) == 0
+
+
+def test_core_roles_in_business_clone_are_not_cross_scope(project: Path) -> None:
+    """installer ships core-auditor.md to every clone and master-tracked core
+    roles merge into business clones: governance roles, not a violation."""
+    roles = project / "agent-platform" / ".claude" / "agents"
+    for stem in ("core-auditor", "core-pm"):
+        (roles / f"{stem}.md").write_text(ROLE.format(n=stem), encoding="utf-8")
+    issues = car.check_agent("platform", project / "agent-platform", set(AGENTS), "core")
+    assert not issues, issues
+    assert car.main(project / "agent-core", []) == 0

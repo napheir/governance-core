@@ -6,6 +6,17 @@
 
 ---
 
+### 2026-11-05 — 发布 v0.48.0 + 归档 P-0130
+
+- P-0130 验收 1–6 通过（第 6 项提案内写的 cmd 引号转义有误，同一门禁直接执行 exit 1 = 干净；已记入完成 note），reconcile 后
+  `implemented`（69772dc），owner 同意后归档到 `proposals/_archive/2026/`（e23b3d1）。
+- 推送 4 commits，`gh release create v0.48.0`；release workflow 42006873502：build / publish-pypi success；核实 `gh release list`
+  Latest = v0.48.0，PyPI latest = 0.48.0（wheel + sdist）。
+- 已通知 deva-vani（`artifacts/deva-vani/2026-11-05-release-0.48.0.md` + 会话消息），并按 owner 要求催报 P-0129 验收第 4 项实测
+  （越权 Edit / Bash 写兄弟 clone / 改自身 guard / 越界 commit）。
+- 待办：P-0129 等回报后 complete + 归档；sync_infra 集中 hook 与 installer 本地接线冲突（见记忆）、条款去业务化、mab 侧、授权码进 git，各自另开。
+
+
 ### 2026-11-05 — P-0130 Phase C：check_agent_roles / audit_hooks v2 + 文档，版本 0.48.0（未发布）
 
 - **G3**：`check_agent_roles.py` 重写：agent / clone 根取自 config（单 agent = 本仓库，多 clone = `<父目录>/<clone_dir>`）；核心角色 =

@@ -258,3 +258,11 @@ def test_core_bash_to_sibling_clone_passes(project: Path) -> None:
     clone = project / "agent-core"
     res = _bash(clone, "ls ../agent-content")
     assert res.returncode == 0, res.stderr
+
+
+def test_relative_repo_root_resolves(project: Path, monkeypatch) -> None:
+    """detect_role('.') from inside a clone resolves (abspath, not normpath)."""
+    gc = _load_guard_common()
+    monkeypatch.chdir(project / "agent-experience")
+    assert gc.detect_role(".") == "experience"
+    assert gc.resolve_agent(".") == "experience"

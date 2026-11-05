@@ -26,7 +26,7 @@ from datetime import datetime
 # .governance/config.json / .governance/core_keywords.json are absent (e.g.
 # a non-onboarded clone). Onboarded projects always supply both, so these
 # generic placeholders never surface in normal operation.
-_DEFAULT_AGENTS: List[str] = []
+_DEFAULT_AGENTS: List[tuple] = []  # (agent name, clone_dir)
 _DEFAULT_CORE_KEYWORDS = {
     "第零条": ["<your_ritual_phrase>"],
     "第四条": ["禁止", ".get(", "default", "硬编码", "配置"],
@@ -42,9 +42,15 @@ def _load_governance_config():
     """Load .governance/config.json + .governance/core_keywords.json from the
     consuming project's repo root; fall back to generic defaults on miss.
 
-    Returns: (project_root, agents_list, core_keywords_dict).
+    Returns: (project_root, [(agent name, clone_dir), ...], core_keywords_dict).
+
+    Clones are located next to this clone (its parent directory) by their
+    config `clone_dir` -- not via `install_root`, whose meaning differs between
+    layouts (it is the project's parent in a nested <root>/<project>/<clone>
+    layout, so `install_root/agent-<name>` never existed there; P-0129 F7
+    family).
     """
-    repo_root = Path(__file__).parent.parent  # consuming project root
+    repo_root = Path(__file__).resolve().parent.parent  # consuming project root
     cfg_path = repo_root / ".governance" / "config.json"
     keywords_path = repo_root / ".governance" / "core_keywords.json"
 
@@ -55,13 +61,11 @@ def _load_governance_config():
     if cfg_path.exists():
         try:
             cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
-            install_root = cfg.get("install_root")
-            if install_root:
-                project_root = Path(install_root)
             core_name = cfg.get("core_agent_name", "core")
             agents_field = cfg.get("agents", [])
             if agents_field:
-                agents = [a["name"] for a in agents_field if a.get("name") != core_name]
+                agents = [(a["name"], a["clone_dir"]) for a in agents_field
+                          if a.get("name") != core_name]
         except (json.JSONDecodeError, KeyError, TypeError) as e:
             print(f"[audit_sub_constitutions] WARN: failed to parse {cfg_path}: {e}; using fallback", file=sys.stderr)
 
@@ -236,14 +240,14 @@ def main():
     print("开始审计各 agent 子宪法...")
     print()
 
-    for agent in AGENTS:
-        agent_dir = PROJECT_ROOT / f"agent-{agent}"
+    for agent, clone_dir in AGENTS:
+        agent_dir = PROJECT_ROOT / clone_dir
 
         if not agent_dir.exists():
-            print(f"[WARN] agent-{agent} 目录不存在，跳过")
+            print(f"[WARN] {clone_dir} ({agent}) 目录不存在，跳过")
             continue
 
-        print(f"[INFO] 检查 agent-{agent}...")
+        print(f"[INFO] 检查 {clone_dir} ({agent})...")
 
         # 获取所有子宪法修改 commit
         commits = get_constitution_commits(agent_dir)
