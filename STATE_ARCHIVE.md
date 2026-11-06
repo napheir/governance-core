@@ -5,6 +5,17 @@
 
 ---
 
+### 2026-11-06 — 发布 v0.49.2
+
+- owner「可以发」。推送 bcf0730..a2f825d（a90ece2 是 0.49.2 的代码，a2f825d 是 P-0133，只涉及 hub 自己的文件），
+  GitHub Release v0.49.2，release CI run 42178638282 success，PyPI 0.49.2 可见（wheel + sdist）。
+- 之前建议把 `regen_constitution.py:48` 写死的 `constitution/agent.md` 说明一起修进去，但这次没有放：
+  这行文字会写进每个 clone 生成的 CLAUDE.md，session-context 每次启动都跑 `regen --check`，
+  改了之后所有 clone 升级后都会提示"CLAUDE.md 过期"，而 hub 这边还要走 /iterate-constitution。
+  所以改为和 check_scope `.baseline_commit` / art_05 条款一起，以后单独处理。
+- 全局 Python 仍是 0.49.1。消费者用 `/upgrade`（`pip install -U`）自己升级。
+
+
 ### 2026-11-06 — 实施 P-0133：hub 启动时检查 python 是否在用仓库源码（B 方案第 6 步）
 
 - owner「批准P-0133」。新增 `maintainer/hub_python_check.py`（只用标准库，只发警告，始终 exit 0，不进包）：
