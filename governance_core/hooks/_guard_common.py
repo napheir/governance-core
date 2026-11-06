@@ -214,8 +214,7 @@ CROSS_REPO_PATTERNS = sibling_clone_patterns()
 # ---------------------------------------------------------------------------
 
 PROPOSAL_PARTITION = "proposals/{agent}/**"
-LIB_ONLY_PATTERNS = ("proposals/_id_ledger.json*", "_journal*.jsonl",
-                     "notices/**")
+LIB_ONLY_PATTERNS = ("proposals/_id_ledger.json*", "_journal*", "notices/**")
 
 
 def _config(repo_root: str) -> dict:

@@ -1029,3 +1029,63 @@ Two layers guard against command-line GitHub repository removal:
    emits (advisory — a `delete_repo` scope is loud-warned but does NOT fail
    doctor; gh-unavailable → treated as safe). To get to a safe state, re-auth to
    a scope set without `delete_repo`.
+
+## 15. Cross-agent write protection (P-0135, v0.51.0)
+
+Multi-agent projects only; every piece below is a no-op when `agents` has
+one entry. Contract: `contracts/shared_state_ownership.md`. All agents run as
+one OS user, so the guarantee is prevention on the common write paths, plus
+detection from core of anything that bypasses them, plus notice to the
+affected agent and its owner.
+
+**Branch scope audit (run by core).**
+```bash
+python tools/check_scope.py --audit-branch --agent <name> --repo ../<clone_dir> [--notify] [--json]
+python tools/check_scope.py --audit-branch --agent <name> --ref origin/<branch>   # after git fetch
+python tools/check_scope.py --agent <name>    # inside a business clone: advisory audit of its HEAD
+```
+- The clone's checked-out commit is fetched into `refs/gc-audit/<name>`.
+- The audit covers its net change since the merge-base with the core ref,
+  merge resolutions included. Rules are read from the core ref
+  (`git show <core ref>:agent_rules/<name>.allow.txt`).
+- A path passes if it matches the allow rules, its content is a version in
+  core history, or core deleted it too.
+- Exit codes: 0 = in scope, 1 = violations, 2 = could not run.
+- `--notify` writes an alert to the audited agent and to every owner of a
+  violating path.
+- `/sync-repos` (Step 0), `/audit` and `/publish-knowledge` run the audit.
+- The baseline mode and `.baseline_commit` are gone.
+
+**shared_state partitions.**
+- A business agent writes only `proposals/<self>/**` and the optional config
+  `shared_state_partitions` templates (e.g. `["todos/{agent}/**"]`).
+- Ledger, lock, `_journal*` and `notices/**`, plus the optional config
+  `shared_state_lib_only` globs, are written only by libs.
+- Enforced by:
+  - edit-write-guard (Edit/Write);
+  - scope-guard (redirects, `cp`/`mv`/`rm`/`touch`/`mkdir`/`ln`/`tee`/`sed -i`/`dd of=`;
+    also `--no-verify`, `commit -n` and `core.hooksPath`);
+  - proposal_lib: owner-or-core for every mutation; `archive --force-agent` and
+    `create --agent <other>` are core-only; State Log lines end in `by <actor>`.
+- Ownership is by path only. A flat collection with the owner in a
+  frontmatter field is unprotected until it moves to a `{agent}` layout.
+
+**Notices.**
+- Every lib write appends to the hash-chained `shared_state/_journal.jsonl`.
+  Consumer libs record theirs with
+  `governance_core.ownership.record_write(project_root, op, rel_path, sha_before, sha_after)`.
+- At SessionStart, the `foreign-change-notice.py` hook compares the agent's
+  partitions with `.governance/state_seen.json` (clone-local, gitignored).
+  Every change the agent did not make becomes a notice before the manifest
+  moves, attributed through the journal or marked "actor unknown".
+- The owner sees the notices in the UI (`systemMessage`) and the agent sees
+  them in its context. Every clone also shows the project-wide count of
+  un-acked notices.
+- Severity:
+  - info: an attributed lib write by the core agent, acked once shown;
+  - alert: everything else, which repeats until acked.
+
+```bash
+python tools/notices.py list [--all]
+python tools/notices.py ack <id>      # only when the owner says so
+```

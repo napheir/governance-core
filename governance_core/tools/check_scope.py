@@ -457,6 +457,9 @@ def main():
                         help="audit this ref of the current repo (default HEAD)")
     parser.add_argument("--json", action="store_true",
                         help="print the branch-audit report as JSON")
+    parser.add_argument("--notify", action="store_true",
+                        help="write a scope-violation notice to the audited "
+                             "agent and each owner (shared_state/notices/)")
     args = parser.parse_args()
     if args.merge_commit:
         args.staged_only = True
@@ -582,6 +585,30 @@ def main():
     print("[PASS] All modified files are within allowed scope.")
 
 
+def notify_violations(report: dict, project_root: Path = ROOT) -> list:
+    """Write a scope-violation alert to the audited agent and to every owner
+    of a violating path (contracts/shared_state_ownership.md §5). Returns
+    the (agent, notice id) pairs written."""
+    from governance_core import ownership
+    shared = ownership.shared_root(project_root)
+    me = ownership.topology(project_root)["self"]
+    by_agent: dict = {}
+    for v in report["violations"]:
+        for agent in [report["agent"], *v["owners"]]:
+            by_agent.setdefault(agent, []).append(v)
+    written = []
+    for agent, items in by_agent.items():
+        commits = sorted({c for v in items for c in v["commits"]})
+        detail = (f"branch audit of {report['agent']} @ {report['ref']} "
+                  f"(rules from {report['core_ref']}): "
+                  f"{len(items)} out-of-scope change(s)")
+        nid = ownership.write_notice(
+            shared, agent, kind="scope-violation", severity="alert", frm=me,
+            paths=[v["path"] for v in items], commits=commits, detail=detail)
+        written.append((agent, nid))
+    return written
+
+
 def _run_branch_audit(args, topology: dict) -> int:
     """Run the branch audit for main(); return the exit code (0/1/2)."""
     core_refs = load_core_refs()
@@ -604,6 +631,13 @@ def _run_branch_audit(args, topology: dict) -> int:
         print(json.dumps(report, ensure_ascii=False))
     else:
         _print_audit(report)
+    if args.notify and report["violations"]:
+        try:
+            for agent, nid in notify_violations(report):
+                if not args.json:
+                    print(f"[NOTICE] {agent}: {nid}")
+        except Exception as exc:  # noqa: BLE001 - the audit result stands
+            print(f"[WARN] notices not written: {exc}", file=sys.stderr)
     return 1 if report["violations"] else 0
 
 

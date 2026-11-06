@@ -135,6 +135,11 @@
           },
           {
             "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/foreign-change-notice.py\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
             "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/renewal-reminder.py\"",
             "timeout": 15
           },

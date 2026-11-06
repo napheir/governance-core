@@ -5,6 +5,19 @@
 
 ---
 
+### 2026-11-06 — P-0135 Phase 0：新增多 agent 内容归属契约（未发布）
+
+- owner 批准 P-0135（「OK，批准。都按你的建议来做」），7 个待定问题都按建议处理。各阶段单独提交，最后和 0.50.0 一起作为 0.51.0 发布。
+- 新增 `governance_core/contracts/shared_state_ownership.md` v1.0.0，规定：
+  - 分支范围审计：从 core 的 ref 读规则，审计范围是 merge-base 以来的净改动；
+  - shared_state 分区和只能经库写入的文件，后者可由可选配置 `shared_state_partitions` / `shared_state_lib_only` 声明；
+  - 提案属主检查，State Log 记录操作者；
+  - 写日志（哈希链）和上次所见清单；
+  - 通知分 info/alert 两级，以及送达 owner 的方式。
+- 与 deva-vani 对齐了 consumer 自有库（todo_lib）的接入方式：归属只按路径判断，平铺目录不享受检测；
+  consumer 的库可调用 `ownership.record_write` 记名；core 经库代写只发 info 通知（显示一次后自动确认），其余都是 alert。
+
+
 ### 2026-11-06 — 实施 P-0134：经提案批准启用 Workflow 多 agent 执行（0.50.0，未发布）
 
 - 起因：deva-vani 的上游建议。owner「起草 Workflow 多 agent 编排提案」→「批准」。

@@ -21,6 +21,7 @@
     "session-context.py":       {"event": "SessionStart",    "matcher": null},
     "candidate-reminder.py":    {"event": "SessionStart",    "matcher": null},
     "update-reminder.py":       {"event": "SessionStart",    "matcher": null},
-    "renewal-reminder.py":      {"event": "SessionStart",    "matcher": null}
+    "renewal-reminder.py":      {"event": "SessionStart",    "matcher": null},
+    "foreign-change-notice.py": {"event": "SessionStart",    "matcher": null}
   }
 }

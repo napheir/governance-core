@@ -54,6 +54,11 @@ FAIL_OPEN_GC_IMPORTERS: frozenset[str] = frozenset({
     # open (silent sys.exit(0)), so a broken package degrades discovery to
     # counts only -- never breaks SessionStart.
     "session-context.py",
+    # P-0135: the SessionStart foreign-change notice imports
+    # governance_core.ownership inside main()'s try; any failure exits 0
+    # without output, so a broken package silences it -- never breaks
+    # SessionStart.
+    "foreign-change-notice.py",
 })
 
 # Fail-CLOSED governance_core importers grandfathered pending a

@@ -17,6 +17,28 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-06 — P-0135 Phase 3：把别人改了你的内容告诉你和你的 owner（0.51.0，未发布）
+
+- 新增 `governance_core/ownership.py`，提供三类存储和一个公共接口：
+  - **写日志**：`_journal.jsonl` 只追加、带哈希链，超过 5 MB 轮转，链跨文件延续。
+  - **通知**：`notices/<agent>/<id>.json`，分 info 和 alert；确认后移到 `acked/`。
+  - **已见清单**：`.governance/state_seen.json`，存在各 clone 本地。
+  - **公共接口** `record_write(project_root, op, rel_path, sha_before, sha_after)`：
+    写入方是路径的属主时只更新它自己的清单；写入方不是属主时给属主发通知，core 发 info，其他人发 alert。
+- `scan()` 在会话启动时运行：属于本 agent 的分区里，凡是不是它自己改的变化都先存成通知，再更新清单。
+  能在日志里找到写入方就记名，找不到就标"来源不明"。第一次运行只建基线，不产生通知。单 agent 项目什么都不做。
+- 新 SessionStart hook `foreign-change-notice.py`：
+  - 内容同时发给 owner 界面（`systemMessage`）和 agent（`additionalContext`，要求它先向 owner 报告）。
+  - 每个 clone 都会显示全项目还没确认的通知数量，日志链断了会报警。
+  - info 显示一次后自动确认。
+  - 已登记到 `FAIL_OPEN_GC_IMPORTERS` 和 hooks_manifest。
+- `tools/notices.py list/ack`：agent 只能确认自己的通知，core 可以确认任何通知；alert 只有 owner 发话才确认。
+  proposal_lib 的 create / transition / link / handoff / orchestrate / archive 都会写日志；日志写失败只警告，这次改动会在属主那边显示为"来源不明"。
+- `check_scope --notify` 给被审计的 agent 和每个文件属主各发一条 scope-violation alert；`/sync-repos` 和 `/audit` 改为带 `--notify`。
+- `.gitignore` 受管块里加上 `state_seen.json`；`_journal*`（含锁文件）列为只能经库写入。core-manual 新增 §15。
+- 测试：新增 `test_shared_state_notice.py`（14 个）、分支审计 `--notify` 用例（1 个）。HEAD 上收集阶段就失败（还没有 ownership 模块）。
+  全量（venv）pytest 516 passed，含 `__main__` 的 28 个全过；upgrade 无 drift；doctor exit 0；wheel 含新文件，`maintainer/` 未混入。
+
 ### 2026-11-06 — P-0135 Phase 2：shared_state 按 agent 分区（0.51.0，未发布）
 
 - `_guard_common`：新增 `shared_state_root()`，从 config `shared_state_root` 读取，不再写死 `<clone>/../shared_state`；
@@ -54,18 +76,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   藏在 merge 冲突解决里的改动、删除、篡改 clone 自身 ref、在 clone 内审计、exit 2，以及 12 个 hook 绕过写法。
   反向校准（HEAD）：24 FAIL / 1 PASS（core agent 不受限）。全量（venv）pytest 456 passed，含 `__main__` 的 28 个全过；
   upgrade 无 drift，doctor exit 0。
-
-### 2026-11-06 — P-0135 Phase 0：新增多 agent 内容归属契约（未发布）
-
-- owner 批准 P-0135（「OK，批准。都按你的建议来做」），7 个待定问题都按建议处理。各阶段单独提交，最后和 0.50.0 一起作为 0.51.0 发布。
-- 新增 `governance_core/contracts/shared_state_ownership.md` v1.0.0，规定：
-  - 分支范围审计：从 core 的 ref 读规则，审计范围是 merge-base 以来的净改动；
-  - shared_state 分区和只能经库写入的文件，后者可由可选配置 `shared_state_partitions` / `shared_state_lib_only` 声明；
-  - 提案属主检查，State Log 记录操作者；
-  - 写日志（哈希链）和上次所见清单；
-  - 通知分 info/alert 两级，以及送达 owner 的方式。
-- 与 deva-vani 对齐了 consumer 自有库（todo_lib）的接入方式：归属只按路径判断，平铺目录不享受检测；
-  consumer 的库可调用 `ownership.record_write` 记名；core 经库代写只发 info 通知（显示一次后自动确认），其余都是 alert。
 
 ### 2026-11-05 — 发布 v0.49.0（P-0131 + P-0132 A/B）
 

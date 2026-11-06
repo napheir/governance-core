@@ -221,6 +221,21 @@ def test_missing_allow_file_exits_2(project: dict) -> None:
     assert rc == 2 and "data.allow.txt" in out
 
 
+def test_notify_alerts_audited_agent_and_owner(project: dict) -> None:
+    """--notify (Phase 3): the audited agent and each owner get an alert."""
+    _commit(project["platform"], {"content/intro.md": "rewritten\n"}, "touch content")
+    rc, out = _audit(project["core"], "--audit-branch", "--agent", "platform",
+                     "--repo", str(project["platform"]), "--notify")
+    assert rc == 1, out
+    shared = project["core"].parent / "shared_state" / "notices"
+    for agent in ("platform", "content"):
+        (notice,) = [json.loads(p.read_text(encoding="utf-8"))
+                     for p in (shared / agent).glob("*.json")]
+        assert notice["kind"] == "scope-violation" and notice["severity"] == "alert"
+        assert notice["paths"] == ["content/intro.md"] and notice["from"] == "core"
+        assert any("touch content" in c for c in notice["commits"])
+
+
 def test_core_agent_passes(project: dict) -> None:
     rc, out = _audit(project["core"], "--agent", "core")
     assert rc == 0 and "core agent" in out

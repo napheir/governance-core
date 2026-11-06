@@ -28,13 +28,13 @@ owner: core
 在 core 仓库里先审计该 clone 的分支，再动它：
 
 ```bash
-python tools/check_scope.py --audit-branch --agent <name> --repo ../<clone_dir>
+python tools/check_scope.py --audit-branch --agent <name> --repo ../<clone_dir> --notify
 ```
 
 若分支已推送，再审计一次远端：先 `git fetch origin <branch>`，再对 `--ref origin/<branch>` 跑同样的命令。
 
 - **exit 0**：继续 Step 1。
-- **exit 1**：分支带有越权改动。**本轮不同步这个 clone**（不 merge，也不 stash），把越权文件、相关提交和文件属主报告给 owner，然后继续同步下一个 clone。
+- **exit 1**：分支带有越权改动。**本轮不同步这个 clone**（不 merge，也不 stash），把越权文件、相关提交和文件属主报告给 owner，然后继续同步下一个 clone。`--notify` 会给被审计的 agent 和每个文件属主各写一条 alert 通知（`shared_state/notices/<agent>/`），他们下次启动会话时会看到，直到 owner 确认。
 - **exit 2**：审计无法运行（例如 core ref 上缺这个 agent 的 allow 文件）。同样跳过这个 clone，并报告原因。
 
 审计在 core 的仓库里进行：允许规则、core ref 和 core 历史都来自 core，业务 clone 改不到。

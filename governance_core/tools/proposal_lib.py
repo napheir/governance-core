@@ -516,6 +516,32 @@ def _read_ledger() -> dict:
     }
 
 
+def _file_sha(path: Path) -> Optional[str]:
+    """sha256 of `path`'s bytes, or None when it does not exist."""
+    import hashlib
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except FileNotFoundError:
+        return None
+
+
+def _record_write(op: str, path: Path, sha_before: Optional[str]) -> None:
+    """Journal a proposal write so its owner learns who made it (P-0135).
+
+    contracts/shared_state_ownership.md §4. A failure is reported, never
+    fatal: the owner's SessionStart scan still sees the change, marked as
+    actor unknown.
+    """
+    try:
+        from governance_core import ownership
+        rel = ownership.shared_rel(REPO_ROOT, path)
+        if rel is not None:
+            ownership.record_write(REPO_ROOT, op, rel, sha_before, _file_sha(path))
+    except Exception as exc:  # noqa: BLE001 - journaling must not block the lib
+        print(f"[WARN] shared_state journal not written for {path.name}: {exc}",
+              file=sys.stderr)
+
+
 def _write_ledger(ledger: dict) -> None:
     """Atomic write of ledger file."""
     p = _id_ledger_path()
@@ -1386,6 +1412,7 @@ def create_proposal(slug: str, title: str, agent: Optional[str] = None,
             raise FileExistsError(f"Collision: {out_path} already exists")
         content = _v2_scaffold(proposal_id, title, agent, orchestration)
         write_atomic(out_path, content)
+        _record_write("create", out_path, None)
         # P-0057 Phase 1: append ledger entry + bump next_id atomically
         ledger.setdefault("version", LEDGER_VERSION)
         ledger.setdefault("entries", [])
@@ -1558,7 +1585,9 @@ def transition_proposal(
         # Normalize: strip leading whitespace from body to prevent
         # accumulating blank lines on repeated read-modify-write cycles.
         new_content = serialize_frontmatter(fm) + "\n" + new_body.lstrip("\n")
+        before = _file_sha(path)
         write_atomic(path, new_content)
+        _record_write(f"transition {prev}->{new_status}", path, before)
 
     _write_snapshot(proposal_id, new_status, path)
     return path, prev, new_status
@@ -1623,8 +1652,10 @@ def link_proposal(proposal_id: str, related: list[str]) -> tuple[Path, list[str]
         if added:
             fm["related"] = existing + added
             entry = f"- {_today()}: linked related {', '.join(added)} by {actor}"
+            before = _file_sha(path)
             write_atomic(path, serialize_frontmatter(fm) + "\n"
                          + _append_state_log(body, entry).lstrip("\n"))
+            _record_write("link", path, before)
     return path, added
 
 
@@ -1691,8 +1722,10 @@ def set_handoff_to(proposal_id: str, target: str | None) -> tuple[Path, bool]:
         else:
             fm["handoff_to"] = target
             entry = f"- {_today()}: handoff_to set to {target} by {actor}"
+        before = _file_sha(path)
         write_atomic(path, serialize_frontmatter(fm) + "\n"
                      + _append_state_log(body, entry).lstrip("\n"))
+        _record_write("handoff", path, before)
     return path, True
 
 
@@ -1731,8 +1764,10 @@ def set_orchestration(proposal_id: str, value: str | None) -> tuple[Path, bool]:
             fm["orchestration"] = value
             body = _with_workflow_scaffold(body)
             entry = f"- {_today()}: orchestration set to {value} by {actor}"
+        before = _file_sha(path)
         write_atomic(path, serialize_frontmatter(fm) + "\n"
                      + _append_state_log(body, entry).lstrip("\n"))
+        _record_write("orchestrate", path, before)
     return path, True
 
 
@@ -1830,8 +1865,10 @@ def archive_proposal(proposal_id: str, force_agent: bool = False) -> tuple[Path,
     lock = filelock.FileLock(str(_lock_path()), timeout=_lock_timeout())
     with lock:
         content = path.read_text(encoding="utf-8")
+        before = _file_sha(path)
         write_atomic(dst, content)
         path.unlink()
+        _record_write("archive", path, before)
     return path, dst
 
 
