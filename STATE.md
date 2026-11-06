@@ -17,6 +17,20 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-06 — 发布 v0.51.0（含 0.50.0：P-0134 + P-0135）
+
+- owner「现在发布」。推送 eb7edf8..152f8a1，GitHub Release v0.51.0，release CI run 42196326998 success，
+  PyPI 0.51.0 可见（wheel + sdist）。发布前构建的 wheel 已确认包含 ownership.py、foreign-change-notice.py、notices.py 和契约，没有混入 `maintainer/`。
+- 发布说明只写新增的保护机制和多 agent 项目的升级顺序，不写漏洞利用细节。
+  升级顺序：先把平铺的集合改成按 agent 分区，再 `pip -U`，紧接着在每个 clone 跑 upgrade，最后在 core 跑一次 `/audit`。
+- 已通知 deva-vani 按这个顺序升级，并请他们把 core 的分支审计结果和他们手工审计的结果对照后回报。这是 P-0135 结案条件之一。
+- 仍在进行：
+  - P-0135：还差 owner 在界面上确认看到了通知，以及 deva-vani 的对照结果；提案留在 `shared_state/`，暂不归档。
+  - P-0132：trade 和 auto-tax 等他们有空时再升级。
+  - P-0133：还差 owner 验证两种启动方式。
+  - P-0134：已实施，等 owner 决定是否归档。
+- 全局 Python 仍是 0.49.1，各消费者用 `/upgrade` 自行升级。
+
 ### 2026-11-06 — P-0135 Phase 3：把别人改了你的内容告诉你和你的 owner（0.51.0，未发布）
 
 - 新增 `governance_core/ownership.py`，提供三类存储和一个公共接口：
@@ -56,26 +70,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   反向校准（HEAD）：新加的拦截全部 FAIL 或 ERROR；放行的用例（自己的分区、读文件、core）在 HEAD 上同样 PASS，说明没有误拦。
   全量（venv）pytest 501 passed，含 `__main__` 的 28 个全过；upgrade 无 drift，doctor exit 0。
 - 注意：在包源目录 `governance_core/tools/` 下直接跑 proposal 测试会因为找不到 config 而失败；要在自治层 `tools/` 下跑（memory 已记）。
-
-### 2026-11-06 — P-0135 Phase 1：由 core 运行的分支范围审计（0.51.0，未发布）
-
-- `check_scope.py --audit-branch --agent X [--repo <clone>] [--ref R] [--json]`：
-  - **审计对象**：在 core 仓库里把该 clone 当前检出的提交拉取到 `refs/gc-audit/<agent>`，审计它与 core ref 的 merge-base 以来的净改动（含 merge 时的冲突解决）。
-  - **规则来源**：`git show <core ref>:agent_rules/<agent>.allow.txt`，不读分支或工作区里的文件。
-  - **放行条件**：在允许规则内、内容是 core 历史中的某个版本、或随 core 一起删除，三者满足其一即可。其余改动都会报出，附提交和属主。
-  - **退出码**：0 通过，1 有违规，2 无法运行。
-  - 不加别的模式的 `--agent X` 等同于审计 HEAD；baseline 模式和 `.baseline_commit` 已移除（从来没有地方写过这个文件）。
-- scope-guard：非 core agent 不能再用 `--no-verify`、`commit -n`（含 `-an`、`-nm` 这类组合）或 `core.hooksPath` 跳过提交 hook。
-  匹配前会把引号里的内容遮掉，所以 commit message 里提到这些字样不会误拦。
-- merge-audit.py 改为运行分支审计：路径钉在本 clone、区分退出码 1 和 2、超时 60 秒。
-- `/sync-repos` 新增 Step 0：审计不通过的 clone 本轮不同步，其余照常；`/audit` 按 config 里的 agent 逐个审计；
-  `/publish-knowledge` 收集前先审计。art_05 的合规门禁描述、art_12 第 3 款的防御层次、scope-enforcement-mechanism 都与实现对齐。
-- 版本 0.50.0 → 0.51.0（0.50.0 没有单独发布）。
-- 测试：新增 `test_check_scope_branch_audit.py`，25 个，用真实的 core 仓库和业务 clone。覆盖：
-  在自己 scope 内的改动、改别的 agent 的文件、在分支上放宽 allow 文件、`-n` 提交、core merge、core 的旧版本、
-  藏在 merge 冲突解决里的改动、删除、篡改 clone 自身 ref、在 clone 内审计、exit 2，以及 12 个 hook 绕过写法。
-  反向校准（HEAD）：24 FAIL / 1 PASS（core agent 不受限）。全量（venv）pytest 456 passed，含 `__main__` 的 28 个全过；
-  upgrade 无 drift，doctor exit 0。
 
 ### 2026-11-05 — 发布 v0.49.0（P-0131 + P-0132 A/B）
 
