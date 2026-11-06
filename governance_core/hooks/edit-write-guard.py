@@ -55,6 +55,7 @@ try:
         detect_role as _detect_role_shared,
         identity_failure as _identity_failure,
         block as _block_shared,
+        shared_state_access as _shared_state_access,
     )
 except ImportError as exc:
     sys.stderr.write(
@@ -66,10 +67,9 @@ except ImportError as exc:
     )
     sys.exit(2)
 
-# Shared runtime state directory (<install-root>/shared_state) lives outside
-# any clone's git worktree. All agents may read/write here — see CLAUDE.md
-# 第四条之一. This path must be whitelisted before the cross-repo check.
-_SHARED_STATE_ROOT = os.path.normpath(os.path.join(_REPO_ROOT, "..", "shared_state"))
+# Shared runtime state (config shared_state_root) is judged per path before
+# the cross-repo check: an agent writes only its own partitions (P-0135,
+# contracts/shared_state_ownership.md §2) -- see _check_shared_state().
 
 # Cache for allow rules (loaded once per hook invocation)
 _allow_cache = {}
@@ -84,6 +84,37 @@ _SELF_PROTECTED_FILES = {".claude/settings.json", ".claude/settings.local.json"}
 def _detect_role() -> str:
     """Detect this clone's agent role from config (delegates to shared)."""
     return _detect_role_shared(_REPO_ROOT)
+
+
+def _check_shared_state(target: str, file_path: str, role: str) -> None:
+    """Exit 0 for a write into `role`'s own shared_state partition; block any
+    other shared_state write; return for a path outside shared_state.
+
+    Partitions: proposals/<role>/** plus config `shared_state_partitions`.
+    Ledger, lock, journal and notices (and config `shared_state_lib_only`)
+    are written only by the libs (P-0135, contracts/shared_state_ownership.md).
+    """
+    kind, rel = _shared_state_access(target, role, _REPO_ROOT)
+    if kind == "outside":
+        return
+    if kind == "own":
+        sys.exit(0)
+    why = {
+        "foreign": "it is in another agent's shared_state partition",
+        "lib-only": "it is written only by the governance libs (ledger, "
+                    "lock, journal, notices)",
+        "other": "it is not in any of your shared_state partitions",
+    }[kind]
+    _block(
+        f"Edit/Write BLOCKED (shared_state, role={role})",
+        f"Target: {file_path}\n"
+        f"shared_state path: {rel or '.'}\n"
+        f"Role:   {role}\n\n"
+        f"Not written: {why}.\n"
+        f"You may write shared_state/proposals/{role}/ and the partitions in\n"
+        "config shared_state_partitions. Change another agent's proposal\n"
+        "through its owner (or core); use tools/proposal_lib.py for your own."
+    )
 
 
 def _is_self_protected(rel_path: str) -> bool:
@@ -733,11 +764,9 @@ def main() -> None:
             "Diagnose: governance-core doctor --project-root <this clone>"
         )
 
-    # Allow shared runtime state (<install-root>/shared_state/) — multi-clone
-    # writable by design. Per CLAUDE.md 第四条之一, writers must use filelock
-    # + atomic replace; the guard only governs path authorization.
-    if target == _SHARED_STATE_ROOT or target.startswith(_SHARED_STATE_ROOT + os.sep):
-        sys.exit(0)
+    # shared_state (config shared_state_root): only the agent's own partitions
+    # (P-0135). Writers there must still use filelock + atomic replace.
+    _check_shared_state(target, file_path, role)
 
     # Layer 1: Cross-repo blocking
     if not target.startswith(repo + os.sep) and target != repo:

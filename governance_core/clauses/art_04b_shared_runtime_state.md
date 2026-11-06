@@ -34,6 +34,13 @@ phase_2_action: needs-config-injection
 | `shared_state/proposals/<agent>/` | 各 agent 自身（写自己子目录的 in-flight proposals；`<agent>` ∈ {core, rules, trade, data, research}） | 各 agent 自身（`/proposal create` 自动 mkdir + filelock 分配 id 通过 `_id_ledger.json`） | all 5 agents（读跨 agent 提案）+ `session-context.py`（渲染 pending）+ owner agent（terminal 状态自档案到 `proposals/_archive/<YYYY>/` 进 git，详见 Art.5.1）|
 | `shared_state/proposals/_id_ledger.json` | all 5 agents（filelock 内 RMW append 分配条目） | core agent（migrate 脚本初始化；详见 Art.5.1） | proposal_lib allocate-id + audit_proposals |
 
+**写权限的执行（P-0135）**：
+- 非 core agent 只能写自己的分区：`proposals/<self>/**`，以及 config `shared_state_partitions` 声明的分区。
+- ledger、lock、`_journal*.jsonl`、`notices/**`，以及 config `shared_state_lib_only` 声明的文件，只能经由 lib 写入。
+- edit-write-guard、scope-guard、proposal_lib 三处强制上述规则。core 可以写任何分区，但会记下操作者并通知对方。
+- 绕过这些检查写入的文件，会在属主下次启动会话时被查出并通知它。
+- 详见 `contracts/shared_state_ownership.md`。
+
 ### 并发安全要求
 
 - 锁文件：`<目标文件>.lock`，与目标同目录

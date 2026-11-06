@@ -17,6 +17,24 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-06 — P-0135 Phase 2：shared_state 按 agent 分区（0.51.0，未发布）
+
+- `_guard_common`：新增 `shared_state_root()`，从 config `shared_state_root` 读取，不再写死 `<clone>/../shared_state`；
+  还新增了 `native_path()`（把 Git Bash 的 `/c/...` 写法转成 Windows 路径）、`partition_patterns()`、`shared_state_access()`。
+  后者把一个写入目标判为 `outside` / `own` / `lib-only` / `foreign` / `other` 之一，在 Windows 上不区分大小写。
+- edit-write-guard：原先 shared_state 下一律放行，现改为 `_check_shared_state()`，只放行写入自己的分区。
+- scope-guard：新增 Layer 4，拆解 shell 命令（shlex，识别引号、分隔符和 `cd`），找出重定向、`cp`、`mv`、`rm`、`touch`、`mkdir`、`ln`、`tee`、`sed -i`、`dd of=` 的写入目标，
+  目标不是自己的分区就拦截。读文件、写自己的分区、`python tools/...` 不受影响。
+- proposal_lib：
+  - transition / link / set_handoff_to / set_orchestration 必须由属主或 core 发起（`_require_owner_or_core`）。
+  - archive 的 `--force-agent` 只有 core 能用；`create --agent` 填别的 agent 时只有 core 可以。
+  - State Log 每行末尾加 `by <actor>`。
+- 文档：`/proposal`（三处强制说明、反模式）、art_04b（写权限的执行方式），说法都改为与实现一致。
+- 测试：新增 `test_shared_state_partitions.py`，45 个，guard 以子进程运行，覆盖分区判定、Git Bash 路径和大小写、Edit/Write、shell 写法、proposal_lib 属主检查。
+  反向校准（HEAD）：新加的拦截全部 FAIL 或 ERROR；放行的用例（自己的分区、读文件、core）在 HEAD 上同样 PASS，说明没有误拦。
+  全量（venv）pytest 501 passed，含 `__main__` 的 28 个全过；upgrade 无 drift，doctor exit 0。
+- 注意：在包源目录 `governance_core/tools/` 下直接跑 proposal 测试会因为找不到 config 而失败；要在自治层 `tools/` 下跑（memory 已记）。
+
 ### 2026-11-06 — P-0135 Phase 1：由 core 运行的分支范围审计（0.51.0，未发布）
 
 - `check_scope.py --audit-branch --agent X [--repo <clone>] [--ref R] [--json]`：
@@ -48,30 +66,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   - 通知分 info/alert 两级，以及送达 owner 的方式。
 - 与 deva-vani 对齐了 consumer 自有库（todo_lib）的接入方式：归属只按路径判断，平铺目录不享受检测；
   consumer 的库可调用 `ownership.record_write` 记名；core 经库代写只发 info 通知（显示一次后自动确认），其余都是 alert。
-
-### 2026-11-06 — 实施 P-0134：经提案批准启用 Workflow 多 agent 执行（0.50.0，未发布）
-
-- 起因：deva-vani 的上游建议。owner「起草 Workflow 多 agent 编排提案」→「批准」。
-  三个待定问题都按提案写明的默认处理：字段名用 `orchestration: workflow`，不复用 P-0119 的 `execution:`；
-  批准提案即视为同意启用；Workflow 声明检查不设豁免。
-- 契约：frontmatter schema 1.6.0 → 1.7.0（新增 §4.8 `orchestration`）；gate schema 1.0.0 → 1.1.0
-  （新增 §5 Workflow Execution 声明、runner 打印声明，原 §5/§6 顺延为 §6/§7）。改版本号前用 git grep 确认两个号都没被预留。
-- `proposal_lib.py`：
-  - `ORCHESTRATION_VALUES`、`is_orchestrated`、`workflow_declaration_adequacy`（只查形式）：要求有 `### Workflow Execution` 一节；
-    首行是 `> **[TOKEN WARNING]**` 且有实际内容；六个标签都已填写且不是占位符；Scale 含数字；
-    Approval Criteria 里有一条点名 Workflow 的 `human-verify:` 同意项（脚手架自带的通用 human-verify 项不算）。
-  - `create --orchestration workflow` 和新子命令 `orchestrate --set/--clear`（只能用在 draft 上）会写入字段、
-    加上骨架和同意项。批准时声明不全就 BLOCK，不设豁免。`run` 对这类提案打印批准时冻结的声明，从不启动 Workflow；
-    同时带 `execution:` 的照常跑 gate。脚手架的 Design & Contract 提示里加了一行。
-- `audit_proposals.py`：新增 Check 22（WARN），与批准门共用同一个判断函数（只看 pending/approved/in-progress）；
-  docstring 里的 schema 版本从过时的 v1.5.0 更正为 v1.7.0。
-- `/proposal` skill 新增「Workflow 执行」一节：什么时候适用、怎么起草；请求批准时要在消息里再提醒一次 token 用量，并给出规模和成本；
-  开跑前说明规模，先加载 workflow-authoring；超出声明的规模或写权限要先问 owner；`complete` 时记录实际规模和结果。
-  core-manual §4 同步更新。
-- 测试：新增 `test_proposal_orchestration.py`（30 个）。反向校准：在 HEAD 导出的 tools 上只跑行为用例，
-  5 FAIL（不完整的声明被拦、run 打印声明 ×2、Check 22 ×2）/ 3 PASS（完整声明可批准、普通提案不受影响、run 拒绝普通提案）。
-  全量（venv）pytest 431 passed，含 `__main__` 的 28 个全过；提案审计 0 失败；upgrade 无 drift；doctor exit 0。**发布待 owner 确认。**
-- deva-vani 说他们停在 0.49.1，等 scope gate 修好后连同 0.49.2、0.50.0 一次升级。
 
 ### 2026-11-05 — 发布 v0.49.0（P-0131 + P-0132 A/B）
 

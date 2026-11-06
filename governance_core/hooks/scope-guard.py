@@ -41,7 +41,9 @@ try:
         CROSS_REPO_PATTERNS as BLOCKED_PATTERNS,
         detect_role as _detect_role_shared,
         block as _block_shared,
+        native_path as _native_path,
         own_repo_pattern,
+        shared_state_access as _shared_state_access,
     )
 except ImportError as exc:
     sys.stderr.write(
@@ -154,6 +156,93 @@ def _check_no_verify(command, role):
                "If this change is authorized, ask core agent to commit it.")
 
 
+# Commands whose path arguments are written (all of them), and those that
+# write only their last argument. `sed` writes its files only with -i.
+_WRITES_ALL_ARGS = {"mv", "rm", "rmdir", "touch", "mkdir", "ln", "tee",
+                    "truncate", "unlink", "chmod"}
+_WRITES_LAST_ARG = {"cp", "install"}
+_SEPARATORS = {";", "&&", "||", "|", "&", "|&"}
+_REDIRECTS = {">", ">>", ">|", "&>", "&>>", ">&"}
+
+
+def _segments(command):
+    """Split `command` into simple commands (token lists), quotes honoured."""
+    import shlex
+    try:
+        lex = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:  # unbalanced quotes: fall back to a plain split
+        tokens = command.split()
+    segments, cur = [], []
+    for tok in tokens:
+        if tok in _SEPARATORS:
+            segments.append(cur)
+            cur = []
+        else:
+            cur.append(tok)
+    segments.append(cur)
+    return [s for s in segments if s]
+
+
+def _write_targets(command, cwd):
+    """Absolute paths a shell `command` would write (redirects + write
+    commands), resolved against `cwd` and any `cd` before them (P-0135).
+
+    Heuristic by design: writes from scripts or $VARS are not seen here --
+    the SessionStart change detection covers those.
+    """
+    targets = []
+    here = cwd
+    for seg in _segments(command):
+        words = []
+        i = 0
+        while i < len(seg):
+            if seg[i] in _REDIRECTS and i + 1 < len(seg):
+                targets.append((here, seg[i + 1]))
+                i += 2
+                continue
+            words.append(seg[i])
+            i += 1
+        while words and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0]):
+            words.pop(0)
+        if not words:
+            continue
+        name = os.path.basename(words[0])
+        args = [w for w in words[1:] if not w.startswith("-")]
+        if name == "cd":
+            if args:
+                here = os.path.join(here, _native_path(os.path.expanduser(args[0])))
+            continue
+        if name in _WRITES_ALL_ARGS:
+            targets += [(here, a) for a in args]
+        elif name in _WRITES_LAST_ARG:
+            targets += [(here, a) for a in args[-1:]]
+        elif name == "sed" and any(w.startswith("-i") or w == "--in-place"
+                                   for w in words[1:]):
+            targets += [(here, a) for a in args[1:]]
+        elif name == "dd":
+            targets += [(here, w[3:]) for w in words[1:] if w.startswith("of=")]
+    return [os.path.normpath(os.path.join(base, _native_path(os.path.expanduser(t))))
+            for base, t in targets]
+
+
+def _check_shared_state_writes(command, role, cwd):
+    """Block shell writes into another agent's shared_state partition or a
+    lib-only file (P-0135, contracts/shared_state_ownership.md §2)."""
+    for target in _write_targets(command, cwd):
+        kind, rel = _shared_state_access(target, role, _REPO_ROOT)
+        if kind in ("outside", "own"):
+            continue
+        _block(role, "Bash command BLOCKED",
+               f"This command writes shared_state/{rel or '.'}, which is not "
+               f"one of your partitions ({kind}).\n"
+               f"You may write shared_state/proposals/{role}/ and the partitions "
+               "in config shared_state_partitions.\n"
+               "Ledger, lock, journal and notices are written only by the "
+               "governance libs; another agent's items change through its owner.")
+
+
 def _check_python_writes(command, role):
     """Block Python file write operations for non-core agents.
 
@@ -209,6 +298,11 @@ def main():
 
     # --- Layer 3: Python file write blocking ---
     _check_python_writes(command, role)
+
+    # --- Layer 4: shared_state partitions (P-0135) ---
+    has_cwd = "cwd" in data and isinstance(data["cwd"], str) and data["cwd"]
+    cwd = data["cwd"] if has_cwd else _REPO_ROOT
+    _check_shared_state_writes(command, role, cwd)
 
     sys.exit(0)
 

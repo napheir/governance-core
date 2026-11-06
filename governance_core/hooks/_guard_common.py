@@ -201,8 +201,119 @@ def sibling_clone_patterns(repo_root: str = "") -> list:
 
 
 # Cross-repo patterns blocked for non-core agents. shared_state/ is
-# intentionally absent -- see the shared-runtime-state clause.
+# intentionally absent: writes there are judged per path by
+# shared_state_access() below (P-0135).
 CROSS_REPO_PATTERNS = sibling_clone_patterns()
+
+
+# ---------------------------------------------------------------------------
+# shared_state ownership (P-0135; contracts/shared_state_ownership.md §2).
+# Every agent's partitions are proposals/<agent>/** plus the config
+# `shared_state_partitions` templates; ledger, lock, journal and notices
+# (plus config `shared_state_lib_only`) are written only by the libs.
+# ---------------------------------------------------------------------------
+
+PROPOSAL_PARTITION = "proposals/{agent}/**"
+LIB_ONLY_PATTERNS = ("proposals/_id_ledger.json*", "_journal*.jsonl",
+                     "notices/**")
+
+
+def _config(repo_root: str) -> dict:
+    """The clone's config.json as a dict ({} when unreadable)."""
+    try:
+        with open(os.path.join(repo_root, ".governance", "config.json"),
+                  encoding="utf-8") as f:
+            cfg = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return cfg if isinstance(cfg, dict) else {}
+
+
+def _str_list(cfg: dict, key: str) -> list:
+    """Optional list-of-str config value ([] when absent or ill-typed)."""
+    value = cfg[key] if key in cfg else []
+    if not isinstance(value, list):
+        return []
+    return [v.replace("\\", "/").strip("/") for v in value
+            if isinstance(v, str) and v.strip()]
+
+
+def native_path(path: str) -> str:
+    """`path` with a Git Bash drive prefix (/c/...) turned into C:/... on Windows."""
+    if os.name == "nt" and len(path) >= 3 and path[0] == "/" and path[2] == "/" \
+            and path[1].isalpha():
+        return f"{path[1]}:/{path[3:]}"
+    return path
+
+
+def shared_state_root(repo_root: str = "") -> str:
+    """Absolute shared_state root of the project (config `shared_state_root`).
+
+    Falls back to the historical layout `<clone>/../shared_state` only when the
+    config does not name one, so a malformed config never turns the guard off.
+    """
+    root = _root(repo_root)
+    cfg = _config(root)
+    value = cfg["shared_state_root"] if "shared_state_root" in cfg else None
+    if isinstance(value, str) and value.strip():
+        path = native_path(value.strip())
+        if not os.path.isabs(path):
+            path = os.path.join(root, path)
+        return os.path.normpath(path)
+    return os.path.normpath(os.path.join(root, "..", "shared_state"))
+
+
+def _matches(rel: str, pattern: str) -> bool:
+    """`pattern` (`dir/**`, or an fnmatch glob) matches shared_state-relative `rel`.
+
+    Case-insensitive on Windows, like the file system there.
+    """
+    import fnmatch
+    if os.name == "nt":
+        rel, pattern = rel.lower(), pattern.lower()
+    if pattern.endswith("/**"):
+        prefix = pattern[:-3]
+        return rel == prefix or rel.startswith(prefix + "/")
+    return fnmatch.fnmatchcase(rel, pattern)
+
+
+def partition_patterns(agent: str, repo_root: str = "") -> list:
+    """shared_state-relative patterns of `agent`'s partitions."""
+    templates = [PROPOSAL_PARTITION] + _str_list(_config(_root(repo_root)),
+                                                 "shared_state_partitions")
+    return [t.replace("{agent}", agent) for t in templates]
+
+
+def shared_state_access(target: str, role: str, repo_root: str = "") -> tuple:
+    """Classify a write to absolute path `target` by agent `role`.
+
+    Returns (kind, rel): kind is "outside" (not under shared_state), "own"
+    (one of `role`'s partitions), "lib-only" (ledger / lock / journal /
+    notices / config shared_state_lib_only: libs only), "foreign" (another
+    agent's partition; rel names it) or "other" (any other shared_state
+    path). rel is the path relative to the shared_state root, '/'-separated.
+    """
+    root = _root(repo_root)
+    base = os.path.normpath(os.path.abspath(shared_state_root(root)))
+    tgt = os.path.normpath(os.path.abspath(native_path(target)))
+    base_cmp, tgt_cmp = os.path.normcase(base), os.path.normcase(tgt)
+    if tgt_cmp != base_cmp and not tgt_cmp.startswith(base_cmp + os.sep):
+        return "outside", ""
+    rel = tgt[len(base):].lstrip("\\/").replace("\\", "/")
+    lib_only = list(LIB_ONLY_PATTERNS) + _str_list(_config(root), "shared_state_lib_only")
+    if any(_matches(rel, p) for p in lib_only):
+        return "lib-only", rel
+    if any(_matches(rel, p) for p in partition_patterns(role, root)):
+        return "own", rel
+    try:
+        names = [a["name"] for a in load_topology(root)["agents"]]
+    except TopologyError:
+        names = []
+    for name in names:
+        if name != role and any(_matches(rel, p)
+                                for p in partition_patterns(name, root)):
+            return "foreign", rel
+    return "other", rel
 
 
 def block(guard_name: str, reason: str, detail: str) -> None:

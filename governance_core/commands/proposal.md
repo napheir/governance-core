@@ -337,7 +337,12 @@ proposal 里实现。这是 `handoff_to` 的唯一写入口（可与 `--related`
 - **commit hash 强校验**：`complete` 时 hash 必须 `git rev-parse --verify` 通过；lib 已强制
 - **filelock 保证原子性**：id 分配、状态转移、归档都在 lock 内（lock_path 由 config 指定）
 - **不绕过 lib 直接 Edit 文件**：lib 维护 State Log + snapshot ledger + 字段一致性；绕过会破坏 audit trail
-- **shared_state 跨 clone 可见**：非 core agent 只能写自己 `shared_state/proposals/<self>/`，由 `agent_rules/<self>.allow.txt` + edit-write-guard 强制
+- **shared_state 跨 clone 可见，但按 agent 分区写入**（P-0135，`contracts/shared_state_ownership.md`）：
+  - 非 core agent 只能写自己的 `shared_state/proposals/<self>/`，以及 config `shared_state_partitions` 声明的分区。
+  - 三处同时强制：edit-write-guard（Edit/Write）、scope-guard（重定向、`cp`、`mv`、`rm`、`sed -i` 等 shell 写法）、
+    proposal_lib（transition / link / handoff / orchestrate / archive 必须由属主或 core 发起；`create --agent` 填别的 agent 时，只有 core 可以）。
+  - ledger、lock、journal、notices 只能经由 lib 写入。
+  - core 可以改任何 agent 的提案，但 State Log 会记下 `by <actor>`，对方也会收到通知。
 
 ---
 
@@ -384,7 +389,8 @@ Commit message 含 `Implements: P-NNNN` 或 `Per proposal P-NNNN` 时，wrap-up 
 - ❌ 把 supersede 当 reject 用（supersede = 被新方案替代，reject = 被否决）
 - ❌ 把 supersede 与 upstream 混用（supersede = 替代在**本仓库**、必须存在+反向引用；upstream = 替代在**hub 另一仓库**、只记录不解析）
 - ❌ 给 `upstream` 传裸本地路径（如 `proposals/x.md`）当 `--to-hub`（写入时即被拒；须 `<repo>:<path>` 或 URL）
-- ❌ 跨 agent 写他人 `shared_state/proposals/<X>/`（hook 阻断）
+- ❌ 跨 agent 写他人 `shared_state/proposals/<X>/`（edit-write-guard / scope-guard 阻断，proposal_lib 拒绝；P-0135）
+- ❌ 非 core agent 用 `archive --force-agent` 归档他人提案（lib 拒绝；只有 core 可用）
 - ❌ classify 直接跳过、agent 自行判断是否要 proposal（人脑判断 ≠ skill 一致性）
 
 ---

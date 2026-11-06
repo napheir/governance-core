@@ -5,6 +5,31 @@
 
 ---
 
+### 2026-11-06 — 实施 P-0134：经提案批准启用 Workflow 多 agent 执行（0.50.0，未发布）
+
+- 起因：deva-vani 的上游建议。owner「起草 Workflow 多 agent 编排提案」→「批准」。
+  三个待定问题都按提案写明的默认处理：字段名用 `orchestration: workflow`，不复用 P-0119 的 `execution:`；
+  批准提案即视为同意启用；Workflow 声明检查不设豁免。
+- 契约：frontmatter schema 1.6.0 → 1.7.0（新增 §4.8 `orchestration`）；gate schema 1.0.0 → 1.1.0
+  （新增 §5 Workflow Execution 声明、runner 打印声明，原 §5/§6 顺延为 §6/§7）。改版本号前用 git grep 确认两个号都没被预留。
+- `proposal_lib.py`：
+  - `ORCHESTRATION_VALUES`、`is_orchestrated`、`workflow_declaration_adequacy`（只查形式）：要求有 `### Workflow Execution` 一节；
+    首行是 `> **[TOKEN WARNING]**` 且有实际内容；六个标签都已填写且不是占位符；Scale 含数字；
+    Approval Criteria 里有一条点名 Workflow 的 `human-verify:` 同意项（脚手架自带的通用 human-verify 项不算）。
+  - `create --orchestration workflow` 和新子命令 `orchestrate --set/--clear`（只能用在 draft 上）会写入字段、
+    加上骨架和同意项。批准时声明不全就 BLOCK，不设豁免。`run` 对这类提案打印批准时冻结的声明，从不启动 Workflow；
+    同时带 `execution:` 的照常跑 gate。脚手架的 Design & Contract 提示里加了一行。
+- `audit_proposals.py`：新增 Check 22（WARN），与批准门共用同一个判断函数（只看 pending/approved/in-progress）；
+  docstring 里的 schema 版本从过时的 v1.5.0 更正为 v1.7.0。
+- `/proposal` skill 新增「Workflow 执行」一节：什么时候适用、怎么起草；请求批准时要在消息里再提醒一次 token 用量，并给出规模和成本；
+  开跑前说明规模，先加载 workflow-authoring；超出声明的规模或写权限要先问 owner；`complete` 时记录实际规模和结果。
+  core-manual §4 同步更新。
+- 测试：新增 `test_proposal_orchestration.py`（30 个）。反向校准：在 HEAD 导出的 tools 上只跑行为用例，
+  5 FAIL（不完整的声明被拦、run 打印声明 ×2、Check 22 ×2）/ 3 PASS（完整声明可批准、普通提案不受影响、run 拒绝普通提案）。
+  全量（venv）pytest 431 passed，含 `__main__` 的 28 个全过；提案审计 0 失败；upgrade 无 drift；doctor exit 0。**发布待 owner 确认。**
+- deva-vani 说他们停在 0.49.1，等 scope gate 修好后连同 0.49.2、0.50.0 一次升级。
+
+
 ### 2026-11-06 — 待办（owner）：P-0132 通知 auto-tax 与 trade；trade 跑 doctor 确认 schema 2；P-0133 两种启动方式验收
 
 - owner「记一个todo，晚些提醒我」（15:05）。本会话已设一次性提醒（17:07，只在本会话内有效）。

@@ -138,9 +138,35 @@ def detect_agent() -> str:
         return guard_common.resolve_agent(str(REPO_ROOT))
     except guard_common.TopologyError as exc:
         raise RuntimeError(
-            f"agent identity unresolved: {exc}. Pass --agent explicitly "
-            f"or run governance-core doctor"
+            f"agent identity unresolved: {exc}. Run governance-core doctor "
+            f"(changing a proposal needs the calling clone's identity, P-0135)"
         ) from None
+
+
+def _core_agent() -> str:
+    """Return the config's core agent name (RuntimeError if unresolvable)."""
+    guard_common = _load_guard_common()
+    try:
+        return guard_common.load_topology(str(REPO_ROOT))["core"]
+    except guard_common.TopologyError as exc:
+        raise RuntimeError(f"agent topology unresolved: {exc}") from None
+
+
+def _require_owner_or_core(fm: dict, proposal_id: str, op: str) -> str:
+    """Return the calling agent if it owns the proposal or is the core agent.
+
+    The owner is the frontmatter `agent`; the caller is this clone's
+    config-derived identity. Anyone else gets PermissionError (P-0135,
+    contracts/shared_state_ownership.md §3).
+    """
+    caller = detect_agent()
+    owner = fm["agent"] if "agent" in fm else ""
+    if caller != owner and caller != _core_agent():
+        raise PermissionError(
+            f"{op} {proposal_id}: the proposal belongs to {owner!r} and this "
+            f"clone is {caller!r}. Only the owner or the core agent may change "
+            f"it (P-0135); ask {owner!r} to do it, or hand it to core.")
+    return caller
 
 
 # ---------------------------------------------------------------------------
@@ -324,15 +350,17 @@ def _today() -> str:
 _STATE_LOG_HEADER = "## State Log"
 
 
-def append_state_log(body: str, prev: str, new: str, note: str = "") -> str:
+def append_state_log(body: str, prev: str, new: str, note: str = "",
+                     actor: str = "") -> str:
     """Append a transition line to the body's `## State Log` section.
 
     If the section doesn't exist, create it at the body end. Format:
-      `- YYYY-MM-DD: prev → new [note]`
+      `- YYYY-MM-DD: prev → new [(note)] [by <actor>]` (actor: P-0135)
     """
     today = _today()
     note_suffix = f" ({note})" if note else ""
-    entry = f"- {today}: {prev} → {new}{note_suffix}"
+    actor_suffix = f" by {actor}" if actor else ""
+    entry = f"- {today}: {prev} → {new}{note_suffix}{actor_suffix}"
     if _STATE_LOG_HEADER in body:
         return body.rstrip() + "\n" + entry + "\n"
     sep = "\n\n" if not body.endswith("\n\n") else ""
@@ -1336,9 +1364,14 @@ def create_proposal(slug: str, title: str, agent: Optional[str] = None,
     if orchestration is not None and orchestration not in ORCHESTRATION_VALUES:
         raise ValueError(f"Invalid orchestration {orchestration!r}; allowed: "
                          f"{ORCHESTRATION_VALUES}")
-    agent = agent or detect_agent()
+    caller = detect_agent()
+    agent = agent or caller
     if agent not in _agents():
         raise ValueError(f"Invalid agent {agent!r}; allowed: {_agents()}")
+    if agent != caller and caller != _core_agent():
+        raise PermissionError(
+            f"create --agent {agent}: this clone is {caller!r}; only the core "
+            f"agent may file a proposal under another agent (P-0135).")
 
     lock = filelock.FileLock(str(_lock_path()), timeout=_lock_timeout())
     with lock:
@@ -1402,6 +1435,7 @@ def transition_proposal(
     with lock:
         # Re-read inside lock for atomicity
         fm, body = parse_proposal(path)
+        actor = _require_owner_or_core(fm, proposal_id, f"transition to {new_status}")
         prev = fm.get("status", "draft")
 
         # Validate transition (supersede + upstream can come from any state)
@@ -1520,7 +1554,7 @@ def transition_proposal(
             fm["upstreamed_to"] = upstreamed_to
             fm["upstreamed_at"] = today
 
-        new_body = append_state_log(body, prev, new_status, note)
+        new_body = append_state_log(body, prev, new_status, note, actor)
         # Normalize: strip leading whitespace from body to prevent
         # accumulating blank lines on repeated read-modify-write cycles.
         new_content = serialize_frontmatter(fm) + "\n" + new_body.lstrip("\n")
@@ -1578,6 +1612,7 @@ def link_proposal(proposal_id: str, related: list[str]) -> tuple[Path, list[str]
     lock = filelock.FileLock(str(_lock_path()), timeout=_lock_timeout())
     with lock:
         fm, body = parse_proposal(path)
+        actor = _require_owner_or_core(fm, proposal_id, "link")
         existing = fm["related"] if "related" in fm else []
         if not isinstance(existing, list):
             existing = [existing] if existing else []
@@ -1587,7 +1622,7 @@ def link_proposal(proposal_id: str, related: list[str]) -> tuple[Path, list[str]
                 added.append(ref)
         if added:
             fm["related"] = existing + added
-            entry = f"- {_today()}: linked related {', '.join(added)}"
+            entry = f"- {_today()}: linked related {', '.join(added)} by {actor}"
             write_atomic(path, serialize_frontmatter(fm) + "\n"
                          + _append_state_log(body, entry).lstrip("\n"))
     return path, added
@@ -1643,18 +1678,19 @@ def set_handoff_to(proposal_id: str, target: str | None) -> tuple[Path, bool]:
     lock = filelock.FileLock(str(_lock_path()), timeout=_lock_timeout())
     with lock:
         fm, body = parse_proposal(path)
+        actor = _require_owner_or_core(fm, proposal_id, "set handoff_to of")
         current = fm["handoff_to"] if "handoff_to" in fm else ""
         if (target or "") == current:
             return path, False
         if target is None:
             del fm["handoff_to"]
-            entry = f"- {_today()}: handoff_to cleared (was {current})"
+            entry = f"- {_today()}: handoff_to cleared (was {current}) by {actor}"
         elif current:
             fm["handoff_to"] = target
-            entry = f"- {_today()}: handoff_to changed {current} -> {target}"
+            entry = f"- {_today()}: handoff_to changed {current} -> {target} by {actor}"
         else:
             fm["handoff_to"] = target
-            entry = f"- {_today()}: handoff_to set to {target}"
+            entry = f"- {_today()}: handoff_to set to {target} by {actor}"
         write_atomic(path, serialize_frontmatter(fm) + "\n"
                      + _append_state_log(body, entry).lstrip("\n"))
     return path, True
@@ -1680,6 +1716,7 @@ def set_orchestration(proposal_id: str, value: str | None) -> tuple[Path, bool]:
     lock = filelock.FileLock(str(_lock_path()), timeout=_lock_timeout())
     with lock:
         fm, body = parse_proposal(path)
+        actor = _require_owner_or_core(fm, proposal_id, "set orchestration of")
         status = fm["status"] if "status" in fm else ""
         if status != "draft":
             raise ValueError(f"{proposal_id} is {status!r}; orchestration can "
@@ -1689,11 +1726,11 @@ def set_orchestration(proposal_id: str, value: str | None) -> tuple[Path, bool]:
             return path, False
         if value is None:
             del fm["orchestration"]
-            entry = f"- {_today()}: orchestration cleared (was {current})"
+            entry = f"- {_today()}: orchestration cleared (was {current}) by {actor}"
         else:
             fm["orchestration"] = value
             body = _with_workflow_scaffold(body)
-            entry = f"- {_today()}: orchestration set to {value}"
+            entry = f"- {_today()}: orchestration set to {value} by {actor}"
         write_atomic(path, serialize_frontmatter(fm) + "\n"
                      + _append_state_log(body, entry).lstrip("\n"))
     return path, True
@@ -1759,15 +1796,21 @@ def archive_proposal(proposal_id: str, force_agent: bool = False) -> tuple[Path,
     if not path.is_relative_to(_in_flight_root()):
         raise ValueError(f"Cannot archive {path}: not in shared_state in-flight region")
 
-    # P-0057 Phase 2: owner enforcement
+    # P-0057 Phase 2: owner enforcement. P-0135: --force-agent is honoured
+    # for the core agent only (any caller could pass it before).
     owner = fm.get("agent")
-    current = None if force_agent else detect_agent()
+    current = detect_agent()
+    if force_agent and current != _core_agent():
+        raise PermissionError(
+            f"--force-agent on {proposal_id}: only the core agent may archive "
+            f"another agent's proposal; this clone is {current!r} (P-0135)."
+        )
     if not force_agent and owner != current:
         raise PermissionError(
             f"Owner mismatch on archive: {proposal_id} agent={owner!r} but this "
             f"clone resolves to agent={current!r}. Cross-owner archive blocked per "
             f"Art.5.1 (P-0057 Phase 2). If this is a legitimate core cleanup, "
-            f"pass --force-agent."
+            f"run it from the core clone with --force-agent."
         )
 
     date_field = {
