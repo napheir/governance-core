@@ -17,6 +17,18 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-06 — P-0132 Phase C 推送与验证
+
+- owner「推送，没有在别的机器上用过hub」：推送 6cc8933、137f030。验证结果：
+  - 公开 feed 验签通过，与 HEAD 逐字节一致，只有一条按码吊销的条目 `99411b5a`；
+  - 用旧码在 artifacts 下的探针目录执行 install → exit 7，提示「is on the revocation feed」，没有写入任何文件；
+  - 删掉 feed 缓存强制重抓后，auth-guard 和 doctor 判新码 `b3bbe24b` 未吊销，doctor exit 0；
+  - HEAD 的 config.json 不含 GC1 码。
+- 已删除 artifacts 里的两份码副本和探针目录。
+- 核对过：历代 `validate_feed`（0.3.0 起）只检查条目里有 consumer_id，不排斥额外字段。本机 deva-vani 的 0.48.4 / 0.49.0 clone、
+  auto-tax 的 0.6.0 clone 都不受影响。0.49.0 通知已发给 deva-vani（agent-core-de）。memory `hub-auth-code-public-in-git` 已更新。
+- **P-0132 仍为 in-progress**，还差两项，都要 owner 出面：通知 auto-tax 和 trade；trade 项目跑 doctor，确认是 schema 2（退出条件）。
+
 ### 2026-11-06 — P-0132 Phase C 第 3–5 步（本地完成，推送待 owner 确认）
 
 - owner「继续P-0132 Phase C」。旧码备份到 `artifacts/p0132/old_hub.code`（gitignored）；`issue_auth_code.py --out` 签发新 hub 码
