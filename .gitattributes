@@ -1,3 +1,8 @@
 
 # governance-core: per-branch agent.md isolation via merge=ours driver
 constitution/agent.md merge=ours
+
+# revocation feed: the signature covers the exact bytes, so never EOL-convert
+# (core.autocrlf=true checks it out as CRLF and revoke_consumer.py refuses it)
+revocation.json -text
+revocation.json.sig -text

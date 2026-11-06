@@ -1,5 +1,12 @@
 {
-  "revoked": [],
+  "revoked": [
+    {
+      "code_sha256": "99411b5a8bdb63ba8171ff1a5357b0a61ff61d666189af2ce7e61bc0e2140b65",
+      "consumer_id": "governance-core",
+      "reason": "hub code exposed in public git history (P-0132)",
+      "revoked_on": "2026-11-06"
+    }
+  ],
   "schema": 1,
-  "updated": "2026-05-18T13:15:14Z"
+  "updated": "2026-11-06T02:05:47Z"
 }
