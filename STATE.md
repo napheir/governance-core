@@ -17,6 +17,22 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-06 — 实施 P-0133：hub 启动时检查 python 是否在用仓库源码（B 方案第 6 步）
+
+- owner「批准P-0133」。新增 `maintainer/hub_python_check.py`（只用标准库，只发警告，始终 exit 0，不进包）：
+  用 `importlib.util.find_spec` 判断 `python` 会从哪里导入 governance_core。不是 `<repo>/governance_core` 时，
+  输出 SessionStart JSON：`systemMessage` 给 owner 看，`additionalContext` 给 agent 看。
+- `.claude/settings.json`（新建，进 git）注册这个 SessionStart hook。session-boundary-guard 把所有 `/.claude/settings.json`
+  列为关键路径，agent 写不了，也不能豁免，所以文件内容先放在 `artifacts/p0133/settings.json`，由 owner 执行 `cp` 放到位。
+  单 agent 的 hub 不会被安装器写 settings.json（installer.py:747-797），upgrade 不会覆盖这个 hook，测试已覆盖。
+- 实施时发现 Python 3.11 的 `.venv/Scripts/activate` 在 Git Bash 下会把 `C:\...` 写进 PATH，冒号把这一项拆坏。
+  `gchub` 别名改为 `PATH="$PWD/.venv/Scripts:$PATH" claude`（owner 已追加到 `~/.bashrc`），警告文字和 core-manual 一并更正。
+- docs/core-manual.md §2 新增「Hub dev environment: the venv (P-0133)」一节。
+- 测试：新增 `maintainer/test_hub_python_check.py`（5 个：用仓库源码时不输出；别处的副本会警告；未安装会警告；
+  有同名包遮挡时输出 JSON；install 加 upgrade 后 settings.json 字节不变）。手动验证：全局 python 下警告，venv 下不输出；
+  0.49.2 的 wheel 里不含 `maintainer/` 和 settings.json。
+- 待 owner 亲眼确认：用 `gchub` 启动时没有警告，直接 `claude` 启动时出现警告。
+
 ### 2026-11-06 — 业务 clone 不再把 core 的 skill 当成自己的候选；sweep --dry-run 不写 outbox（0.49.2，未发布）
 
 - deva-vani 回报：core 提交的 learned skill 经 master merge 进入每个业务 clone，被当作该 clone 的候选收集
@@ -55,24 +71,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   安装器只对多 clone 布局写 `settings.json`（installer.py:747-797），所以 hub 加在这里的 hook 不会在 upgrade 时被覆盖。
 - 待 owner 做：在 `~/.bashrc` 加 `alias gchub='cd ~/workshop-claude/governance-core && source .venv/Scripts/activate && claude'`，以后用它启动 hub。
   第 5 步（新会话里核实导入来源并跑全量测试）要在用 gchub 开的新会话里做。
-
-### 2026-11-06 — 子宪法审计命中改为告警；改 layer 即撤回已收集的候选（并入 0.49.1）
-
-- deva-vani 又报两件事，owner 选「三项一起发」，与 drift 修复一起进 0.49.1。classify：NO_PROPOSAL（两处窄改动，复现清楚，契约不变）。
-- `audit_sub_constitutions`：`可.*<关键词>` 会把「不可修改宪法」判成放宽，content 起草的收紧条文「允许和禁止的表述由法务界定，写进
-  brand_voice 契约的红线」也被记为 HIGH、exit 1，只能改写措辞过审计。现在正则命中只记 WARN（报告列出命中的新增行，供人工复核，
-  不影响 exit code），只有提交声明 `Violates-Core: YES` 才记 HIGH、exit 1。这与文档里第 4 层「告警」的定位一致，阻断仍由 pre-commit 负责。
-  没有采用「识别收紧句式」的方案：用正则补正则，只会越补越多。`check_constitution_change.py` 不是安装进去的 hook，没有改。
-- `candidate.py sweep`：outbox 里的候选只要不在台账里就上传，不看源 skill 当前的 layer，所以 owner 把 skill 改成 `business` 也撤不回。
-  新增 `collect.collected_skill_source()` / `is_withdrawn()`：由 collect 打包的 skill 候选（rationale 与 payload 形状可辨认），
-  如果对应的 learned skill 已不是 `candidate-common`（改了 layer 或删掉了），sweep 跳过并报 `withdrawn`。
-  drift / submit 候选不受影响，撤回方法是从 outbox 删除。rationale 字符串提取为常量 `COLLECT_RATIONALE`。
-- 文档：constitution-protection-mechanism（第 4 层说明）、iterate-constitution 验收项（加 WARN）、wrap-up 4c（撤回）、core-manual §11。
-- 测试：新增 `test_candidate_sweep_withdrawn.py`（5 个，不需要签名密钥，只 stub uplink 和 hub 查询）；
-  `test_audit_sub_constitutions_layout.py` 把原「放宽即 exit 1」改为告警，另加收紧措辞和声明 YES 两个用例。
-  反向校准（HEAD）：审计 3 FAIL / 2 PASS，sweep 2 FAIL（改 layer、删除）/ 3 PASS（对照）。
-  全量 pytest 389 passed，含 `__main__` 的 28 个测试文件全过；upgrade 无 drift，doctor exit 0。
-- 未处理：deva-vani 报的第 4 件事（业务 clone 会把 merge 进来的 core learned skill 当作自己的候选收集），不在本次批准范围，另行报告。
 
 ### 2026-11-05 — 发布 v0.49.0（P-0131 + P-0132 A/B）
 

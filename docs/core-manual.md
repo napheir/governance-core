@@ -48,6 +48,32 @@ If you changed a hook, the new behavior only takes effect for hook events
 fired *after* the reinstall (and, for some events, after the Claude Code
 session reloads settings).
 
+### Hub dev environment: the venv (P-0133)
+
+The loop only works if `python` and `governance-core` import **this repo's**
+`governance_core/`. Since 2026-11-06 that copy is installed only in the hub's
+own venv. The machine-wide Python carries the released wheel, which is what
+local consumers use, so they never run unreleased hub edits.
+
+- Setup (once): `python -m venv .venv`, then
+  `.venv/Scripts/python -m pip install -e ".[dev]" build`.
+- Launch hub sessions with the venv first on `PATH`. From Git Bash, add this
+  alias to `~/.bashrc`:
+  ```bash
+  alias gchub='cd ~/workshop-claude/governance-core && PATH="$PWD/.venv/Scripts:$PATH" claude'
+  ```
+  Use `gchub --continue` to resume. Do **not** use `source .venv/Scripts/activate`
+  from Git Bash on Python 3.11. It puts `C:\...\.venv/Scripts` on `PATH`, and
+  the colon in `C:` splits that entry.
+- Check which copy you are on with
+  `python -P -c "import governance_core; print(governance_core.__file__)"`.
+  The `-P` matters: from the repo root a plain `python -c` / `python -m pytest`
+  imports the cwd source whatever interpreter runs it. Script-style tests,
+  hooks and the CLI then use the other copy, and nothing fails.
+- `maintainer/hub_python_check.py` runs at SessionStart, registered in
+  `.claude/settings.json`. It warns when the session is not on the repo
+  source. It never blocks. It is hub-only: `maintainer/` is not shipped.
+
 ## 3. Where changes happen
 
 governance-core changes are made **in this repository's own Claude Code
