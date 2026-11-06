@@ -5,6 +5,46 @@
 
 ---
 
+### 2026-11-06 — 业务 clone 不再把 core 的 skill 当成自己的候选；sweep --dry-run 不写 outbox（0.49.2，未发布）
+
+- deva-vani 回报：core 提交的 learned skill 经 master merge 进入每个业务 clone，被当作该 clone 的候选收集
+  （hub 去重自愈只查最近 200 个候选 issue）。`sweep --dry-run` 每跑一次都把它重新打包进 outbox，两个业务 agent 因此误报"新候选"。
+  owner「0.49.2按你的建议做」。classify：NO_PROPOSAL（只改 collect/sweep，复现清楚，契约不变）。
+- `collect.candidate_skills(root)`：标了 candidate-common、且内容不是 core 历史里某个版本的 learned skill。
+  - "core 历史"的 ref 取 config 的 `upstream_branch` 和 `core_branches`，与 check_scope / P-0131 相同。
+    内容用 `git log --root -m --raw` 列出 core 历史中该目录的所有 blob，再用 `git hash-object --stdin-paths` 计算本地文件的 blob，
+    这样 CRLF 的工作区副本也能对上。
+  - 只在多 agent 项目的业务 clone 里生效。身份判定复用 `_guard_common.detect_role`（借 `installer._load_guard_common` 加载）。
+    core clone、单 agent 项目、身份无法解析或 git 失败时一律不跳过，退回 0.49.1 的行为。
+  - collect、启动提醒（`ledger.pending_candidate_skills`）和 sweep 的撤回判断（`is_withdrawn(root, meta, offered)`）共用这一个判断。
+    0.49.2 之前已经收集进 outbox 的 core skill 候选，会按撤回处理。
+- `sweep --dry-run`：拆成 `cmd_sweep` 加 `_sweep_staged(..., scratch)`。dry-run 时 collect 打包到临时目录，跑完删除；
+  对 outbox 和临时目录用同一套选择逻辑，outbox 不写任何文件。去重台账仍可能从 hub 补记（只记事实）。
+  `collect_netnew_skills` 新增 `out_dir` 参数，dedup 仍以 outbox 为准。
+- 版本 0.49.2；文档：core-manual §11、wrap-up 4c。
+- 测试：新增 `test_candidate_core_skills.py`（7 个，用真实 git 仓库，autocrlf=true）。
+  反向校准（HEAD，以 `pending_candidate_skills` 代替新函数）：5 FAIL（排除 core skill、CRLF、core 的旧版本、已收集候选的撤回、dry-run 写入）/
+  2 PASS（业务 clone 改过的 core skill、core clone 自己的 skill）。第一次跑时 CRLF 用例失败，原因在测试夹具：Windows 的 `write_text` 已经写出 CRLF，
+  再替换一次成了 `\r\r\n`。改为先写 LF 字节再转换。
+  全量（venv）pytest tools/ + maintainer/ 401 passed，含 `__main__` 的 28 个全过；upgrade 无 drift，doctor exit 0。**发布待 owner 确认。**
+
+### 2026-11-06 — 发布 v0.49.1；editable 安装隔离（B 方案第 1–3 步）；起草 P-0133
+
+- 发布：owner 选「三项一起发」，即发布确认（core-A3）。推送 1bd6a1e..e1ed6f4，GitHub Release v0.49.1，release CI run 42168442113 success；
+  PyPI 0.49.1 可见（wheel + sdist）。发布前本地构建 wheel 检查：顶层只有 `governance_core*`，新文件都在，`maintainer/` 没有混入。
+  已通知 deva-vani：72 个隔离的 drift 候选在各 clone 升级到 0.49.1 后可以删除。
+- B 方案第 2 步：在 hub 建 `.venv`（已在 gitignore 中），`pip install -e ".[dev]" build`；venv python 导入 `<repo>/governance_core`，版本 0.49.1。
+- B 方案第 3 步：全局 Python 3.11 执行 `pip install governance-core==0.49.1`，卸掉了 editable 0.9.0（pip show 的版本号一直停在 0.9.0）。
+  此后 deva-vani、auto-tax 和 multi-agent-bootstrap（依赖 gc）用的都是 PyPI 上的正式版。用 `python -P` 核实过：全局 python 导入 site-packages。
+- 新发现：在仓库根目录用 `python -c` 或 `python -m pytest`，当前目录在 sys.path 里，所以不管哪个解释器都会导入仓库源码。
+  而用脚本方式跑的测试、hook 和 `governance-core` 命令会用全局的正式版。忘记激活 venv 时不会报错，两套代码混着用。memory 已更新。
+- 第 6 步（防忘检查）：脚本 `maintainer/hub_python_check.py` 已写好但未提交。它在全局 python 下输出 SessionStart JSON 警告，
+  在 venv 下不输出。注册它要新建 `.claude/settings.json`，classify-fast gate 判为 PROPOSAL_REQUIRED，所以起草了 **P-0133**（pending，待 owner 批准）。
+  安装器只对多 clone 布局写 `settings.json`（installer.py:747-797），所以 hub 加在这里的 hook 不会在 upgrade 时被覆盖。
+- 待 owner 做：在 `~/.bashrc` 加 `alias gchub='cd ~/workshop-claude/governance-core && source .venv/Scripts/activate && claude'`，以后用它启动 hub。
+  第 5 步（新会话里核实导入来源并跑全量测试）要在用 gchub 开的新会话里做。
+
+
 ### 2026-11-06 — 子宪法审计命中改为告警；改 layer 即撤回已收集的候选（并入 0.49.1）
 
 - deva-vani 又报两件事，owner 选「三项一起发」，与 drift 修复一起进 0.49.1。classify：NO_PROPOSAL（两处窄改动，复现清楚，契约不变）。
