@@ -17,6 +17,22 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-06 — 发布 v0.49.1；editable 安装隔离（B 方案第 1–3 步）；起草 P-0133
+
+- 发布：owner 选「三项一起发」，即发布确认（core-A3）。推送 1bd6a1e..e1ed6f4，GitHub Release v0.49.1，release CI run 42168442113 success；
+  PyPI 0.49.1 可见（wheel + sdist）。发布前本地构建 wheel 检查：顶层只有 `governance_core*`，新文件都在，`maintainer/` 没有混入。
+  已通知 deva-vani：72 个隔离的 drift 候选在各 clone 升级到 0.49.1 后可以删除。
+- B 方案第 2 步：在 hub 建 `.venv`（已在 gitignore 中），`pip install -e ".[dev]" build`；venv python 导入 `<repo>/governance_core`，版本 0.49.1。
+- B 方案第 3 步：全局 Python 3.11 执行 `pip install governance-core==0.49.1`，卸掉了 editable 0.9.0（pip show 的版本号一直停在 0.9.0）。
+  此后 deva-vani、auto-tax 和 multi-agent-bootstrap（依赖 gc）用的都是 PyPI 上的正式版。用 `python -P` 核实过：全局 python 导入 site-packages。
+- 新发现：在仓库根目录用 `python -c` 或 `python -m pytest`，当前目录在 sys.path 里，所以不管哪个解释器都会导入仓库源码。
+  而用脚本方式跑的测试、hook 和 `governance-core` 命令会用全局的正式版。忘记激活 venv 时不会报错，两套代码混着用。memory 已更新。
+- 第 6 步（防忘检查）：脚本 `maintainer/hub_python_check.py` 已写好但未提交。它在全局 python 下输出 SessionStart JSON 警告，
+  在 venv 下不输出。注册它要新建 `.claude/settings.json`，classify-fast gate 判为 PROPOSAL_REQUIRED，所以起草了 **P-0133**（pending，待 owner 批准）。
+  安装器只对多 clone 布局写 `settings.json`（installer.py:747-797），所以 hub 加在这里的 hook 不会在 upgrade 时被覆盖。
+- 待 owner 做：在 `~/.bashrc` 加 `alias gchub='cd ~/workshop-claude/governance-core && source .venv/Scripts/activate && claude'`，以后用它启动 hub。
+  第 5 步（新会话里核实导入来源并跑全量测试）要在用 gchub 开的新会话里做。
+
 ### 2026-11-06 — 子宪法审计命中改为告警；改 layer 即撤回已收集的候选（并入 0.49.1）
 
 - deva-vani 又报两件事，owner 选「三项一起发」，与 drift 修复一起进 0.49.1。classify：NO_PROPOSAL（两处窄改动，复现清楚，契约不变）。
@@ -54,18 +70,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   4 FAIL（merge 进来的文件、渲染后的条款、merge 文件中混有一个本地改动、vendored 路径映射），
   1 PASS（baseline 最新时本地改动仍被捕获，两版都过）。`_capture_drift` 签名改了，现有调用点相应更新：drift_eol ×4、mixed_clauses ×1。
   全量 pytest 382 passed，脚本风格 28 个全过；hub upgrade 无 drift，doctor exit 0。**发布待 owner 确认。**
-
-### 2026-11-06 — P-0132 Phase C 推送与验证
-
-- owner「推送，没有在别的机器上用过hub」：推送 6cc8933、137f030。验证结果：
-  - 公开 feed 验签通过，与 HEAD 逐字节一致，只有一条按码吊销的条目 `99411b5a`；
-  - 用旧码在 artifacts 下的探针目录执行 install → exit 7，提示「is on the revocation feed」，没有写入任何文件；
-  - 删掉 feed 缓存强制重抓后，auth-guard 和 doctor 判新码 `b3bbe24b` 未吊销，doctor exit 0；
-  - HEAD 的 config.json 不含 GC1 码。
-- 已删除 artifacts 里的两份码副本和探针目录。
-- 核对过：历代 `validate_feed`（0.3.0 起）只检查条目里有 consumer_id，不排斥额外字段。本机 deva-vani 的 0.48.4 / 0.49.0 clone、
-  auto-tax 的 0.6.0 clone 都不受影响。0.49.0 通知已发给 deva-vani（agent-core-de）。memory `hub-auth-code-public-in-git` 已更新。
-- **P-0132 仍为 in-progress**，还差两项，都要 owner 出面：通知 auto-tax 和 trade；trade 项目跑 doctor，确认是 schema 2（退出条件）。
 
 ### 2026-11-05 — 发布 v0.49.0（P-0131 + P-0132 A/B）
 
