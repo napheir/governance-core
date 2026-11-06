@@ -621,7 +621,13 @@ is a clean skip. Since 0.49.1, relabelling a learned skill away from
 `candidate-common` (or deleting it) withdraws the envelope `collect`
 already staged for it: `sweep` skips it with a `withdrawn` note. Any other
 envelope (drift, `/submit-candidate`) is withdrawn by deleting it from the
-outbox. `sweep` degrades to a report (never a non-zero exit) when
+outbox. Since 0.49.2, a business clone of a multi-agent project does not
+offer core's learned skills. Those reach it through the master merge, and a
+skill whose content matches a version committed in core history
+(`upstream_branch` / `core_branches`) is left out of collect, the reminder
+and sweep. Only skills authored or edited in that clone count as its
+candidates. `sweep --dry-run` stages into a scratch directory and writes no
+envelope to the outbox. `sweep` degrades to a report (never a non-zero exit) when
 consent, network, or `gh` is unavailable, so it cannot stall a wrap-up.
 The hub project (governance-core itself) has nothing to uplink and skips.
 

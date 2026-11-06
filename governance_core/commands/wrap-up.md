@@ -176,6 +176,9 @@ python tools/candidate.py sweep
 - **撤回**（0.49.1 起）→ 把 learned skill 的 `layer` 改成 `business`（或删掉该
   skill），`sweep` 就跳过已收集的副本并报 `withdrawn`。drift / submit 候选不对应
   learned skill，从 `.governance/candidate-outbox/` 删除即撤回。
+- **core 的 skill**（0.49.2 起）→ 业务 clone 经 master merge 收到的 core learned skill
+  （内容与 core 历史中的某个版本相同）由 core 上传，不算本 clone 的候选。
+  只有本 clone 自己写的或改过的 skill 才会被收集。`sweep --dry-run` 不写 outbox。
 
 在检查清单标记上传了 N 个 / 跳过（原因）。**本步不可省** —— 省略 = 候选
 永远到不了收敛 hub（这正是 P-0072 修复的缺口）。

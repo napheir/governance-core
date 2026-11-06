@@ -44,6 +44,7 @@ import json
 import shutil
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 from governance_core.auth import store as _auth_store
@@ -257,11 +258,16 @@ def cmd_sweep(args: argparse.Namespace) -> int:
 
     The /wrap-up candidate trigger. Runs collect, then uplinks every outbox
     envelope whose payload digest is absent from the dedup ledger. A
-    collected skill whose learned file is no longer candidate-common is
-    withdrawn and skipped. The hub project (governance-core itself) has
-    nothing to uplink and skips.
+    collected skill this clone no longer offers (relabelled, deleted, or
+    core's merged-in skill) is withdrawn and skipped. The hub project
+    (governance-core itself) has nothing to uplink and skips.
     Degrades to a report -- never blocks -- when consent, network, or `gh`
     is unavailable, so it cannot stall a phase wrap-up.
+
+    --dry-run writes no envelope: collect stages into a scratch directory
+    that is deleted afterwards, and the same selection runs over the outbox
+    plus that scratch staging (0.49.2; it used to stage into the outbox).
+    The ledger may still be repaired from the hub's issue history.
     """
     root = Path(args.project_root).resolve()
     cfg = _config(root)
@@ -280,10 +286,26 @@ def cmd_sweep(args: argparse.Namespace) -> int:
                          "does not uplink to itself\n")
         return 0
 
-    _collect.collect_netnew_skills(root, origin)
-    outbox = _collect.outbox_dir(root)
-    envelopes = (sorted({p.parent for p in outbox.rglob("candidate.json")})
-                 if outbox.exists() else [])
+    if args.dry_run:
+        with tempfile.TemporaryDirectory(prefix="gc_sweep_dryrun_") as scratch:
+            return _sweep_staged(args, root, cfg, origin, auth_code,
+                                 Path(scratch))
+    return _sweep_staged(args, root, cfg, origin, auth_code, None)
+
+
+def _sweep_staged(args: argparse.Namespace, root: Path, cfg: dict,
+                  origin: str, auth_code: str, scratch: Path | None) -> int:
+    """Collect, select and uplink for cmd_sweep.
+
+    `scratch` is the dry-run staging directory (None: stage into the
+    outbox, as a real sweep does).
+    """
+    _collect.collect_netnew_skills(root, origin, out_dir=scratch)
+    staged = {p.parent for base in (_collect.outbox_dir(root), scratch)
+              if base is not None and base.exists()
+              for p in base.rglob("candidate.json")}
+    envelopes = sorted(staged)
+    offered = set(_collect.candidate_skills(root))
     led_path = _ledger.ledger_path(root)
     led = _ledger.load_ledger(led_path)
 
@@ -302,7 +324,7 @@ def cmd_sweep(args: argparse.Namespace) -> int:
             meta = _envelope.validate_envelope(env)
         except _envelope.EnvelopeError:
             continue
-        if _collect.is_withdrawn(root, meta):
+        if _collect.is_withdrawn(root, meta, offered):
             withdrawn.append((env, meta["title"]))
             continue
         # `title` is the skill name (collect uses `skill.stem`); registry
@@ -336,9 +358,10 @@ def cmd_sweep(args: argparse.Namespace) -> int:
 
     for env, title in withdrawn:
         sys.stdout.write(f"[candidate] sweep: SKIPPED {env.name} -- learned "
-                         f"skill {title}.md is no longer layer: "
-                         f"candidate-common (withdrawn; delete the envelope "
-                         f"to clear it)\n")
+                         f"skill {title}.md is not offered by this clone "
+                         f"(not candidate-common, deleted, or core's merged-in "
+                         f"skill): withdrawn; delete the envelope to clear "
+                         f"it\n")
     for env, rej in blocked:
         advisory = _rejected.format_advisory(
             _envelope.validate_envelope(env)["title"], rej)

@@ -76,20 +76,16 @@ def pending_candidate_skills(project_root: Path) -> list[Path]:
     """Return `candidate-common` learned skills not yet in the uplink ledger.
 
     The query behind the SessionStart reminder hook (P-0072 Phase 2): a
-    learned skill tagged `layer: candidate-common` whose content digest is
-    absent from the ledger has not been uplinked yet.
+    skill this clone offers (`collect.candidate_skills`: tagged
+    `layer: candidate-common`, not core's merged-in skill) whose content
+    digest is absent from the ledger has not been uplinked yet.
     """
-    learned = project_root / ".claude" / "skills" / "learned"
-    if not learned.exists():
+    skills = collect.candidate_skills(project_root)
+    if not skills:
         return []
     led = load_ledger(ledger_path(project_root))
-    pending: list[Path] = []
-    for skill in sorted(learned.glob("*.md")):
-        if collect.read_layer(skill) != "candidate-common":
-            continue
-        if not is_uplinked(led, skill_digest(skill)):
-            pending.append(skill)
-    return pending
+    return [skill for skill in skills
+            if not is_uplinked(led, skill_digest(skill))]
 
 
 def load_ledger(path: Path) -> dict[str, Any]:
