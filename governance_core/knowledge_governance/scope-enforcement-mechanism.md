@@ -61,14 +61,33 @@ implementation.
 扫描 staged files 与 `agent_rules/<agent>.allow.txt` 比对，越权文件
 拒绝 commit。
 
-豁免：`git commit --no-verify` 一次性绕过（用户授权层）。
+豁免：`git commit --no-verify` 一次性绕过（用户授权层）。非 core agent
+的 Bash 调用不能用 `--no-verify` / `commit -n` / `core.hooksPath` 绕过
+（Layer 2）；即使被绕过，事后的 Layer 6 分支审计也会把这些改动查出来。
 
 ### Layer 2: Claude Code PreToolUse hook (Bash)
 
 文件：`.claude/hooks/scope-guard.py`
 
-机制：拦截 Bash 工具调用，扫描命令字符串中出现的路径与 agent scope 比对。
-越权 → exit code 2 = block，Claude Code 给出 deny reason。
+机制：拦截 Bash 工具调用，越权 → exit code 2 = block。拦截三类：
+
+- 命令字符串中出现其他非 core clone 的路径（跨 clone 路径匹配，不是逐个路径对照 scope）；
+- 跳过或改写 commit hook 的写法：`--no-verify`、`commit -n`、`core.hooksPath`，引号内的文字不算；
+- `python -c` 中的写文件操作。
+
+shell 的其他写法（重定向、`cp`、`sed -i` 等）不在这一层判断 scope，交给 Layer 3 和 Layer 6。
+
+### Layer 6: 分支审计（事后检测，P-0135）
+
+文件：`tools/check_scope.py --audit-branch`
+
+机制：core 在自己的仓库里把业务 clone 当前检出的提交拉取到 `refs/gc-audit/<agent>`，
+检查它与 core ref 的 merge-base 以来的全部净改动（含 merge 时的冲突解决）。
+允许规则来自 `git show <core ref>:agent_rules/<agent>.allow.txt`。
+一个改动通过的条件是以下三者之一：在允许规则内；内容是 core 历史里的某个版本；
+随 core 一起删除。其余改动都会报出，附相关提交和文件属主。
+`/sync-repos`、`/audit`、`/publish-knowledge` 都会执行它。
+被审计的 agent 无法改动 core 的 ref 和规则，所以绕过事前拦截的改动一定会在这里被查出。
 
 ### Layer 3: Claude Code PreToolUse hook (Edit/Write)
 

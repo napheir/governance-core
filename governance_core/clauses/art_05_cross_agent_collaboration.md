@@ -15,7 +15,12 @@ phase_2_action: ready-to-use
 每个 agent 的写权限由 `agent_rules/<agent>.allow.txt` 定义。
 共享禁写路径由 `agent_rules/shared.deny.txt` 定义。
 
-**合规门禁**：提交前必须通过 `python tools/check_scope.py --agent <name>`
+**合规门禁**：
+- **提交时**，pre-commit 运行 `python tools/check_scope.py --staged-only`，自动 merge 提交时运行 `--merge-commit`，由 install 安装。
+- **事后**，core 对每个业务分支运行分支审计 `python tools/check_scope.py --audit-branch --agent <name> --repo <clone>`（P-0135）。
+  - 审计范围是该分支与 core ref 的 merge-base 以来的全部净改动，包括 merge 时的冲突解决；允许规则取自 core ref。
+  - `/sync-repos` 和 `/audit` 会自动执行它；绕过提交门禁的改动（`commit -n`、底层命令、hook 缺失时的提交）也会被它查出。
+- 在业务 clone 里运行 `--agent <name>`，审计的是本 clone 的 HEAD，结果仅供参考。
 
 **Proposals 协同**：in-flight proposals 的物理唯一副本位于
 `shared_state/proposals/<agent>/`（按 agent 分桶，单副本对全 5 clone 直接

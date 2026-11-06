@@ -30,10 +30,15 @@ Scope 外的文件对 agent 为**只读**（可通过 Read/Grep/Glob 访问，�
 
 防御分两层语义：
 
-- **项目内 scope 防御**（4 层）保证 5 clone 互不串写：
-  Layer 1 git pre-commit hook，Layer 2 Bash PreToolUse hook
-  (`scope-guard.py`)，Layer 3 Edit/Write PreToolUse hook
-  (`edit-write-guard.py`)，Layer 4 settings.local.json hook 注册。
+- **项目内 scope 防御**保证各 clone 互不串写，分为事前拦截和事后检测（P-0135）：
+  - **事前拦截**：
+    - Layer 1 git pre-commit / pre-merge-commit hook；
+    - Layer 2 Bash PreToolUse hook（`scope-guard.py`，另外拦截 `--no-verify` / `commit -n` / `core.hooksPath`）；
+    - Layer 3 Edit/Write PreToolUse hook（`edit-write-guard.py`）；
+    - Layer 4 settings.local.json hook 注册。
+  - **事后检测**：Layer 6 由 core 运行的分支审计（`check_scope.py --audit-branch`）。允许规则取自 core ref，审计在 core 仓库内进行，被审计的 agent 无法影响结果。
+  - 所有 agent 以同一个 OS 用户运行，本地 hook 拦不住执意写文件的进程。因此本条的保证是：常规路径事前拦截，绕过者必被查出并通知受影响的 agent。
+    shared_state 的分区与通知见 `contracts/shared_state_ownership.md`。
 - **会话边界防御**（1 层用户全局）保证任何 cwd 启动的 Claude session
   不能跨项目越界写：Layer 5 session-boundary-guard hook
   (`~/.claude/hooks/`)，default-deny 边界外路径，critical paths

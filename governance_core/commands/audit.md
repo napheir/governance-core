@@ -9,9 +9,13 @@ owner: core
 
 ## 工作流
 
-1. **Scope 合规**: 对每个 agent 运行 `python tools/check_scope.py --agent <name>`
-   - 检查 core, rules, trade, data, research, models, simu
-   - 报告违规文件和违规 agent
+1. **Scope 合规（分支审计，P-0135）**：对 `.governance/config.json` 的 `agents` 中每个非 core agent，在 core 仓库里运行
+   `python tools/check_scope.py --audit-branch --agent <name> --repo ../<clone_dir>`。
+   - 命令会把该 clone 当前检出的提交拉取到 `refs/gc-audit/<name>`，再对照 core ref 上的允许规则，
+     检查它与 core ref 的 merge-base 以来的全部净改动。
+   - 若该分支已推送，再审计远端：先 `git fetch origin <branch>`，然后对 `--ref origin/<branch>` 再跑一次。
+   - exit 1：报告越权文件、相关提交和文件属主；exit 2：审计无法运行（例如 core ref 上缺 allow 文件），报告原因。
+   - 单 agent 项目：`[N/A — single-agent topology — skipped]`。
 
 2. **子宪法审计**: 运行 `python tools/audit_sub_constitutions.py --verbose`
    - 检查 agent-rules, agent-trade, agent-data, agent-research 的 CLAUDE.md

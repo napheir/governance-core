@@ -5,6 +5,13 @@
 
 ---
 
+### 2026-11-06 — 待办（owner）：P-0132 通知 auto-tax 与 trade；trade 跑 doctor 确认 schema 2；P-0133 两种启动方式验收
+
+- owner「记一个todo，晚些提醒我」（15:05）。本会话已设一次性提醒（17:07，只在本会话内有效）。
+- P-0132 结案还差两步：通知 auto-tax（还在 0.6.0）和 trade 升级（这次吊销对它们没有影响）；在 trade 项目跑 `governance-core doctor`，确认 auth 是 schema 2。
+- P-0133 标为已实施前还差 owner 亲眼确认：用 `gchub` 启动时没有警告，直接 `claude` 启动时有警告。
+
+
 ### 2026-11-06 — 发布 v0.49.2
 
 - owner「可以发」。推送 bcf0730..a2f825d（a90ece2 是 0.49.2 的代码，a2f825d 是 P-0133，只涉及 hub 自己的文件），

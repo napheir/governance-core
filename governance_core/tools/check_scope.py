@@ -2,12 +2,22 @@
 """
 check_scope.py
 --------------
-Enforce agent file-scope constraints against a fixed baseline commit.
+Enforce agent file-scope constraints.
 
 Usage:
-    python tools/check_scope.py --agent <agent>
+    python tools/check_scope.py --agent <agent>    # branch audit of HEAD
+    python tools/check_scope.py --audit-branch --agent <agent> --repo <clone> [--json]
     python tools/check_scope.py --staged-only      # pre-commit gate
     python tools/check_scope.py --merge-commit     # pre-merge-commit gate
+
+The branch audit (P-0135; contracts/shared_state_ownership.md §1) checks a
+branch's net change since its merge-base with the core ref, merge
+resolutions included, against the agent's allow rules as committed on the
+core ref. Run from core with --repo, it fetches the clone's checked-out
+commit into refs/gc-audit/<agent> and judges it with core's own refs and
+rules. Exit 0 = in scope, 1 = violations, 2 = the audit could not run. It
+replaces the retired baseline mode (`.baseline_commit`, which nothing ever
+wrote).
 
 Without --agent the agent is this clone's config-derived identity (P-0129,
 shared _guard_common.resolve_agent). The config's core agent has no scope
@@ -36,7 +46,6 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 RULES_DIR = ROOT / "agent_rules"
-BASELINE_FILE = ROOT / ".baseline_commit"
 
 
 def _load_guard_common():
@@ -121,7 +130,8 @@ def same_as_core(path: str, staged: bool, core_ref) -> bool:
     HEAD there passed any staged edit to a file whose committed version still
     matched core -- e.g. a business agent rewriting its own
     agent_rules/<agent>.allow.txt in the commit under check (P-0129).
-    staged=False (baseline mode) compares the committed HEAD.
+    staged=False compares the committed HEAD (used by the retired baseline
+    mode; every current caller passes staged=True).
     Any git error counts as "not the same".
     """
     if core_ref is None:
@@ -215,6 +225,22 @@ def run(cmd: str) -> str:
     ).strip()
 
 
+def _allow_lines(text: str) -> list:
+    """Allow-rule prefixes from an allow file's text ('#' lines are comments,
+    same as edit-write-guard's _load_allow_rules)."""
+    return [
+        line.strip().lstrip("\ufeff").replace("\\", "/")
+        for line in text.splitlines()
+        if line.strip() and not line.strip().lstrip("\ufeff").startswith("#")
+    ]
+
+
+def _deny_lines(text: str) -> list:
+    """Deny-rule prefixes from shared.deny.txt's text."""
+    return [line.strip().lstrip("\ufeff").replace("\\", "/")
+            for line in text.splitlines() if line.strip()]
+
+
 def load_rules(agent: str):
     allow_file = RULES_DIR / f"{agent}.allow.txt"
     deny_file = RULES_DIR / "shared.deny.txt"
@@ -225,22 +251,13 @@ def load_rules(agent: str):
               f"per line; core maintains it)")
         sys.exit(1)
 
-    # '#' lines are comments -- same as edit-write-guard's _load_allow_rules.
-    allow = [
-        line.strip().lstrip("\ufeff").replace("\\", "/")
-        for line in allow_file.read_text(encoding="utf-8", errors="replace").splitlines()
-        if line.strip() and not line.strip().lstrip("\ufeff").startswith("#")
-    ]
+    allow = _allow_lines(allow_file.read_text(encoding="utf-8", errors="replace"))
 
     deny = []
     # Only non-core agents reach here: main() passes the core agent before
     # loading rules, so it is never subject to the shared deny list.
     if deny_file.exists():
-        deny = [
-            line.strip().lstrip("\ufeff").replace("\\", "/")
-            for line in deny_file.read_text(encoding="utf-8", errors="replace").splitlines()
-            if line.strip()
-        ]
+        deny = _deny_lines(deny_file.read_text(encoding="utf-8", errors="replace"))
 
     return allow, deny
 
@@ -280,11 +297,143 @@ def is_under(path: str, prefixes):
 
 
 
-def get_baseline():
-    if not BASELINE_FILE.exists():
-        print("[FATAL] .baseline_commit not found. Baseline not initialized.")
-        sys.exit(1)
-    return BASELINE_FILE.read_text().strip()
+# ---------------------------------------------------------------------------
+# Branch scope audit (P-0135; contracts/shared_state_ownership.md §1). Audits
+# a business branch's net change since its merge-base with the core ref,
+# merge resolutions included. Rules, the core ref and core history are read
+# from THIS repo: run from core, nothing the audited agent controls (its
+# allow file, its refs, its working tree) steers the result.
+# ---------------------------------------------------------------------------
+
+AUDIT_REF_PREFIX = "refs/gc-audit/"
+
+
+class AuditError(Exception):
+    """The branch audit could not run (exit 2)."""
+
+
+def _git(*args: str, cwd: Path = ROOT, check: bool = True):
+    """Return stdout of `git <args>` in `cwd`; None on failure when check=False."""
+    try:
+        res = subprocess.run(["git", "-c", "core.quotepath=false", *args],
+                             cwd=cwd, capture_output=True, encoding="utf-8",
+                             errors="replace", check=False)
+    except OSError as exc:
+        raise AuditError(f"git not runnable: {exc}") from exc
+    if res.returncode != 0:
+        if check:
+            raise AuditError(f"git {' '.join(args)} failed: {res.stderr.strip()}")
+        return None
+    return res.stdout
+
+
+def fetch_clone_head(repo: Path, agent: str) -> str:
+    """Fetch the checked-out commit of clone `repo` into refs/gc-audit/<agent>.
+
+    The auditing repo then holds its own copy of the branch; the clone's own
+    refs (e.g. a rewritten origin/master) play no part in the audit.
+    """
+    ref = AUDIT_REF_PREFIX + agent
+    _git("fetch", "--no-tags", "-q", str(repo), f"+HEAD:{ref}")
+    return ref
+
+
+def core_rules(core_ref: str, agent: str) -> tuple:
+    """(allow, deny) for `agent` as committed on `core_ref` (never a work tree)."""
+    allow_text = _git("show", f"{core_ref}:agent_rules/{agent}.allow.txt",
+                      check=False)
+    if allow_text is None:
+        raise AuditError(f"no agent_rules/{agent}.allow.txt on {core_ref}")
+    deny_text = _git("show", f"{core_ref}:agent_rules/shared.deny.txt",
+                     check=False)
+    return _allow_lines(allow_text), _deny_lines(deny_text or "")
+
+
+def _core_blobs(core_ref: str, paths: list) -> dict:
+    """{path: {blob ids of every version of that path in core history}}."""
+    blobs: dict = {p: set() for p in paths}
+    for i in range(0, len(paths), 200):
+        chunk = paths[i:i + 200]
+        out = _git("log", "--root", "-m", "--no-renames", "--raw", "--no-abbrev",
+                   "--format=", core_ref, "--", *chunk)
+        for line in out.split("\n"):
+            if not line.startswith(":") or "\t" not in line:
+                continue
+            meta, path = line.split("\t", 1)
+            fields = meta.split()
+            if len(fields) >= 4 and fields[3].strip("0") and path in blobs:
+                blobs[path].add(fields[3])
+    return blobs
+
+
+def _path_owners(core_ref: str, path: str, agents: list) -> list:
+    """Agents whose core-ref allow rules cover `path`."""
+    owners = []
+    for name in agents:
+        text = _git("show", f"{core_ref}:agent_rules/{name}.allow.txt", check=False)
+        if text is not None and is_under(path, _allow_lines(text)):
+            owners.append(name)
+    return owners
+
+
+def audit_branch(agent: str, ref: str, core_ref: str, other_agents: list) -> dict:
+    """Audit `ref` for `agent` against `core_ref`; return the report dict.
+
+    A path changed since merge-base(core_ref, ref) passes when it matches the
+    agent's allow rules (minus deny), when its tip blob is a version core
+    committed, or when it is deleted and absent at the core tip.
+    """
+    base = _git("merge-base", core_ref, ref, check=False)
+    if not base:
+        raise AuditError(f"no merge-base between {core_ref} and {ref}")
+    base = base.strip()
+    allow, deny = core_rules(core_ref, agent)
+    raw = _git("diff", "--no-renames", "--name-status", "-z", base, ref)
+    tokens = [t for t in raw.split("\0") if t]
+    changes = list(zip(tokens[0::2], tokens[1::2]))
+    suspect = [(st, p) for st, p in changes
+               if is_under(p, deny) or not is_under(p, allow)]
+    history = _core_blobs(core_ref, [p for st, p in suspect if st != "D"])
+    violations = []
+    for status, path in suspect:
+        if not is_under(path, deny):
+            if status == "D":
+                if _git("cat-file", "-e", f"{core_ref}:{path}", check=False) is None:
+                    continue  # core deleted it too
+            else:
+                blob = _git("rev-parse", f"{ref}:{path}").strip()
+                if blob in history[path]:
+                    continue  # a version core committed
+        log = _git("log", "--format=%h %s", f"{base}..{ref}", "--", path)
+        violations.append({
+            "path": path, "status": status,
+            "commits": [c for c in log.split("\n") if c.strip()],
+            "owners": _path_owners(core_ref, path, other_agents),
+        })
+    return {"schema": 1, "agent": agent, "ref": ref, "base": base,
+            "core_ref": core_ref, "violations": violations}
+
+
+def _print_audit(report: dict) -> None:
+    """Human-readable branch-audit report."""
+    if not report["violations"]:
+        print(f"[PASS] {report['agent']} @ {report['ref']}: every change since "
+              f"{report['base'][:12]} is in scope or core content "
+              f"(rules from {report['core_ref']}).")
+        return
+    print(f"\n[FAIL] {report['agent']} @ {report['ref']}: "
+          f"{len(report['violations'])} out-of-scope change(s) since "
+          f"{report['base'][:12]} (rules from {report['core_ref']}):\n")
+    for v in report["violations"]:
+        owners = f"  owner: {', '.join(v['owners'])}" if v["owners"] else ""
+        print(f"  - [{v['status']}] {v['path']}{owners}")
+        for c in v["commits"][:5]:
+            print(f"      {c}")
+        if len(v["commits"]) > 5:
+            print(f"      (+{len(v['commits']) - 5} more)")
+    print("\nThese changes are outside the agent's allow rules on the core "
+          "branch and are not core content. Revert them on the branch, or "
+          "route them through a proposal.")
 
 
 def main():
@@ -297,6 +446,17 @@ def main():
     parser.add_argument("--merge-commit", action="store_true",
                         help="automatic merge commit (pre-merge-commit hook); "
                              "implies --staged-only")
+    parser.add_argument("--audit-branch", action="store_true",
+                        help="audit a branch's changes since its merge-base "
+                             "with the core ref (the default without "
+                             "--staged-only / --merge-commit)")
+    parser.add_argument("--repo", default=None,
+                        help="audit the checked-out commit of this clone "
+                             "(fetched into refs/gc-audit/<agent> here)")
+    parser.add_argument("--ref", default=None,
+                        help="audit this ref of the current repo (default HEAD)")
+    parser.add_argument("--json", action="store_true",
+                        help="print the branch-audit report as JSON")
     args = parser.parse_args()
     if args.merge_commit:
         args.staged_only = True
@@ -314,6 +474,8 @@ def main():
         print(f"[PASS] '{args.agent}' is the core agent: no scope restriction.")
         return
 
+    if not args.staged_only:
+        sys.exit(_run_branch_audit(args, topology))
 
     allow, deny = load_rules(args.agent)
 
@@ -322,19 +484,11 @@ def main():
     # non-ASCII chars in double-quotes with C-style escapes inside, which
     # then fail prefix matching against UTF-8 allow rules. Combined with
     # core.quotepath=false this eliminates both quoting and octal escapes.
-    if args.staged_only:
-        try:
-            raw = run("git -c core.quotepath=false diff --cached --name-only -z")
-        except subprocess.CalledProcessError:
-            print("[FATAL] git diff --cached failed.")
-            sys.exit(1)
-    else:
-        baseline = get_baseline()
-        try:
-            raw = run(f"git -c core.quotepath=false diff --name-only -z {baseline}..HEAD")
-        except subprocess.CalledProcessError:
-            print("[FATAL] git diff failed. Is baseline commit valid?")
-            sys.exit(1)
+    try:
+        raw = run("git -c core.quotepath=false diff --cached --name-only -z")
+    except subprocess.CalledProcessError:
+        print("[FATAL] git diff --cached failed.")
+        sys.exit(1)
     files = [p for p in raw.split("\0") if p]
 
     if not files:
@@ -353,8 +507,7 @@ def main():
         # Shared governance files reach agent branches through core merges.
         # Identical to core, they are not an agent-owned modification.
         if (
-                f == ".baseline_commit"
-                or f.startswith("agent_rules/")
+                f.startswith("agent_rules/")
                 or f == "tools/check_scope.py"
                 or f == "tools/print_startup_pack.ps1"
         ):
@@ -427,6 +580,31 @@ def main():
         sys.exit(1)
 
     print("[PASS] All modified files are within allowed scope.")
+
+
+def _run_branch_audit(args, topology: dict) -> int:
+    """Run the branch audit for main(); return the exit code (0/1/2)."""
+    core_refs = load_core_refs()
+    if not core_refs:
+        print("[FATAL] no core ref resolves here (config upstream_branch / "
+              "core_branches); fetch the core branch first")
+        return 2
+    others = [a["name"] for a in topology["agents"]
+              if a["name"] not in (topology["core"], args.agent)]
+    try:
+        if args.repo:
+            ref = fetch_clone_head(Path(args.repo).resolve(), args.agent)
+        else:
+            ref = args.ref or "HEAD"
+        report = audit_branch(args.agent, ref, core_refs[0], others)
+    except AuditError as exc:
+        print(f"[FATAL] branch audit could not run: {exc}")
+        return 2
+    if args.json:
+        print(json.dumps(report, ensure_ascii=False))
+    else:
+        _print_audit(report)
+    return 1 if report["violations"] else 0
 
 
 if __name__ == "__main__":

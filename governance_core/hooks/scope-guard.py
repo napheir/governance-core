@@ -91,11 +91,65 @@ def _block(role, reason, detail):
     _block_shared("SCOPE GUARD", f"{reason} (role={role})", detail)
 
 
+def _mask_quoted(command):
+    """Return `command` with the contents of quoted strings blanked out.
+
+    Handles '...' (no escapes) and "..." (backslash escapes), so a commit
+    message mentioning "-n" or core.hooksPath is not mistaken for the flag.
+    """
+    out = []
+    quote = None
+    i = 0
+    while i < len(command):
+        ch = command[i]
+        if quote is None:
+            if ch in ("'", '"'):
+                quote = ch
+            out.append(ch)
+        elif quote == '"' and ch == "\\" and i + 1 < len(command):
+            out.append("  ")
+            i += 1
+        elif ch == quote:
+            quote = None
+            out.append(ch)
+        else:
+            out.append(" ")
+        i += 1
+    return "".join(out)
+
+
+# `git ... commit ... -n` (or a short-flag cluster containing n, e.g. -an):
+# git commit's -n is --no-verify. Only `commit`: `git merge -n` is --no-stat.
+_COMMIT_RE = re.compile(r"\bgit\b(?P<rest>[^|;&]*)")
+_SHORT_N_RE = re.compile(r"^-[A-Za-z]*n[A-Za-z]*$")
+_HOOKS_PATH_RE = re.compile(r"core\.hookspath", re.IGNORECASE)
+
+
+def _bypasses_commit_hooks(command):
+    """True if `command` skips or redirects the git commit hooks (P-0135)."""
+    masked = _mask_quoted(command)
+    if "--no-verify" in masked or _HOOKS_PATH_RE.search(masked):
+        return True
+    for m in _COMMIT_RE.finditer(masked):
+        tokens = m.group("rest").split()
+        if "commit" in tokens:
+            after = tokens[tokens.index("commit") + 1:]
+            if any(_SHORT_N_RE.match(t) for t in after):
+                return True
+    return False
+
+
 def _check_no_verify(command, role):
-    """Block --no-verify for non-core agents."""
-    if "--no-verify" in command:
+    """Block skipping the commit hooks for non-core agents.
+
+    --no-verify, `git commit -n` (any short-flag cluster with n) and any
+    core.hooksPath override; quoted text (commit messages) is ignored.
+    """
+    if _bypasses_commit_hooks(command):
         _block(role, "Bash command BLOCKED",
-               "--no-verify bypasses pre-commit scope checks.\n"
+               "This skips or redirects the git commit hooks "
+               "(--no-verify, commit -n, core.hooksPath), which run the "
+               "pre-commit scope check.\n"
                "Non-core agents may not skip scope enforcement.\n"
                "If this change is authorized, ask core agent to commit it.")
 

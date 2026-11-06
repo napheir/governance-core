@@ -17,6 +17,26 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-06 — P-0135 Phase 1：由 core 运行的分支范围审计（0.51.0，未发布）
+
+- `check_scope.py --audit-branch --agent X [--repo <clone>] [--ref R] [--json]`：
+  - **审计对象**：在 core 仓库里把该 clone 当前检出的提交拉取到 `refs/gc-audit/<agent>`，审计它与 core ref 的 merge-base 以来的净改动（含 merge 时的冲突解决）。
+  - **规则来源**：`git show <core ref>:agent_rules/<agent>.allow.txt`，不读分支或工作区里的文件。
+  - **放行条件**：在允许规则内、内容是 core 历史中的某个版本、或随 core 一起删除，三者满足其一即可。其余改动都会报出，附提交和属主。
+  - **退出码**：0 通过，1 有违规，2 无法运行。
+  - 不加别的模式的 `--agent X` 等同于审计 HEAD；baseline 模式和 `.baseline_commit` 已移除（从来没有地方写过这个文件）。
+- scope-guard：非 core agent 不能再用 `--no-verify`、`commit -n`（含 `-an`、`-nm` 这类组合）或 `core.hooksPath` 跳过提交 hook。
+  匹配前会把引号里的内容遮掉，所以 commit message 里提到这些字样不会误拦。
+- merge-audit.py 改为运行分支审计：路径钉在本 clone、区分退出码 1 和 2、超时 60 秒。
+- `/sync-repos` 新增 Step 0：审计不通过的 clone 本轮不同步，其余照常；`/audit` 按 config 里的 agent 逐个审计；
+  `/publish-knowledge` 收集前先审计。art_05 的合规门禁描述、art_12 第 3 款的防御层次、scope-enforcement-mechanism 都与实现对齐。
+- 版本 0.50.0 → 0.51.0（0.50.0 没有单独发布）。
+- 测试：新增 `test_check_scope_branch_audit.py`，25 个，用真实的 core 仓库和业务 clone。覆盖：
+  在自己 scope 内的改动、改别的 agent 的文件、在分支上放宽 allow 文件、`-n` 提交、core merge、core 的旧版本、
+  藏在 merge 冲突解决里的改动、删除、篡改 clone 自身 ref、在 clone 内审计、exit 2，以及 12 个 hook 绕过写法。
+  反向校准（HEAD）：24 FAIL / 1 PASS（core agent 不受限）。全量（venv）pytest 456 passed，含 `__main__` 的 28 个全过；
+  upgrade 无 drift，doctor exit 0。
+
 ### 2026-11-06 — P-0135 Phase 0：新增多 agent 内容归属契约（未发布）
 
 - owner 批准 P-0135（「OK，批准。都按你的建议来做」），7 个待定问题都按建议处理。各阶段单独提交，最后和 0.50.0 一起作为 0.51.0 发布。
@@ -52,12 +72,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   5 FAIL（不完整的声明被拦、run 打印声明 ×2、Check 22 ×2）/ 3 PASS（完整声明可批准、普通提案不受影响、run 拒绝普通提案）。
   全量（venv）pytest 431 passed，含 `__main__` 的 28 个全过；提案审计 0 失败；upgrade 无 drift；doctor exit 0。**发布待 owner 确认。**
 - deva-vani 说他们停在 0.49.1，等 scope gate 修好后连同 0.49.2、0.50.0 一次升级。
-
-### 2026-11-06 — 待办（owner）：P-0132 通知 auto-tax 与 trade；trade 跑 doctor 确认 schema 2；P-0133 两种启动方式验收
-
-- owner「记一个todo，晚些提醒我」（15:05）。本会话已设一次性提醒（17:07，只在本会话内有效）。
-- P-0132 结案还差两步：通知 auto-tax（还在 0.6.0）和 trade 升级（这次吊销对它们没有影响）；在 trade 项目跑 `governance-core doctor`，确认 auth 是 schema 2。
-- P-0133 标为已实施前还差 owner 亲眼确认：用 `gchub` 启动时没有警告，直接 `claude` 启动时有警告。
 
 ### 2026-11-05 — 发布 v0.49.0（P-0131 + P-0132 A/B）
 

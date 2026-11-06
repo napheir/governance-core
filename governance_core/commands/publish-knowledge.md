@@ -85,6 +85,18 @@ git fetch ../agent-<name> feature/<branch>
 # 或: git fetch origin feature/<branch>  （若已推 origin）
 ```
 
+**先做分支审计（P-0135）**：在收集该分支的任何内容进 master 之前，运行
+
+```bash
+python tools/check_scope.py --audit-branch --agent <name> --repo ../agent-<name>
+```
+
+- exit 0：继续 4.2。
+- exit 1：该分支带有越权改动，本轮**不从它收集任何内容**，报告越权文件和相关提交，交给 owner 处理。
+- exit 2：审计无法运行，同样停止收集这个分支。
+
+收集到 master 的内容来自一个越权分支，等于替它洗白，所以审计必须放在收集之前。
+
 4.2 分类 knowledge/ 路径下每个变更文件（P-0055 引入 `diff_classify.py`，
 取代原 `grep '^A'` 单 filter，因为它会把合法的 v1.1.0+ frontmatter 补丁
 误丢——见 commit `30b197cf` 的真实 regression case）：

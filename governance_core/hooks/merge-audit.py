@@ -8,10 +8,14 @@ scope audit to verify no cross-scope violations were introduced.
 Non-blocking (always exit 0). Outputs audit results as informational
 feedback to the agent.
 
+Runs the branch scope audit (`check_scope.py --audit-branch`, P-0135) of
+this clone's HEAD; before 0.51.0 it ran the baseline mode, which always
+failed because nothing wrote `.baseline_commit`.
+
 Hypothesis: Merge operations may introduce cross-scope violations that
 go undetected without immediate audit.
 Created: 2026-04-05
-Review schedule: Quarterly (next: 2026-07-05)
+Review schedule: Quarterly (reviewed 2026-11-06, P-0135; next: 2027-02-06)
 """
 import io
 import json
@@ -68,26 +72,33 @@ def detect_role() -> str:
 
 
 def run_scope_audit(role: str) -> str:
-    """Run scope check for the detected role."""
-    if not os.path.isfile(SCOPE_CHECK):
+    """Run the branch scope audit (P-0135) of this clone's HEAD for `role`.
+
+    Advisory: it uses this clone's own refs and core ref. The authoritative
+    audit is the one core runs from its repo (/sync-repos, /audit).
+    """
+    script = os.path.join(_REPO_ROOT, SCOPE_CHECK)
+    if not os.path.isfile(script):
         return "[merge-audit] Scope checker not found, skipping."
 
     try:
         result = subprocess.run(
-            [sys.executable, SCOPE_CHECK, "--agent", role],
-            capture_output=True, text=True, timeout=15,
+            [sys.executable, script, "--audit-branch", "--agent", role],
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
+            timeout=60, cwd=_REPO_ROOT,
         )
         output = result.stdout.strip()
         if result.returncode == 0:
             return f"[merge-audit] Post-merge scope audit PASSED for '{role}'."
-        else:
+        if result.returncode == 1:
             return (
                 f"[merge-audit] Post-merge scope audit FAILED for '{role}'!\n"
                 f"{output}\n"
                 "-> Review the merge for scope violations before continuing."
             )
+        return f"[merge-audit] Scope audit could not run for '{role}':\n{output}"
     except subprocess.TimeoutExpired:
-        return "[merge-audit] Scope audit timed out (15s)."
+        return "[merge-audit] Scope audit timed out (60s)."
     except Exception as e:
         return f"[merge-audit] Scope audit error: {e}"
 

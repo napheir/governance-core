@@ -21,7 +21,24 @@ owner: core
 
 ## 工作流
 
-对每个 agent clone（rules, trade, data, research）按顺序执行：
+对 `.governance/config.json` 中 `agents` 的每个非 core agent clone，按顺序执行以下步骤。
+
+### Step 0: 分支审计（P-0135）
+
+在 core 仓库里先审计该 clone 的分支，再动它：
+
+```bash
+python tools/check_scope.py --audit-branch --agent <name> --repo ../<clone_dir>
+```
+
+若分支已推送，再审计一次远端：先 `git fetch origin <branch>`，再对 `--ref origin/<branch>` 跑同样的命令。
+
+- **exit 0**：继续 Step 1。
+- **exit 1**：分支带有越权改动。**本轮不同步这个 clone**（不 merge，也不 stash），把越权文件、相关提交和文件属主报告给 owner，然后继续同步下一个 clone。
+- **exit 2**：审计无法运行（例如 core ref 上缺这个 agent 的 allow 文件）。同样跳过这个 clone，并报告原因。
+
+审计在 core 的仓库里进行：允许规则、core ref 和 core 历史都来自 core，业务 clone 改不到。
+这样，绕过提交门禁的改动（`commit -n`、底层命令、hook 缺失时的提交）也会在这里被查出。
 
 ### Step 1: Stash 本地变更
 
@@ -152,16 +169,18 @@ merge 进来的文件既不等于旧 baseline，也不等于新版本，仍会�
 
 ```
 === Repo Sync Results ===
-[OK]   agent-rules: merged N commits, 0 conflicts
-[OK]   agent-trade: merged N commits, 1 conflict (STATE.md auto-resolved)
-[OK]   agent-data: already up to date
+[OK]   agent-rules: audit PASS; merged N commits, 0 conflicts
+[OK]   agent-trade: audit PASS; merged N commits, 1 conflict (STATE.md auto-resolved)
+[OK]   agent-data: audit PASS; already up to date
+[SKIP] agent-content: audit FAIL — 2 out-of-scope change(s) (content/x.md owner=platform ...); not synced
 [FAIL] agent-research: unresolved conflict in <file> — needs manual intervention
 
 Verification:
-  rules:    check_scope=OK tracker=OK hooks=OK
-  trade:    check_scope=OK tracker=OK hooks=OK
-  data:     check_scope=OK tracker=OK hooks=OK
-  research: check_scope=OK tracker=OK hooks=OK
+  rules:    audit=PASS tracker=OK hooks=OK
+  trade:    audit=PASS tracker=OK hooks=OK
+  data:     audit=PASS tracker=OK hooks=OK
+  content:  audit=FAIL (not synced)
+  research: audit=PASS tracker=OK hooks=OK
 ```
 
 ## 何时运行
