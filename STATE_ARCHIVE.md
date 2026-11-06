@@ -5,6 +5,20 @@
 
 ---
 
+### 2026-11-06 — P-0132 Phase C 第 3–5 步（本地完成，推送待 owner 确认）
+
+- owner「继续P-0132 Phase C」。旧码备份到 `artifacts/p0132/old_hub.code`（gitignored）；`issue_auth_code.py --out` 签发新 hub 码
+  `b3bbe24b`（schema 2，到期 2027-11-06，未打印）；`upgrade --auth-code "$(cat …)"` 写入 `.governance/auth_code`；
+  `upgrade --remove-config-auth-code` 删除 config.json 里的旧码 `99411b5a`。doctor exit 0、无残留警告；config.json 里没有 GC1 码。
+  `consumer_registry.json` 的 governance-core 条目更新为 last_issued 2026-11-06。
+- `revoke_consumer.py --code-file` 首次失败：「revocation feed signature does not verify」。原因：`core.autocrlf=true` 把工作区的
+  `revocation.json` 检出为 CRLF，签名覆盖的是 LF 字节。HEAD blob 和公开 raw feed 都能验过（LF），只有维护者本机副本坏。修复：
+  `.gitattributes` 加 `revocation.json -text` / `revocation.json.sig -text`，重新检出为 LF。之后按指纹吊销 `99411b5a`。本地判定：旧码 → 已吊销，
+  新码 → 不受影响，其他 consumer → 不受影响。
+- **待办**：owner 确认后推送。推送后验证：公开 feed 含 `99411b5a`；在临时目录用旧码对 0.49.0 执行 install → exit 7。之后删除 artifacts
+  里的两份码副本，通知 deva-vani，请 owner 通知 auto-tax / trade，trade 跑 doctor 确认 schema 2，最后 complete + 归档 P-0132。
+
+
 ### 2026-11-05 — 起草 P-0132（授权码泄露修复，A + C）
 
 - owner 选 A + C（码移出 git + 按码吊销 / 停用 schema 1；不轮换密钥、不重签其他消费者、不 yank）。P-0132 已起草并提交评审（pending）。
