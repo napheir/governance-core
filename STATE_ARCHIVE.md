@@ -5,6 +5,23 @@
 
 ---
 
+### 2026-11-06 — 实施 P-0133：hub 启动时检查 python 是否在用仓库源码（B 方案第 6 步）
+
+- owner「批准P-0133」。新增 `maintainer/hub_python_check.py`（只用标准库，只发警告，始终 exit 0，不进包）：
+  用 `importlib.util.find_spec` 判断 `python` 会从哪里导入 governance_core。不是 `<repo>/governance_core` 时，
+  输出 SessionStart JSON：`systemMessage` 给 owner 看，`additionalContext` 给 agent 看。
+- `.claude/settings.json`（新建，进 git）注册这个 SessionStart hook。session-boundary-guard 把所有 `/.claude/settings.json`
+  列为关键路径，agent 写不了，也不能豁免，所以文件内容先放在 `artifacts/p0133/settings.json`，由 owner 执行 `cp` 放到位。
+  单 agent 的 hub 不会被安装器写 settings.json（installer.py:747-797），upgrade 不会覆盖这个 hook，测试已覆盖。
+- 实施时发现 Python 3.11 的 `.venv/Scripts/activate` 在 Git Bash 下会把 `C:\...` 写进 PATH，冒号把这一项拆坏。
+  `gchub` 别名改为 `PATH="$PWD/.venv/Scripts:$PATH" claude`（owner 已追加到 `~/.bashrc`），警告文字和 core-manual 一并更正。
+- docs/core-manual.md §2 新增「Hub dev environment: the venv (P-0133)」一节。
+- 测试：新增 `maintainer/test_hub_python_check.py`（5 个：用仓库源码时不输出；别处的副本会警告；未安装会警告；
+  有同名包遮挡时输出 JSON；install 加 upgrade 后 settings.json 字节不变）。手动验证：全局 python 下警告，venv 下不输出；
+  0.49.2 的 wheel 里不含 `maintainer/` 和 settings.json。
+- 待 owner 亲眼确认：用 `gchub` 启动时没有警告，直接 `claude` 启动时出现警告。
+
+
 ### 2026-11-06 — 业务 clone 不再把 core 的 skill 当成自己的候选；sweep --dry-run 不写 outbox（0.49.2，未发布）
 
 - deva-vani 回报：core 提交的 learned skill 经 master merge 进入每个业务 clone，被当作该 clone 的候选收集

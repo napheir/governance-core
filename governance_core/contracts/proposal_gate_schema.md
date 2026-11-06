@@ -1,11 +1,13 @@
 # Contract: Proposal Gate & Check Grammar
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: active
 **Owner**: core
-**Consumers**: all agents (write Approval Criteria + execution-class phase gates),
-`tools/proposal_lib.py` (`approval_criteria_adequacy`, `gate_calibration_adequacy`,
-`run`), `tools/audit_proposals.py` (Check 15), `.claude/commands/proposal.md` (skill).
+**Consumers**: all agents (write Approval Criteria + execution-class phase gates
++ Workflow Execution declarations), `tools/proposal_lib.py`
+(`approval_criteria_adequacy`, `gate_calibration_adequacy`,
+`workflow_declaration_adequacy`, `run`), `tools/audit_proposals.py` (Checks 15,
+16, 22), `.claude/commands/proposal.md` (skill).
 
 Defines the small, runner-agnostic grammar that makes a proposal's acceptance
 signals **decidable** (P-0119). Builds on the two existing approve-time
@@ -63,6 +65,11 @@ placeholder) phase then carries a signed **gate** + a **calibration** line:
 
 ## 3. Runner (`/proposal run <id>`)
 
+For an approved or in-progress **orchestrated** proposal (§5), `run` first
+prints the frozen Workflow Execution declaration and exits 0. It never calls
+the Workflow tool, which only the agent can invoke. If the proposal is also
+execution-class, the gates below then run as usual.
+
 `/proposal run <id>` → `proposal_lib.py run --id P-NNNN` executes an
 **approved** (or in-progress) **execution-class** proposal's per-phase `gate:`
 tokens:
@@ -84,6 +91,7 @@ tokens:
 |-------------------------------|---------------|------------|
 | `approval_criteria_adequacy(body)` | every criteria item has a check token (transitional: WARN, then BLOCK — P-0119 Phase 3) | Check 15-criteria (in-flight) |
 | `gate_calibration_adequacy(body)` | execution-class only: every real phase has `gate:` + `calibration:` | Check 15-calibration (in-flight execution-class) |
+| `workflow_declaration_adequacy(body)` | orchestrated only (`orchestration: workflow`): a complete §5 declaration; **no exemption** | Check 22 (in-flight orchestrated) |
 
 Each BLOCK and its audit WARN share the **same predicate** so the two can never
 disagree (mirrors Current State / Design & Contract Checks 13 / 14). Exemptions
@@ -91,15 +99,73 @@ disagree (mirrors Current State / Design & Contract Checks 13 / 14). Exemptions
 Proposals created before the cutover date are grandfathered (the gate grammar
 did not exist).
 
-## 5. Non-goals
+## 5. Workflow Execution declaration (opt-in — `orchestration: workflow`)
 
-- Not a workflow engine: the runner has no DAG / parallelism / retry — it runs a
-  phase's `cmd:` gates in order.
+A proposal whose frontmatter carries `orchestration: workflow` (frontmatter
+schema §4.8) runs its work as a Claude Code **Workflow**: several subagents in
+parallel. The owner's approval of the proposal is the opt-in for the scale it
+declares. Because a Workflow multiplies token use, the declaration must make
+that cost explicit before anyone approves it.
+
+The declaration is an H3 section, normally placed under `## Design & Contract`:
+
+```markdown
+### Workflow Execution
+
+> **[TOKEN WARNING]** Running this as a Workflow sharply increases token usage: about <N> agents, roughly <X>x a single session doing the same work.
+
+- Parallelism: <which sub-tasks run in parallel and why they are independent>
+- Scale: <phases, agents per phase, total; how it relates to the session's Dynamic workflow size>
+- Cost: <rough token and time estimate>
+- Write scope: <read-only reports (recommended), or the exact paths agents may write, within the initiating agent's scope>
+- Verification: <how results are checked before anything acts on them>
+- Failure & resume: <what happens on a failed or interrupted run, e.g. resumeFromRunId or a narrower re-run>
+```
+
+`workflow_declaration_adequacy(body)` FORM-checks:
+
+- the `### Workflow Execution` section exists;
+- its first non-blank line starts with `> **[TOKEN WARNING]**`, with
+  non-placeholder text after the marker;
+- each labelled item (`Parallelism`, `Scale`, `Cost`, `Write scope`,
+  `Verification`, `Failure & resume`) is present and non-placeholder (not
+  empty, not `<...>`, not `TBD`), and `Scale` contains a digit;
+- `## Approval Criteria` has a `human-verify:` item whose line names the
+  Workflow (contains `workflow`, any case): the owner's consent to Workflow
+  execution at the declared scale. The scaffold's generic `human-verify:`
+  items do not count.
+
+The marker and labels are fixed English strings, like the scaffold's headings;
+the text after them may be in any language. FORM-only: the check does not judge
+whether the scale or cost is right. That stays the approver's call.
+
+**Agent duties** (in `/proposal`, not machine-checked):
+
+- When an orchestrated proposal goes for approval, the agent restates in the
+  request message itself that the Workflow sharply increases token usage, with
+  the declared scale and cost.
+- After approval, the agent says once, before starting, what it is about to run
+  and at what scale. It loads the `workflow-authoring` skill and stays within
+  the declared agents, phases and write scope. Exceeding any of them needs a new
+  owner OK.
+- At `complete`, the `--note` records the actual agent count, duration, where
+  the results are, and how they were verified.
+
+## 6. Non-goals
+
+- Not a workflow engine: the gate runner has no DAG / parallelism / retry — it
+  runs a phase's `cmd:` gates in order. A Workflow run (§5) is started by the
+  agent, never by `proposal_lib`.
 - Does not judge substance: FORM-only, consistent with the two existing gates.
+- Does not meter or cap actual token spend; the §5 declaration plus the
+  `complete` record make it auditable.
 - No consumer `todo`↔proposal linkage (a consumer-local business bridge; gc
   ships no todo system).
 
-## 6. Versioning
+## 7. Versioning
+
+- **1.1.0** (2026-11-06, P-0134): §5 Workflow Execution declaration,
+  `workflow_declaration_adequacy`, audit Check 22, runner prints the declaration.
 
 SemVer. Minor = new token kind / new optional gate line (backward compatible);
 major = removed/renamed token or breaking grammar change (needs a `proposals/`

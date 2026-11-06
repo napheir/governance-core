@@ -57,8 +57,13 @@ Validates:
   Check 20: in-flight non-terminal draft (created >= cutover) whose title targets
             another agent's exclusive scope but carries no `handoff_to` -- backstop
             for an unset handoff -- WARN only
+  Check 22: in-flight non-terminal ORCHESTRATED proposals
+            (`orchestration: workflow`) carry a complete Workflow Execution
+            declaration (token warning first + labelled items + a Workflow
+            consent criterion; shares the approve BLOCK predicate) -- WARN only
+            (P-0134)
 
-Schema: contracts/proposal_frontmatter_schema.md v1.5.0
+Schema: contracts/proposal_frontmatter_schema.md v1.7.0
 
 Usage:
     python tools/audit_proposals.py            # validate, exit 1 on error
@@ -697,6 +702,41 @@ def _check_gate_calibration_adequacy(in_flight: list, repo_root: Path) -> list:
     return warnings
 
 
+def _check_workflow_declaration(in_flight: list) -> list:
+    """Check 22 (P-0134): WARN-only — in-flight non-terminal ORCHESTRATED
+    proposals (`orchestration: workflow`) whose Workflow Execution declaration
+    is incomplete.
+
+    Shares the `workflow_declaration_adequacy` predicate with the `transition
+    --to approved` BLOCK so WARN and BLOCK never disagree. No cutover: the field
+    did not exist before P-0134, so every carrier is new. Fails open (no WARN)
+    if the predicate can't be imported.
+    """
+    warnings = []
+    try:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        from proposal_lib import (is_orchestrated, parse_proposal,
+                                  workflow_declaration_adequacy)
+    except Exception:
+        return warnings  # predicate unavailable -> fail open (WARN-only check)
+    for path in in_flight:
+        try:
+            fm, body = parse_proposal(path)
+        except Exception:
+            continue
+        if "status" not in fm or fm["status"] not in _CURRENT_STATE_CHECKED_STATUSES:
+            continue
+        if not is_orchestrated(fm):
+            continue
+        ok, reason = workflow_declaration_adequacy(body)
+        if not ok:
+            warnings.append(
+                f"Check 22 WARN: {path.name} ({fm['status']}) "
+                f"workflow declaration — {reason}"
+            )
+    return warnings
+
+
 def _ledger_ids(repo_root: Path) -> set:
     """Return the P-NNNN ids recorded in the id ledger (empty if unreadable).
 
@@ -1050,6 +1090,9 @@ def main() -> int:
     # Check 16: execution-class gate calibration (WARN only, P-0119) — shares
     # the approve BLOCK predicate; execution-class + post-cutover only.
     warnings += _check_gate_calibration_adequacy(regions["in-flight"], repo_root)
+    # Check 22: orchestrated proposals' Workflow Execution declaration (WARN
+    # only, P-0134) — shares the approve BLOCK predicate.
+    warnings += _check_workflow_declaration(regions["in-flight"])
     # Check 19/20: sender-anchored open-handoff standing debt (WARN) +
     # missing-handoff_to backstop (WARN).
     _prop_index = _build_proposal_index(regions)

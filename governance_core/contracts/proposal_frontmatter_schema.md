@@ -1,6 +1,6 @@
 # Contract: proposals/**/*.md Frontmatter Schema
 
-**Version**: 1.6.0
+**Version**: 1.7.0
 **Status**: active
 **Owner**: core
 **Consumers**: all agents (write proposals, read status), `tools/audit_proposals.py` (validation), `.claude/hooks/session-context.py` (filter pending list), `.claude/commands/proposal.md` (skill that mutates status)
@@ -14,6 +14,13 @@ location semantics).
 
 ## Version history
 
+- **1.7.0** (2026-11-06, P-0134): optional field `orchestration` (§4.8).
+  `orchestration: workflow` marks a proposal whose work runs as a Claude
+  Code Workflow (multi-agent) at a declared scale; owner approval is the
+  opt-in for that scale. Approve hard-gates the body's `### Workflow
+  Execution` declaration (`contracts/proposal_gate_schema.md` §5; no
+  exemption); auditor Check 22 WARNs with the same predicate. Independent of
+  `execution` (§4.7). Additive; no migration.
 - **1.6.0** (2026-11-05, P-0130): `agent` is no longer a fixed enum of the
   upstream roles (`core, rules, trade, data, research`); its values are the
   agent names in this project's `.governance/config.json` `agents[]` (§2). An
@@ -183,6 +190,12 @@ validator cannot stat the hub's tree. See §5.6 for the format rule and §7.
 | Field | Type | Notes |
 |-------|------|-------|
 | `execution` | string (runner id) | **Optional.** Present marks an *execution-class* proposal whose `### Phase` entries carry machine-run `gate:` + `calibration:` lines (see `contracts/proposal_gate_schema.md`). gc ships one runner id, `gates`, executed by `/proposal run <id>`. Absent = a normal proposal (no per-phase gate machinery; the field never fires). When present, `transition --to approved` hard-gates each phase's gate calibration (exemption `--allow-uncalibrated-gate`, justify in `--note`). |
+
+### 4.8 Orchestration (added v1.7.0, P-0134)
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `orchestration` | string (enum) | **Optional.** `workflow` = the proposal's work runs as a Claude Code Workflow (several subagents in parallel) at the scale its `### Workflow Execution` section declares (`contracts/proposal_gate_schema.md` §5). Owner approval of the proposal is the opt-in for that declared scale; exceeding it needs a new owner OK. Absent = a normal single-session proposal. Written with `proposal_lib.py create --orchestration workflow` or, on a draft, `orchestrate --id <P-NNNN> --set workflow` / `--clear`. When present, `transition --to approved` hard-gates the declaration (no exemption). Independent of `execution` (§4.7): a proposal may carry both. |
 
 ---
 

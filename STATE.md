@@ -17,6 +17,30 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-06 — 实施 P-0134：经提案批准启用 Workflow 多 agent 执行（0.50.0，未发布）
+
+- 起因：deva-vani 的上游建议。owner「起草 Workflow 多 agent 编排提案」→「批准」。
+  三个待定问题都按提案写明的默认处理：字段名用 `orchestration: workflow`，不复用 P-0119 的 `execution:`；
+  批准提案即视为同意启用；Workflow 声明检查不设豁免。
+- 契约：frontmatter schema 1.6.0 → 1.7.0（新增 §4.8 `orchestration`）；gate schema 1.0.0 → 1.1.0
+  （新增 §5 Workflow Execution 声明、runner 打印声明，原 §5/§6 顺延为 §6/§7）。改版本号前用 git grep 确认两个号都没被预留。
+- `proposal_lib.py`：
+  - `ORCHESTRATION_VALUES`、`is_orchestrated`、`workflow_declaration_adequacy`（只查形式）：要求有 `### Workflow Execution` 一节；
+    首行是 `> **[TOKEN WARNING]**` 且有实际内容；六个标签都已填写且不是占位符；Scale 含数字；
+    Approval Criteria 里有一条点名 Workflow 的 `human-verify:` 同意项（脚手架自带的通用 human-verify 项不算）。
+  - `create --orchestration workflow` 和新子命令 `orchestrate --set/--clear`（只能用在 draft 上）会写入字段、
+    加上骨架和同意项。批准时声明不全就 BLOCK，不设豁免。`run` 对这类提案打印批准时冻结的声明，从不启动 Workflow；
+    同时带 `execution:` 的照常跑 gate。脚手架的 Design & Contract 提示里加了一行。
+- `audit_proposals.py`：新增 Check 22（WARN），与批准门共用同一个判断函数（只看 pending/approved/in-progress）；
+  docstring 里的 schema 版本从过时的 v1.5.0 更正为 v1.7.0。
+- `/proposal` skill 新增「Workflow 执行」一节：什么时候适用、怎么起草；请求批准时要在消息里再提醒一次 token 用量，并给出规模和成本；
+  开跑前说明规模，先加载 workflow-authoring；超出声明的规模或写权限要先问 owner；`complete` 时记录实际规模和结果。
+  core-manual §4 同步更新。
+- 测试：新增 `test_proposal_orchestration.py`（30 个）。反向校准：在 HEAD 导出的 tools 上只跑行为用例，
+  5 FAIL（不完整的声明被拦、run 打印声明 ×2、Check 22 ×2）/ 3 PASS（完整声明可批准、普通提案不受影响、run 拒绝普通提案）。
+  全量（venv）pytest 431 passed，含 `__main__` 的 28 个全过；提案审计 0 失败；upgrade 无 drift；doctor exit 0。**发布待 owner 确认。**
+- deva-vani 说他们停在 0.49.1，等 scope gate 修好后连同 0.49.2、0.50.0 一次升级。
+
 ### 2026-11-06 — 待办（owner）：P-0132 通知 auto-tax 与 trade；trade 跑 doctor 确认 schema 2；P-0133 两种启动方式验收
 
 - owner「记一个todo，晚些提醒我」（15:05）。本会话已设一次性提醒（17:07，只在本会话内有效）。
@@ -32,22 +56,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   改了之后所有 clone 升级后都会提示"CLAUDE.md 过期"，而 hub 这边还要走 /iterate-constitution。
   所以改为和 check_scope `.baseline_commit` / art_05 条款一起，以后单独处理。
 - 全局 Python 仍是 0.49.1。消费者用 `/upgrade`（`pip install -U`）自己升级。
-
-### 2026-11-06 — 实施 P-0133：hub 启动时检查 python 是否在用仓库源码（B 方案第 6 步）
-
-- owner「批准P-0133」。新增 `maintainer/hub_python_check.py`（只用标准库，只发警告，始终 exit 0，不进包）：
-  用 `importlib.util.find_spec` 判断 `python` 会从哪里导入 governance_core。不是 `<repo>/governance_core` 时，
-  输出 SessionStart JSON：`systemMessage` 给 owner 看，`additionalContext` 给 agent 看。
-- `.claude/settings.json`（新建，进 git）注册这个 SessionStart hook。session-boundary-guard 把所有 `/.claude/settings.json`
-  列为关键路径，agent 写不了，也不能豁免，所以文件内容先放在 `artifacts/p0133/settings.json`，由 owner 执行 `cp` 放到位。
-  单 agent 的 hub 不会被安装器写 settings.json（installer.py:747-797），upgrade 不会覆盖这个 hook，测试已覆盖。
-- 实施时发现 Python 3.11 的 `.venv/Scripts/activate` 在 Git Bash 下会把 `C:\...` 写进 PATH，冒号把这一项拆坏。
-  `gchub` 别名改为 `PATH="$PWD/.venv/Scripts:$PATH" claude`（owner 已追加到 `~/.bashrc`），警告文字和 core-manual 一并更正。
-- docs/core-manual.md §2 新增「Hub dev environment: the venv (P-0133)」一节。
-- 测试：新增 `maintainer/test_hub_python_check.py`（5 个：用仓库源码时不输出；别处的副本会警告；未安装会警告；
-  有同名包遮挡时输出 JSON；install 加 upgrade 后 settings.json 字节不变）。手动验证：全局 python 下警告，venv 下不输出；
-  0.49.2 的 wheel 里不含 `maintainer/` 和 settings.json。
-- 待 owner 亲眼确认：用 `gchub` 启动时没有警告，直接 `claude` 启动时出现警告。
 
 ### 2026-11-05 — 发布 v0.49.0（P-0131 + P-0132 A/B）
 

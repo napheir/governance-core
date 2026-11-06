@@ -528,8 +528,13 @@ def allocate_next_id() -> str:
 # v2 scaffold
 # ---------------------------------------------------------------------------
 
-def _v2_scaffold(proposal_id: str, title: str, agent: str) -> str:
-    """Generate v2 9-section body scaffold (P-0001 Phase 2 spec)."""
+def _v2_scaffold(proposal_id: str, title: str, agent: str,
+                 orchestration: Optional[str] = None) -> str:
+    """Generate v2 9-section body scaffold (P-0001 Phase 2 spec).
+
+    With `orchestration` (P-0134) the frontmatter carries it and the body
+    gets the Workflow Execution skeleton + consent criterion.
+    """
     today = _today()
     fm = {
         "id": proposal_id,
@@ -538,6 +543,8 @@ def _v2_scaffold(proposal_id: str, title: str, agent: str) -> str:
         "created": today,
         "owner": agent,
     }
+    if orchestration is not None:
+        fm["orchestration"] = orchestration
     body = f"""# Proposal {proposal_id}: {title}
 
 ## Trigger
@@ -557,6 +564,9 @@ def _v2_scaffold(proposal_id: str, title: str, agent: str) -> str:
 > Proportionate. Trivial change: one line "implementation self-evident; no interface
 > or data-flow change." Otherwise fill all three sub-parts; use "N/A — <reason>" for
 > any that genuinely doesn't apply — never leave a placeholder.
+> Work to run as a Workflow (multi-agent)? `create --orchestration workflow` (or
+> `orchestrate --set workflow`) adds a `### Workflow Execution` section to fill
+> (contracts/proposal_gate_schema.md §5).
 
 ### Interfaces, I/O & Realization
 <Each new/changed boundary (fn / CLI / file / endpoint): its signature, the INPUT it
@@ -640,6 +650,8 @@ def _v2_scaffold(proposal_id: str, title: str, agent: str) -> str:
 
 - {today}: draft created by {agent} agent ({proposal_id})
 """
+    if orchestration is not None:
+        body = _with_workflow_scaffold(body)
     return serialize_frontmatter(fm) + "\n" + body
 
 
@@ -1096,6 +1108,144 @@ def gate_calibration_adequacy(body: str) -> tuple[bool, str]:
     return True, "ok"
 
 
+# ---------------------------------------------------------------------------
+# P-0134: Workflow Execution declaration. Only fires when frontmatter carries
+# `orchestration: workflow`: the proposal's work runs as a Claude Code Workflow
+# (several subagents in parallel) and the owner's approval is the opt-in for
+# the declared scale. `workflow_declaration_adequacy` is the shared predicate
+# behind the approve BLOCK (no exemption) and audit Check 22. FORM-only.
+# Grammar: contracts/proposal_gate_schema.md §5.
+# ---------------------------------------------------------------------------
+
+ORCHESTRATION_VALUES = ("workflow",)
+_WORKFLOW_HEADING = "### Workflow Execution"
+_TOKEN_WARNING_MARKER = "> **[TOKEN WARNING]**"
+_WORKFLOW_LABELS = ("Parallelism", "Scale", "Cost", "Write scope",
+                    "Verification", "Failure & resume")
+_WORKFLOW_SKELETON = (
+    "### Workflow Execution\n"
+    "\n"
+    "> **[TOKEN WARNING]** <Running this as a Workflow sharply increases token "
+    "usage: about N agents, roughly X times a single session doing the same "
+    "work.>\n"
+    "\n"
+    "- Parallelism: <which sub-tasks run in parallel and why they are independent>\n"
+    "- Scale: <phases, agents per phase, total; vs the session's Dynamic workflow size>\n"
+    "- Cost: <rough token and time estimate>\n"
+    "- Write scope: <read-only reports (recommended), or the exact paths agents may write>\n"
+    "- Verification: <how results are checked before anything acts on them>\n"
+    "- Failure & resume: <what happens on a failed or interrupted run>\n"
+)
+_WORKFLOW_CONSENT_ITEM = (
+    "- [ ] Owner consents to Workflow execution at the declared scale and cost, "
+    "knowing token usage rises sharply — human-verify: owner approves the "
+    "Workflow scale and cost\n"
+)
+
+
+def is_orchestrated(fm: dict) -> bool:
+    """True if frontmatter marks the proposal `orchestration: workflow`."""
+    return "orchestration" in fm and fm["orchestration"] == "workflow"
+
+
+def _placeholder_free(text: str) -> str:
+    """`text` without `<...>` placeholders; '' if nothing real (or TBD) is left."""
+    stripped = re.sub(r"<[^>]*>", "", text).strip()
+    return "" if stripped.upper() in ("TBD", "TODO") else stripped
+
+
+def _workflow_section(body: str) -> Optional[str]:
+    """Text under `### Workflow Execution` up to the next `### `/`## `, or None.
+
+    Headings inside a fenced code block are content, not boundaries.
+    """
+    out: list[str] = []
+    capturing = found = in_fence = False
+    for line in body.splitlines():
+        if _FENCE_RE.match(line):
+            in_fence = not in_fence
+            if capturing:
+                out.append(line)
+            continue
+        if not in_fence and (line.startswith("### ") or line.startswith("## ")):
+            if capturing:
+                break
+            if line.strip() == _WORKFLOW_HEADING:
+                capturing = found = True
+            continue
+        if capturing:
+            out.append(line)
+    return "\n".join(out).strip() if found else None
+
+
+def _has_workflow_consent(body: str) -> bool:
+    """True if an Approval Criteria item is a `human-verify:` naming Workflow."""
+    if _APPROVAL_CRITERIA_HEADING not in body:
+        return False
+    section = _extract_section(body, _APPROVAL_CRITERIA_HEADING)
+    return any(_CHECK_ITEM_RE.match(line) and "human-verify:" in line
+               and "workflow" in line.lower() for line in section.splitlines())
+
+
+def workflow_declaration_adequacy(body: str) -> tuple[bool, str]:
+    """Form-only: an orchestrated proposal's Workflow Execution declaration.
+
+    The `### Workflow Execution` section exists; its first non-blank line is
+    the `> **[TOKEN WARNING]** ...` line with real text; each labelled item
+    (Parallelism / Scale / Cost / Write scope / Verification / Failure &
+    resume) is present and not a placeholder, and Scale names a number; and
+    Approval Criteria has a `human-verify:` item naming the Workflow (the
+    owner's consent). Only meaningful when `is_orchestrated(fm)`. Shared
+    predicate behind the approve BLOCK and audit Check 22. FORM only: whether
+    the scale or cost is right is the approver's call.
+    """
+    section = _workflow_section(body)
+    if section is None:
+        return False, f"missing '{_WORKFLOW_HEADING}' section"
+    lines = [line.strip() for line in section.splitlines() if line.strip()]
+    if not lines or not lines[0].startswith(_TOKEN_WARNING_MARKER):
+        return False, (f"the first line of '{_WORKFLOW_HEADING}' must be the "
+                       f"'{_TOKEN_WARNING_MARKER} ...' token-usage warning")
+    if not _placeholder_free(lines[0][len(_TOKEN_WARNING_MARKER):]):
+        return False, "the [TOKEN WARNING] line has no text (or only a placeholder)"
+    for label in _WORKFLOW_LABELS:
+        pattern = re.compile(rf"^[-*]\s*{re.escape(label)}\s*:(.*)$")
+        values = [m.group(1) for m in map(pattern.match, lines) if m]
+        if not values:
+            return False, f"'{_WORKFLOW_HEADING}' has no '- {label}:' item"
+        filled = _placeholder_free(values[0])
+        if not filled:
+            return False, f"'- {label}:' is empty or still a placeholder"
+        if label == "Scale" and not re.search(r"\d", filled):
+            return False, "'- Scale:' must give the number of agents"
+    if not _has_workflow_consent(body):
+        return False, ("Approval Criteria has no 'human-verify:' item naming the "
+                       "Workflow (the owner's consent to its scale and cost)")
+    return True, "ok"
+
+
+def _with_workflow_scaffold(body: str) -> str:
+    """Return `body` with the Workflow Execution skeleton and consent item added.
+
+    The skeleton goes before `## Non-Goals` (end of Design & Contract), or at
+    the end when that heading is absent; the consent item is appended to
+    Approval Criteria. Parts already present are left alone.
+    """
+    if _workflow_section(body) is None:
+        anchor = "\n## Non-Goals"
+        if anchor in body:
+            body = body.replace(anchor, "\n" + _WORKFLOW_SKELETON + anchor, 1)
+        else:
+            body = body.rstrip() + "\n\n" + _WORKFLOW_SKELETON
+    if not _has_workflow_consent(body) and _APPROVAL_CRITERIA_HEADING in body:
+        start = body.index(_APPROVAL_CRITERIA_HEADING)
+        nxt = body.find("\n## ", start + len(_APPROVAL_CRITERIA_HEADING))
+        insert_at = len(body) if nxt == -1 else nxt
+        body = (body[:insert_at].rstrip() + "\n" + _WORKFLOW_CONSENT_ITEM
+                + body[insert_at:])
+    return body
+
+
 def _extract_gate_token(block: str) -> Optional[tuple]:
     """Return (kind, value) of a phase block's `gate:` token, or None."""
     m = _GATE_TOKEN_RE.search(block)
@@ -1115,6 +1265,11 @@ def run_proposal(proposal_id: str, execute: bool = False) -> dict:
     pass execute=True to run `cmd:` gates synchronously in the repo root. A
     `cmd:` gate is arbitrary; approving the execution-class proposal is the
     human's authorization for it. Returns a results dict.
+
+    For an orchestrated proposal (P-0134) the dict also carries `declaration`,
+    the frozen Workflow Execution section. `run` never starts a Workflow --
+    only the agent can call that tool; an orchestrated proposal that is not
+    execution-class has no gates and returns an empty `results`.
     """
     path = find_by_id(proposal_id)
     if path is None:
@@ -1125,12 +1280,14 @@ def run_proposal(proposal_id: str, execute: bool = False) -> dict:
         raise ValueError(
             f"{proposal_id} is {status!r}; `run` needs an approved / in-progress "
             f"proposal (approval freezes the gate set)")
-    if not fm.get("execution"):
+    orchestrated = is_orchestrated(fm)
+    if not fm.get("execution") and not orchestrated:
         raise ValueError(
-            f"{proposal_id} is not execution-class (no `execution:` frontmatter); "
-            f"nothing to run")
+            f"{proposal_id} is neither execution-class (no `execution:`) nor "
+            f"orchestrated (no `orchestration:`); nothing to run")
     results: list = []
-    for head, block in _phase_blocks(body):
+    declaration = _workflow_section(body) if orchestrated else None
+    for head, block in (_phase_blocks(body) if fm.get("execution") else []):
         phase = head.strip()
         gate = _extract_gate_token(block)
         if gate is None:
@@ -1152,24 +1309,33 @@ def run_proposal(proposal_id: str, execute: bool = False) -> dict:
         results.append({"phase": phase, "kind": "cmd",
                         "status": "pass" if rc == 0 else "fail",
                         "cmd": value, "returncode": rc})
-    return {"id": proposal_id, "execute": execute, "results": results}
+    out = {"id": proposal_id, "execute": execute, "results": results}
+    if orchestrated:
+        out["declaration"] = declaration
+    return out
 
 
 # ---------------------------------------------------------------------------
 # create_proposal: allocate-id + scaffold write under filelock
 # ---------------------------------------------------------------------------
 
-def create_proposal(slug: str, title: str, agent: Optional[str] = None) -> Path:
+def create_proposal(slug: str, title: str, agent: Optional[str] = None,
+                    orchestration: Optional[str] = None) -> Path:
     """Create new v2 proposal. Returns the absolute file path.
 
     Atomicity: lock held during ID allocation AND file write; another
     concurrent caller blocks. Slug must be filesystem-safe.
+    `orchestration="workflow"` (P-0134) marks the proposal and adds the
+    Workflow Execution skeleton + consent criterion.
     """
     if not slug or not re.match(r"^[a-z0-9][a-z0-9_]*$", slug):
         raise ValueError(
             f"Invalid slug {slug!r}: must be lowercase alphanumeric/underscore, "
             "starting with a letter or digit"
         )
+    if orchestration is not None and orchestration not in ORCHESTRATION_VALUES:
+        raise ValueError(f"Invalid orchestration {orchestration!r}; allowed: "
+                         f"{ORCHESTRATION_VALUES}")
     agent = agent or detect_agent()
     if agent not in _agents():
         raise ValueError(f"Invalid agent {agent!r}; allowed: {_agents()}")
@@ -1185,7 +1351,7 @@ def create_proposal(slug: str, title: str, agent: Optional[str] = None) -> Path:
         out_path = out_dir / filename
         if out_path.exists():
             raise FileExistsError(f"Collision: {out_path} already exists")
-        content = _v2_scaffold(proposal_id, title, agent)
+        content = _v2_scaffold(proposal_id, title, agent, orchestration)
         write_atomic(out_path, content)
         # P-0057 Phase 1: append ledger entry + bump next_id atomically
         ledger.setdefault("version", LEDGER_VERSION)
@@ -1304,6 +1470,21 @@ def transition_proposal(
                         f"`gate:` + a `calibration:` (neg ... -> FAIL; golden ... -> PASS); "
                         f"see contracts/proposal_gate_schema.md, or pass "
                         f"--allow-uncalibrated-gate (justify in --note)."
+                    )
+            # P-0134: Workflow Execution declaration gate. Fires only for
+            # orchestrated proposals; approval is the owner's opt-in for the
+            # declared scale, so it has no exemption. Same predicate as audit
+            # Check 22. FORM only.
+            if is_orchestrated(fm):
+                ok, reason = workflow_declaration_adequacy(body)
+                if not ok:
+                    raise ValueError(
+                        f"Cannot approve {proposal_id}: workflow-declaration gate — "
+                        f"{reason}. An orchestrated proposal needs a complete "
+                        f"'### Workflow Execution' section (token warning first, "
+                        f"then {', '.join(_WORKFLOW_LABELS)}) and a human-verify "
+                        f"consent criterion naming the Workflow; see "
+                        f"contracts/proposal_gate_schema.md §5 (no exemption)."
                     )
             fm["approved_at"] = today
         elif new_status == "in-progress":
@@ -1474,6 +1655,45 @@ def set_handoff_to(proposal_id: str, target: str | None) -> tuple[Path, bool]:
         else:
             fm["handoff_to"] = target
             entry = f"- {_today()}: handoff_to set to {target}"
+        write_atomic(path, serialize_frontmatter(fm) + "\n"
+                     + _append_state_log(body, entry).lstrip("\n"))
+    return path, True
+
+
+def set_orchestration(proposal_id: str, value: str | None) -> tuple[Path, bool]:
+    """Set (value="workflow") or clear (None) a draft's `orchestration` (P-0134).
+
+    The only sanctioned writer of `orchestration` besides `create`. Draft only:
+    the field decides which approve gate applies, so it is fixed before review.
+    Setting it also adds the Workflow Execution skeleton and the consent
+    criterion when absent; clearing leaves the body text alone. Returns
+    (path, changed); appends one State Log line when changed. Filelock held
+    during the read-modify-write.
+    """
+    if value is not None and value not in ORCHESTRATION_VALUES:
+        raise ValueError(f"Invalid orchestration {value!r}; allowed: "
+                         f"{ORCHESTRATION_VALUES}")
+    path = find_by_id(proposal_id)
+    if path is None:
+        raise FileNotFoundError(f"Proposal {proposal_id} not found")
+
+    lock = filelock.FileLock(str(_lock_path()), timeout=_lock_timeout())
+    with lock:
+        fm, body = parse_proposal(path)
+        status = fm["status"] if "status" in fm else ""
+        if status != "draft":
+            raise ValueError(f"{proposal_id} is {status!r}; orchestration can "
+                             f"only change on a draft")
+        current = fm["orchestration"] if "orchestration" in fm else ""
+        if (value or "") == current:
+            return path, False
+        if value is None:
+            del fm["orchestration"]
+            entry = f"- {_today()}: orchestration cleared (was {current})"
+        else:
+            fm["orchestration"] = value
+            body = _with_workflow_scaffold(body)
+            entry = f"- {_today()}: orchestration set to {value}"
         write_atomic(path, serialize_frontmatter(fm) + "\n"
                      + _append_state_log(body, entry).lstrip("\n"))
     return path, True
@@ -1658,10 +1878,15 @@ def _emit_handoff_suggestion(description: str, agent: str, proposal_id: str) -> 
 
 
 def _cmd_create(args):
-    path = create_proposal(slug=args.slug, title=args.title, agent=args.agent)
+    path = create_proposal(slug=args.slug, title=args.title, agent=args.agent,
+                           orchestration=args.orchestration)
     print(f"[OK] Created {path.relative_to(REPO_ROOT.parent)}")
     fm, _ = parse_proposal(path)
     print(f"     id={fm['id']} agent={fm['agent']} status={fm['status']}")
+    if is_orchestrated(fm):
+        print("     orchestration=workflow: fill '### Workflow Execution' (token "
+              "warning first); restate the warning, scale and cost when asking "
+              "for approval")
     # P-0124: auto-emit the drafting recall so the author sees prior art /
     # checklist / scope owner without a separate opt-in step.
     _emit_create_recall(args.title)
@@ -1721,8 +1946,28 @@ def _cmd_link(args):
     return 0
 
 
+def _cmd_orchestrate(args):
+    """CLI: set or clear a draft's `orchestration` (P-0134)."""
+    path, changed = set_orchestration(args.id, None if args.clear else args.set)
+    if args.clear:
+        state = "cleared" if changed else "unchanged (not set)"
+    else:
+        state = f"set to {args.set}" if changed else "unchanged (already set)"
+    print(f"[OK] {args.id}: orchestration {state}")
+    print(f"     path: {path.relative_to(REPO_ROOT.parent)}")
+    return 0
+
+
 def _cmd_run(args):
     result = run_proposal(args.id, execute=args.execute)
+    if "declaration" in result:
+        print(f"=== {args.id}: Workflow Execution (frozen at approval) ===")
+        print(result["declaration"] or "(section missing)")
+        print("[NOTE] proposal_lib never starts a Workflow. The agent runs it "
+              "within the declared scale and write scope; exceeding either "
+              "needs a new owner OK.")
+        if not result["results"]:
+            return 0
     mode = "execute" if args.execute else "dry-run"
     print(f"=== run {args.id} ({mode}) ===")
     for r in result["results"]:
@@ -2005,7 +2250,18 @@ def main(argv=None) -> int:
     p.add_argument("--slug", required=True, help="filesystem-safe slug (lowercase / digits / underscore)")
     p.add_argument("--title", required=True, help="Proposal title (free text)")
     p.add_argument("--agent", default=None, help="Owner agent (default: auto-detect from branch)")
+    p.add_argument("--orchestration", default=None, choices=ORCHESTRATION_VALUES,
+                   help="Run the work as a Workflow (multi-agent); adds the "
+                        "Workflow Execution section (P-0134)")
     p.set_defaults(func=_cmd_create)
+
+    p = sub.add_parser("orchestrate", help="Set or clear a draft's "
+                                           "`orchestration` (P-0134)")
+    p.add_argument("--id", required=True)
+    mode = p.add_mutually_exclusive_group(required=True)
+    mode.add_argument("--set", choices=ORCHESTRATION_VALUES)
+    mode.add_argument("--clear", action="store_true")
+    p.set_defaults(func=_cmd_orchestrate)
 
     p = sub.add_parser("transition", help="Apply state transition with State Log append")
     p.add_argument("--id", required=True, help="P-NNNN")
@@ -2033,7 +2289,9 @@ def main(argv=None) -> int:
     p.set_defaults(func=_cmd_transition)
 
     p = sub.add_parser("run", help="Execute an approved execution-class "
-                                   "proposal's per-phase gates (dry-run default)")
+                                   "proposal's per-phase gates (dry-run default); "
+                                   "for an orchestrated one, show its Workflow "
+                                   "Execution declaration")
     p.add_argument("--id", required=True)
     p.add_argument("--execute", action="store_true",
                    help="Actually run cmd: gates (default: dry-run, list only)")

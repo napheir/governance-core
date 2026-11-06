@@ -27,7 +27,8 @@ ledger snapshot）。Agent 不直接 Edit frontmatter / 不直接动 body 之外
 | `/proposal approve <id>` | user 已明确批准（P-0108 研究门：Current State 须达标；P-0124 设计门：复杂提案 Design & Contract 须达标，否则 BLOCK） | pending → approved |
 | `/proposal start <id>` | 实施开始（可选；短任务可跳过） | approved → in-progress |
 | `/proposal complete <id> [--commit <hash>]` | reconcile + 实施完成 + 自动归档 | (approved\|in-progress) → implemented → archive |
-| `/proposal run <id> [--execute]` | 执行 execution-class 提案的 per-phase gate（dry-run 默认） | （只读 / 执行） |
+| `/proposal run <id> [--execute]` | 执行 execution-class 提案的 per-phase gate（dry-run 默认）；orchestrated 提案先显示 Workflow 声明 | （只读 / 执行） |
+| `/proposal orchestrate <id> --set workflow` | 把草稿标为 Workflow 执行（`--clear` 撤销），P-0134 | （不转移状态） |
 | `proposal_lib.py reconcile --id X --commit H` | as-built 覆盖差（advisory，complete step-0） | （只读） |
 | `/proposal reject <id> --reason "..."` | user 明确否决 | pending → rejected |
 | `/proposal supersede <id> --by <new-path>` | 被新方案替代（**本仓库内**） | (任意) → superseded |
@@ -162,7 +163,9 @@ Agent 收到 scaffold 路径后，**填充各段内容**（直接 Edit 文件 bo
 BLOCK）；③ 签字验收（P-0119，所有提案：每个 `## Approval Criteria` 项须带一个 check token
 `cmd:`/`agent-rubric:`/`human-verify:` —— 迁移期 **WARN**，rotation 后 BLOCK）；④ 校准门
 （P-0119，仅 execution-class 即 frontmatter 带 `execution:` 的提案：每个 `### Phase` 须有
-`gate:` + `calibration:`（neg→FAIL, golden→PASS），BLOCK）。豁免分别用
+`gate:` + `calibration:`（neg→FAIL, golden→PASS），BLOCK）；⑤ Workflow 声明门（P-0134，
+仅 `orchestration: workflow` 的提案：`### Workflow Execution` 一节写全，且有一条点名 Workflow 的
+`human-verify:` 同意项，BLOCK，**不设豁免**）。①–④ 的豁免分别用
 `--allow-empty-current-state` / `--allow-thin-spec` / `--allow-unsigned-criteria` /
 `--allow-uncalibrated-gate`，并在 `--note` 写明理由。grammar 见
 `contracts/proposal_gate_schema.md`。
@@ -184,6 +187,39 @@ in-progress 的 execution-class** 提案（frontmatter 带 `execution:`）的 pe
   改已批 gate 需重批。
 - **安全**：`cmd:` gate 是任意命令，在 repo root 同步执行；approve execution-class 提案 = 对其
   gate cmd 的显式授权。默认 dry-run 让你先看清再 `--execute`。
+- 对 orchestrated 提案（见下节），`run` 先打印批准时冻结的 Workflow 声明；它**从不**启动 Workflow。
+
+### Workflow 执行（`orchestration: workflow`，P-0134）
+
+Workflow 工具一次调动多个子代理并行工作，token 用量成倍增加，必须经 owner 同意。提案是
+同意的载体：owner 批准一个声明了 Workflow 执行的提案，就是同意按声明的规模启用。
+Grammar 见 `contracts/proposal_gate_schema.md` §5。
+
+**什么时候考虑**：工作能拆成多份彼此独立、可以并行的子任务，一个会话做起来慢或容易漏
+（多维度审查、跨 clone 审计、大批同类文件检查、逐条复核一批发现）。步骤前后强依赖、
+一两个子任务就能做完、或要改宪法 / 契约 / allow 规则这类共享规则时，不用。
+
+**起草**：
+- `create ... --orchestration workflow`（已有草稿用
+  `python tools/proposal_lib.py orchestrate --id P-NNNN --set workflow`，仅 draft 可改）。
+  lib 会写入 frontmatter，并加上 `### Workflow Execution` 骨架和一条 Workflow 同意项。
+- 这一节**第一行**是 `> **[TOKEN WARNING]** ...`：写明大约几个代理、约为单个会话的几倍用量。
+  然后逐项填写 Parallelism / Scale（要有数字，并对照当前会话的 Dynamic workflow size）/
+  Cost / Write scope（推荐只读出报告；要写文件就写明路径，且在本 agent scope 内）/
+  Verification / Failure & resume。标签用英文原样，内容可用任何语言。
+
+**请求批准**：请 owner 批准时，在**消息本身**里再说一次"以 Workflow 执行会大幅增加
+token 用量"，并给出规模和成本估计，不能只写在提案正文里。批准原话照常进 `--note`。
+
+**执行**：
+1. 开跑前说一句要以什么规模开始。
+2. 写脚本前先加载 `workflow-authoring` skill。
+3. 只在声明的代理数、阶段数和写权限内运行。要超出任何一项，先停下来再问 owner。
+4. `python tools/proposal_lib.py run --id P-NNNN` 可随时打印冻结的声明，供对照。
+
+**结束**：`complete` 时用 `--note` 记下实际代理数、耗时、结果位置和核实方式。
+
+owner 在对话里直接要求用 Workflow 时不需要提案，但开始前同样要提醒 token 用量会大幅增加。
 
 ### `complete <id> [--commit <hash>]`
 

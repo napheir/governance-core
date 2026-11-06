@@ -121,6 +121,22 @@ This repo runs its own proposal pipeline:
   per-agent allow files, no other agent to hand off to); it is exercised by
   `tools/test_handoff_linkage.py` (synthetic agents, incl. the consumer's
   reference suite from #139).
+- P-0134 Workflow execution (v0.50.0, schema v1.7.0, gate contract v1.1.0).
+  `orchestration: workflow` marks a proposal whose work runs as a Claude Code
+  Workflow (several subagents in parallel). The owner's approval of the
+  proposal is the opt-in for the declared scale.
+  - Writers: `create --orchestration workflow`, or on a draft
+    `orchestrate --id P-NNNN --set workflow` / `--clear`. Either adds a
+    `### Workflow Execution` skeleton and a Workflow consent criterion.
+  - The section's first line is `> **[TOKEN WARNING]** ...`, followed by
+    Parallelism / Scale (with a number) / Cost / Write scope / Verification /
+    Failure & resume.
+  - `transition --to approved` BLOCKs an incomplete declaration, with no
+    exemption. Audit Check 22 WARNs with the same predicate. `run` prints the
+    frozen declaration and never starts a Workflow.
+  - The skill adds the agent duties: restate the token warning, scale and cost
+    in the approval request; stay within the declared scale and write scope;
+    record the actual figures at `complete`.
 
 ## 5. Constitution changes
 
