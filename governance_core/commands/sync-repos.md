@@ -126,17 +126,27 @@ manifest）存在一个边界，须在 merge 后处理：
   .claude/settings.local.json` 后，各 clone merge 时该文件被删，直到下一次 upgrade 重新生成前
   **该 clone 没有任何 hook 注册**。所以这类 merge 之后要立即对该 clone 跑下面的 upgrade。
 
-**后果与对策**：这不破坏 clone 的功能（hook 跑的是新文件、包是新版本），但会让该 clone
-**下一次 `governance-core upgrade` 把 merge 进来的 gc-managed 文件误判为 drift**（噪音，
-**非数据丢失**——没有东西被销毁）。因此：若本次 merge 携带了 gc-managed 文件，对每个
-受影响 clone 补跑一次
+**后果与对策**：这不影响 clone 的功能，hook 跑的是新文件，包也是新版本。若本次 merge 携带了
+gc-managed 文件，对每个受影响 clone 补跑一次
 
 ```bash
 governance-core upgrade --project-root <clone>
 ```
 
-即可对齐 manifest 并捕获真正的 drift。纯 business 层（STATE / `knowledge/**` / 业务
-代码/配置）无此问题——它们没有 manifest。
+对齐 manifest，同时捕获真正的 drift。
+
+**0.49.1 起**：upgrade 不再把 merge 进来的文件判为 drift。判断依据是：文件内容已经等于本次 upgrade
+要写入的版本，就不算 drift，对 clause 按渲染后的内容比较。只有既不等于旧 baseline、也不等于新版本
+的文件，才算本地改动。
+
+更早的版本会把每个 merge 进来的文件都打包成 `layer: candidate-common` 的 drift 候选。下一次
+`/wrap-up` 的 `candidate.py sweep` 会把它们作为公开 issue 发到 hub。旧版 clone 在 upgrade 后要检查
+`.governance/candidate-outbox/`，内容与 master 相同的 drift 候选直接删掉。
+
+这一判断要求 core 与业务 clone 用**同一个包版本**升级。若业务 clone 装的包比 core 提交时新，
+merge 进来的文件既不等于旧 baseline，也不等于新版本，仍会被判为 drift。
+
+纯 business 层（STATE / `knowledge/**` / 业务代码 / 配置）没有这个问题，它们没有 manifest。
 
 ## 输出格式
 

@@ -241,9 +241,9 @@ stash + fetch + merge + 冲突解 + 推 feature 远程 ≈ 总 5-10s + ~3KB skil
 > **同步后对齐 gc-managed manifest**：若 `/sync-repos` 的 merge 携带了 gc-managed
 > 文件（hook / gc tool / gc command / clause 源），git 带不动 gitignored 的
 > `installed_files.json` manifest，须在 merge 后对每个 clone 补跑
-> `governance-core upgrade --project-root <clone>` 对齐——否则该 clone 下次
-> `upgrade` 会把 merge 进来的文件误判为 drift（噪音，非数据丢失）。详见
-> `/sync-repos` 的「同步后：对齐 gc-managed 层 manifest」。
+> `governance-core upgrade --project-root <clone>` 对齐。0.49.1 之前的版本会把
+> merge 进来的文件判为 `candidate-common` 的 drift 候选，下一次 Step 4c 的 sweep 会把它们发成
+> hub 的公开 issue。详见 `/sync-repos` 的「同步后：对齐 gc-managed 层 manifest」。
 
 ## 6. 输出检查清单
 

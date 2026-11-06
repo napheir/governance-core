@@ -17,6 +17,26 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-06 — 修 drift 误报：从 core merge 进来的文件不算本地改动（0.49.1，未发布）
+
+- deva-vani 回报：业务 clone merge 了 core 提交的 gc-managed 文件，但其 manifest（untracked）还停在旧 baseline，于是 upgrade 把
+  每个 merge 进来的文件都打包成 `candidate-common` 的 drift 候选。0.48.2 起，3 个业务 clone 共积了 72 个，sweep 一跑就会变成 hub
+  的公开 issue。对方已全部隔离，一个都没发出。classify：NO_PROPOSAL（改动集中在一个函数，复现清楚，契约不变）。
+  owner「按你的建议a的计划修bug」。
+- `installer._capture_drift(project_root, consumer_id, config, dry_run)`：文件不等于 baseline，但等于本次要写入的版本
+  （`_incoming_sha256`），也不算 drift。条款按渲染后的内容比较：新增 `_rendered_clause()`，供 `_render_clauses` 和 drift 判断共用；
+  新增 `_lf_sha256()`，`_content_sha256` 改为调用它。
+- 顺带修了 `_pkg_source_path`：`.claude/hooks/_gc_auth/*`（vendored 的 `auth/`）原先被映射到不存在的 `hooks/_gc_auth/`，
+  导致这 6 个文件即使修了 (a) 仍判为 drift，`upgrade --dry-run` 的 diff 也显示「source not located」。现改为最长前缀优先匹配。
+- 没有采用 (b)（与 upstream 分支内容一致就跳过）：在 core clone 里，core 自己提交过的手改会被跳过，然后被 upgrade 静默覆盖。
+  (a) 要求 core 和业务 clone 用同一个包版本升级。本机的 editable 安装恰好会破坏这个前提，所以隔离 editable 安装也有助于补上这个缺口。
+- 文档：`/sync-repos`「同步后：对齐 gc-managed 层 manifest」不再写"只是噪音"，改为说明 0.49.1 的判断规则、旧版 clone 的处理办法，
+  以及同一包版本的前提；wrap-up 5b 的提示同步修改。
+- 测试：新增 `test_installer_drift_merged_upstream.py`（5 个，走真实 `install()`，manifest 改为旧版 baseline）。反向校准（HEAD）：
+  4 FAIL（merge 进来的文件、渲染后的条款、merge 文件中混有一个本地改动、vendored 路径映射），
+  1 PASS（baseline 最新时本地改动仍被捕获，两版都过）。`_capture_drift` 签名改了，现有调用点相应更新：drift_eol ×4、mixed_clauses ×1。
+  全量 pytest 382 passed，脚本风格 28 个全过；hub upgrade 无 drift，doctor exit 0。**发布待 owner 确认。**
+
 ### 2026-11-06 — P-0132 Phase C 推送与验证
 
 - owner「推送，没有在别的机器上用过hub」：推送 6cc8933、137f030。验证结果：

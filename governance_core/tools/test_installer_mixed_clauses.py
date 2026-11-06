@@ -89,7 +89,10 @@ def test_upgrade_from_polluted_manifest_keeps_and_does_not_capture(project: Path
             "source_version": "0.45.1", "category": "clause"})
     manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
 
-    drifted = installer._capture_drift(project, "test-consumer", dry_run=True)
+    config = json.loads(
+        (project / installer.CONFIG_REL).read_text(encoding="utf-8"))
+    drifted = installer._capture_drift(project, "test-consumer", config,
+                                       dry_run=True)
     assert not any(p.startswith(f"{CLAUSES}/") and p.split("/")[-1] in MIXED
                    for p in drifted), drifted
     assert _install(project) == 0

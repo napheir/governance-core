@@ -363,18 +363,46 @@ def _render_clauses(project_root: Path, config: dict[str, Any],
         dst.mkdir(parents=True, exist_ok=True)
     managed: list[Path] = []
     seeded: list[Path] = []
-    ritual = config.get("ritual_phrase", "Acknowledged")
     for s in src.glob("art_*.md"):
         dst_file = dst / s.name
         is_mixed = s.name in MIXED_CLAUSES
         if is_mixed and dst_file.exists():
             continue  # the project's copy -- never overwritten
         if not dry_run:
-            content = s.read_text(encoding="utf-8")
-            content = content.replace("如君所愿", ritual)
-            dst_file.write_text(content, encoding="utf-8")
+            dst_file.write_text(_rendered_clause(s, config), encoding="utf-8")
         (seeded if is_mixed else managed).append(dst_file)
     return managed, seeded
+
+
+def _rendered_clause(src: Path, config: dict[str, Any]) -> str:
+    """Return the text install writes for package clause `src`.
+
+    `如君所愿` is replaced by config ritual_phrase. Shared by _render_clauses
+    and the drift check (_incoming_sha256), so both see the same content.
+    """
+    ritual = (config["ritual_phrase"] if "ritual_phrase" in config
+              else "Acknowledged")
+    return src.read_text(encoding="utf-8").replace("如君所愿", ritual)
+
+
+def _incoming_sha256(rel_posix: str, config: dict[str, Any]) -> str | None:
+    """Return the _content_sha256 of what this install writes to `rel_posix`.
+
+    Copied files are byte copies of their package source; generic clauses
+    are rendered. Returns None for a path with no package source.
+    """
+    src = _pkg_source_path(rel_posix)
+    if src is None or not src.is_file():
+        return None
+    if rel_posix.startswith(CLAUSES_REL + "/"):
+        return _lf_sha256(_rendered_clause(src, config).encode("utf-8"))
+    return _content_sha256(src)
+
+
+def _lf_sha256(data: bytes) -> str:
+    """SHA-256 of `data` with line endings normalized to LF (see below)."""
+    data = data.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    return hashlib.sha256(data).hexdigest()
 
 
 def _content_sha256(path: Path) -> str:
@@ -390,8 +418,7 @@ def _content_sha256(path: Path) -> str:
     (_capture_drift) MUST use this same helper -- an asymmetry would reintroduce
     the mismatch. Promoted from candidate gc #27 (P-0094).
     """
-    data = path.read_bytes().replace(b"\r\n", b"\n").replace(b"\r", b"\n")
-    return hashlib.sha256(data).hexdigest()
+    return _lf_sha256(path.read_bytes())
 
 
 def _write_installed_manifest(project_root: Path,
@@ -468,15 +495,22 @@ def _load_intentional_drift(project_root: Path) -> set[str]:
 
 
 def _capture_drift(project_root: Path, consumer_id: str,
+                   config: dict[str, Any],
                    dry_run: bool = False) -> list[str]:
     """Capture locally-edited install-managed files as drift candidates.
 
     Before upgrade overwrites the autonomy layer, each install-managed file
-    whose content no longer matches its installed_files.json baseline is a
-    local edit. It is packaged as a `drift` candidate envelope in the outbox
-    -- so the edit is preserved as a reviewable candidate -- and then left
-    for the normal copy to overwrite (capture, then overwrite: no silent
-    fork; P-0065 Phase 4). Returns the list of drifted paths.
+    whose content matches neither its installed_files.json baseline nor what
+    this install is about to write is a local edit. It is packaged as a
+    `drift` candidate envelope in the outbox -- so the edit is preserved as a
+    reviewable candidate -- and then left for the normal copy to overwrite
+    (capture, then overwrite: no silent fork; P-0065 Phase 4). Returns the
+    list of drifted paths.
+
+    A file already equal to the incoming version is not drift. In a
+    multi-clone project a business clone receives the gc-managed files that
+    core committed through a git merge, while its untracked manifest still
+    holds the previous version's baselines.
     """
     from governance_core.candidates import collect, envelope
     manifest_path = project_root / INSTALLED_FILES_REL
@@ -503,6 +537,8 @@ def _capture_drift(project_root: Path, consumer_id: str,
         current = _content_sha256(path)
         if current == entry["baseline_sha256"]:
             continue
+        if current == _incoming_sha256(entry["path"], config):
+            continue  # e.g. merged in from core: what upgrade writes anyway
         drifted.append(entry["path"])
         if dry_run:
             continue  # dry-run: detect drift, do not build envelopes
@@ -1147,7 +1183,10 @@ def _pkg_source_path(rel_posix: str) -> Path | None:
     the incoming version of a locally-edited install-managed file. Returns
     None for a path that is not install-managed.
     """
-    for src_sub, dst_sub in COPY_CATEGORIES:
+    # Longest destination first: .claude/hooks/_gc_auth/ (vendored auth/)
+    # lies inside .claude/hooks/.
+    for src_sub, dst_sub in sorted(COPY_CATEGORIES,
+                                   key=lambda c: len(c[1]), reverse=True):
         prefix = dst_sub + "/"
         if rel_posix.startswith(prefix):
             return PKG_ROOT / src_sub / rel_posix[len(prefix):]
@@ -1384,7 +1423,7 @@ def install(
 
     # P-0065 Phase 4: capture locally-edited install-managed files as drift
     # candidates BEFORE the copy below overwrites them.
-    drifted = _capture_drift(project_root, consumer_id, dry_run=dry_run)
+    drifted = _capture_drift(project_root, consumer_id, cfg, dry_run=dry_run)
     if drifted and not dry_run:
         sys.stderr.write(
             f"[drift] {len(drifted)} install-managed file(s) were locally "

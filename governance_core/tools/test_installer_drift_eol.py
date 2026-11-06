@@ -61,7 +61,7 @@ def test_capture_drift_crlf_no_op(tmp_path: Path) -> None:
     installer._write_installed_manifest(tmp_path, [(managed, "hook")])
     # simulate git autocrlf re-checkout: identical content, CRLF endings
     managed.write_bytes(b"print('hi')\r\n")
-    drifted = installer._capture_drift(tmp_path, "test-consumer", dry_run=True)
+    drifted = installer._capture_drift(tmp_path, "test-consumer", {}, dry_run=True)
     assert drifted == []
 
 
@@ -70,7 +70,7 @@ def test_capture_drift_genuine_edit_caught(tmp_path: Path) -> None:
     managed = _seed_managed(tmp_path, ".claude/hooks/x.py", b"print('hi')\n")
     installer._write_installed_manifest(tmp_path, [(managed, "hook")])
     managed.write_bytes(b"print('bye')\n")
-    drifted = installer._capture_drift(tmp_path, "test-consumer", dry_run=True)
+    drifted = installer._capture_drift(tmp_path, "test-consumer", {}, dry_run=True)
     assert drifted == [".claude/hooks/x.py"]
 
 
@@ -80,7 +80,7 @@ def test_baseline_and_drift_check_symmetric(tmp_path: Path) -> None:
     managed = _seed_managed(tmp_path, ".claude/hooks/x.py", b"a\r\nb\r\n")
     installer._write_installed_manifest(tmp_path, [(managed, "hook")])
     managed.write_bytes(b"a\nb\n")
-    drifted = installer._capture_drift(tmp_path, "test-consumer", dry_run=True)
+    drifted = installer._capture_drift(tmp_path, "test-consumer", {}, dry_run=True)
     assert drifted == []
 
 
@@ -143,7 +143,7 @@ def test_capture_drift_stamps_business_for_declared(tmp_path: Path) -> None:
     other.write_bytes(b"unrelated drift\n")           # normal drift
     _write_intentional(tmp_path, [".claude/hooks/keep.py"])
 
-    drifted = installer._capture_drift(tmp_path, "test-consumer", dry_run=False)
+    drifted = installer._capture_drift(tmp_path, "test-consumer", {}, dry_run=False)
     assert set(drifted) == {".claude/hooks/keep.py", ".claude/hooks/other.py"}
 
     layers = _drift_envelope_layers(tmp_path)
