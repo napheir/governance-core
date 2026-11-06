@@ -8,8 +8,14 @@ Usage:
 功能：
 1. 找出各 agent clone 中修改过**该 agent 自己子宪法文件**的提交
 2. 对比这些提交**新增的行**与总宪法核心条款（CLAUDE.md 附录定义）
-3. 生成审计报告，标记潜在违规
-4. 如有 HIGH 违规，返回 exit code 1
+3. 生成审计报告：关键词命中记 WARN（待人工复核），提交自己声明
+   `Violates-Core: YES` 记 HIGH
+4. 如有 HIGH，返回 exit code 1
+
+关键词正则分不清放宽与收紧：「不可修改宪法」命中 `可.*宪法`，「允许和禁止的
+表述由法务界定，写进契约的红线」命中 `允许.*禁止`。命中曾直接记 HIGH，业务
+agent 只能改写正常的收紧条文来过审计（deva-vani, 0.49.1）。本工具是五层防御
+的第 4 层（告警）；阻断在 pre-commit，最终裁决在人工审查。
 
 子宪法文件与 regen_constitution 取用的一致：constitution/agent.<name>.md，
 不存在时用 legacy constitution/agent.md。只走该 clone 当前分支（HEAD）的
@@ -153,8 +159,12 @@ def get_constitution_diff(agent_dir: Path, commit_hash: str, rel_path: str) -> s
 
 
 def check_violates_core(diff_content: str) -> List[Dict[str, Any]]:
-    """检测修改是否违反总宪法核心条款"""
-    violations = []
+    """Return the added lines that may relax a core clause, for human review.
+
+    Each hit is WARN, never HIGH: a keyword regex cannot tell a relaxation
+    from a restriction (see the module docstring).
+    """
+    hits = []
 
     for article, keywords in CORE_KEYWORDS.items():
         for keyword in keywords:
@@ -168,15 +178,23 @@ def check_violates_core(diff_content: str) -> List[Dict[str, Any]]:
             ]
 
             for pattern in relaxation_patterns:
-                if re.search(pattern, diff_content, re.IGNORECASE):
-                    violations.append({
-                        "article": article,
-                        "keyword": keyword,
-                        "pattern": pattern,
-                        "severity": "HIGH"
-                    })
+                for line in diff_content.split("\n"):
+                    if re.search(pattern, line, re.IGNORECASE):
+                        hits.append({
+                            "article": article,
+                            "keyword": keyword,
+                            "pattern": pattern,
+                            "line": line.strip(),
+                            "severity": "WARN"
+                        })
+                        break
 
-    return violations
+    return hits
+
+
+def declares_violation(metadata: Dict[str, str]) -> bool:
+    """True if the commit's [CONSTITUTION_CHANGE] block says Violates-Core: YES."""
+    return re.match(r"YES\b", metadata["violates_core"], re.IGNORECASE) is not None
 
 
 def extract_commit_metadata(agent_dir: Path, commit_hash: str) -> Dict[str, str]:
@@ -219,21 +237,36 @@ def generate_report(audit_results: List[Dict[str, Any]], verbose: bool = False) 
     ]
 
     high_violations = [r for r in audit_results if r.get("severity") == "HIGH"]
+    review = [r for r in audit_results if r["severity"] == "WARN"]
 
     if not audit_results:
         report_lines.append("[OK] 未发现子宪法修改记录")
-    elif not high_violations:
+    elif not high_violations and not review:
         report_lines.append(f"[OK] 检查了 {len(audit_results)} 个修改，未发现 HIGH 级别违规")
-    else:
-        report_lines.append(f"[WARN] 发现 {len(high_violations)} 个 HIGH 级别潜在违规")
-        report_lines.append("")
 
+    if high_violations:
+        report_lines.append(f"[FAIL] {len(high_violations)} 个提交声明 Violates-Core: YES")
+        report_lines.append("")
         for result in high_violations:
+            report_lines.append(f"Agent: {result['agent']}")
+            report_lines.append(f"Commit: {result['commit_hash']} - {result['commit_message']}")
+            report_lines.append(f"条款: {result['violated_article']}")
+            report_lines.append(f"声明 Violates-Core: {result['metadata']['violates_core']}")
+            report_lines.append("-" * 80)
+
+    if review:
+        if high_violations:
+            report_lines.append("")
+        report_lines.append(f"[WARN] {len(review)} 处关键词命中，需人工复核是放宽还是收紧"
+                            "（不计入 exit code）")
+        report_lines.append("")
+        for result in review:
             report_lines.append(f"Agent: {result['agent']}")
             report_lines.append(f"Commit: {result['commit_hash']} - {result['commit_message']}")
             report_lines.append(f"条款: {result['violated_article']}")
             report_lines.append(f"关键词: {result['keyword']}")
             report_lines.append(f"模式: {result['pattern']}")
+            report_lines.append(f"新增行: {result['line']}")
             report_lines.append(f"声明 Violates-Core: {result['metadata']['violates_core']}")
             report_lines.append("-" * 80)
 
@@ -291,23 +324,34 @@ def main():
             # 提取 commit 元数据
             metadata = extract_commit_metadata(agent_dir, commit["hash"])
 
-            # 检测是否违反核心条款
-            violations = check_violates_core(diff_content)
+            # 提交自己声明违宪 -> HIGH；关键词命中 -> WARN，待人工复核
+            declared = declares_violation(metadata)
+            hits = check_violates_core(diff_content)
 
-            if violations:
-                for violation in violations:
-                    audit_results.append({
-                        "agent": agent,
-                        "commit_hash": commit["hash"],
-                        "commit_message": commit["message"],
-                        "violated_article": violation["article"],
-                        "keyword": violation["keyword"],
-                        "pattern": violation["pattern"],
-                        "severity": violation["severity"],
-                        "metadata": metadata
-                    })
-                    print(f"   [WARN] {commit['hash']}: 潜在违规 ({violation['article']})")
-            else:
+            if declared:
+                audit_results.append({
+                    "agent": agent,
+                    "commit_hash": commit["hash"],
+                    "commit_message": commit["message"],
+                    "violated_article": metadata["article"],
+                    "severity": "HIGH",
+                    "metadata": metadata
+                })
+                print(f"   [FAIL] {commit['hash']}: 声明 Violates-Core: YES ({metadata['article']})")
+            for hit in hits:
+                audit_results.append({
+                    "agent": agent,
+                    "commit_hash": commit["hash"],
+                    "commit_message": commit["message"],
+                    "violated_article": hit["article"],
+                    "keyword": hit["keyword"],
+                    "pattern": hit["pattern"],
+                    "line": hit["line"],
+                    "severity": hit["severity"],
+                    "metadata": metadata
+                })
+                print(f"   [WARN] {commit['hash']}: 需人工复核 ({hit['article']}, 关键词 {hit['keyword']})")
+            if not declared and not hits:
                 audit_results.append({
                     "agent": agent,
                     "commit_hash": commit["hash"],

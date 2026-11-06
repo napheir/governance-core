@@ -256,8 +256,10 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     """Collect candidate-common skills and uplink any not yet sent (P-0072).
 
     The /wrap-up candidate trigger. Runs collect, then uplinks every outbox
-    envelope whose payload digest is absent from the dedup ledger. The hub
-    project (governance-core itself) has nothing to uplink and skips.
+    envelope whose payload digest is absent from the dedup ledger. A
+    collected skill whose learned file is no longer candidate-common is
+    withdrawn and skipped. The hub project (governance-core itself) has
+    nothing to uplink and skips.
     Degrades to a report -- never blocks -- when consent, network, or `gh`
     is unavailable, so it cannot stall a phase wrap-up.
     """
@@ -293,11 +295,15 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     pending: list[tuple[Path, str]] = []
     blocked: list[tuple[Path, dict]] = []
     name_warnings: list[tuple[Path, dict]] = []
+    withdrawn: list[tuple[Path, str]] = []
     for env in envelopes:
         try:
             digest = _ledger.payload_digest(env)
             meta = _envelope.validate_envelope(env)
         except _envelope.EnvelopeError:
+            continue
+        if _collect.is_withdrawn(root, meta):
+            withdrawn.append((env, meta["title"]))
             continue
         # `title` is the skill name (collect uses `skill.stem`); registry
         # is keyed on full skill_name with `.md` if applicable. Try both
@@ -328,6 +334,11 @@ def cmd_sweep(args: argparse.Namespace) -> int:
     pending = _drop_pending_seen_on_hub(
         pending, led_path, origin, args.repo or _uplink.UPSTREAM_REPO)
 
+    for env, title in withdrawn:
+        sys.stdout.write(f"[candidate] sweep: SKIPPED {env.name} -- learned "
+                         f"skill {title}.md is no longer layer: "
+                         f"candidate-common (withdrawn; delete the envelope "
+                         f"to clear it)\n")
     for env, rej in blocked:
         advisory = _rejected.format_advisory(
             _envelope.validate_envelope(env)["title"], rej)

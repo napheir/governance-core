@@ -617,7 +617,11 @@ python tools/candidate.py sweep
 payload digest is absent from the dedup ledger
 (`.governance/candidate-outbox/_uplinked.json`) — so the same skill is
 sent once, an edited skill is re-sent, and a phase with no new candidate
-is a clean skip. `sweep` degrades to a report (never a non-zero exit) when
+is a clean skip. Since 0.49.1, relabelling a learned skill away from
+`candidate-common` (or deleting it) withdraws the envelope `collect`
+already staged for it: `sweep` skips it with a `withdrawn` note. Any other
+envelope (drift, `/submit-candidate`) is withdrawn by deleting it from the
+outbox. `sweep` degrades to a report (never a non-zero exit) when
 consent, network, or `gh` is unavailable, so it cannot stall a wrap-up.
 The hub project (governance-core itself) has nothing to uplink and skips.
 

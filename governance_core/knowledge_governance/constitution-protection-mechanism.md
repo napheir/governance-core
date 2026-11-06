@@ -103,6 +103,10 @@ Co-Authored-By: Claude Sonnet 4.5 <noreply@anthropic.com>
 | 4 | Core agent 自动审计（`tools/audit_sub_constitutions.py`） | Core agent 启动时 | 告警 |
 | 5 | 人工定期审查 | 每月 | 最终裁决 |
 
+第 4 层的关键词正则分不清放宽与收紧（「不可修改宪法」同样命中 `可.*宪法`），
+所以命中只列为 WARN、待人工复核，不影响 exit code；只有提交自己声明
+`Violates-Core: YES` 时审计以 exit 1 失败（0.49.1）。
+
 ### Pre-commit hook 阻止规则
 
 - ❌ 修改总宪法定义的核心条款（见附录红线清单 → `sub-constitution-red-lines.md`）→ 阻止，提示走提案

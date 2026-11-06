@@ -12,6 +12,10 @@ for the appendix's own anti-relaxation wording (deva-vani, 0.48.2). It now
 scans only commits on the clone's branch that touch the agent's own
 sub-constitution file, and only the lines they add.
 
+Those regexes also hit tightening wording ("允许和禁止的表述由法务界定",
+deva-vani, 0.49.1), so a hit is now a WARN for human review; only a commit
+that declares `Violates-Core: YES` fails the audit.
+
 Run from repo root:
     python -m pytest tools/test_audit_sub_constitutions_layout.py -q
 """
@@ -118,12 +122,43 @@ def test_merged_core_constitution_commit_not_flagged(tmp_path: Path) -> None:
     assert "潜在违规" not in out, out
 
 
-def test_agent_relaxing_own_sub_constitution_flagged(tmp_path: Path) -> None:
-    core, platform = _project_with_merged_core_constitution(tmp_path)
+def _commit_sub_constitution(platform: Path, line: str, violates: str) -> None:
+    """Add `line` to the platform agent's sub-constitution in a templated
+    [CONSTITUTION_CHANGE] commit declaring `Violates-Core: <violates>`."""
     _write(platform, "constitution/agent.md",
-           "# per-agent sub-constitution (stub)\n本 agent 可以豁免硬编码配置\n")
-    _git(platform, "commit", "-q", "-am", "docs(constitution): platform rule")
+           "# per-agent sub-constitution (stub)\n" + line + "\n")
+    _git(platform, "commit", "-q", "-am",
+         "docs(constitution): platform rule\n\n[CONSTITUTION_CHANGE]\n"
+         "- Article: 第四条\n- Scope: agent-only\n- Type: add-detail\n"
+         f"- Violates-Core: {violates}\n")
+
+
+def test_keyword_hit_is_review_warning_not_failure(tmp_path: Path) -> None:
+    """A regex hit is listed for human review but does not fail the audit."""
+    core, platform = _project_with_merged_core_constitution(tmp_path)
+    _commit_sub_constitution(platform, "本 agent 可以豁免硬编码配置", "NO")
+    res = _run_audit(core)
+    out = res.stdout + res.stderr
+    assert res.returncode == 0, out
+    assert "人工复核" in out and "第四条" in out, out
+    assert "本 agent 可以豁免硬编码配置" in out, out
+
+
+def test_tightening_wording_does_not_fail(tmp_path: Path) -> None:
+    """deva-vani content P-0005: a restriction that names 允许 and 禁止."""
+    core, platform = _project_with_merged_core_constitution(tmp_path)
+    _commit_sub_constitution(
+        platform, "允许和禁止的表述由法务界定，写进 brand_voice 契约的红线", "NO")
+    res = _run_audit(core)
+    out = res.stdout + res.stderr
+    assert res.returncode == 0, out
+    assert "[FAIL]" not in out, out
+
+
+def test_declared_violation_fails(tmp_path: Path) -> None:
+    core, platform = _project_with_merged_core_constitution(tmp_path)
+    _commit_sub_constitution(platform, "本 agent 的提交说明另行约定", "YES")
     res = _run_audit(core)
     out = res.stdout + res.stderr
     assert res.returncode == 1, out
-    assert "第四条" in out, out
+    assert "Violates-Core: YES" in out, out

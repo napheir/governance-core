@@ -17,6 +17,24 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-06 — 子宪法审计命中改为告警；改 layer 即撤回已收集的候选（并入 0.49.1）
+
+- deva-vani 又报两件事，owner 选「三项一起发」，与 drift 修复一起进 0.49.1。classify：NO_PROPOSAL（两处窄改动，复现清楚，契约不变）。
+- `audit_sub_constitutions`：`可.*<关键词>` 会把「不可修改宪法」判成放宽，content 起草的收紧条文「允许和禁止的表述由法务界定，写进
+  brand_voice 契约的红线」也被记为 HIGH、exit 1，只能改写措辞过审计。现在正则命中只记 WARN（报告列出命中的新增行，供人工复核，
+  不影响 exit code），只有提交声明 `Violates-Core: YES` 才记 HIGH、exit 1。这与文档里第 4 层「告警」的定位一致，阻断仍由 pre-commit 负责。
+  没有采用「识别收紧句式」的方案：用正则补正则，只会越补越多。`check_constitution_change.py` 不是安装进去的 hook，没有改。
+- `candidate.py sweep`：outbox 里的候选只要不在台账里就上传，不看源 skill 当前的 layer，所以 owner 把 skill 改成 `business` 也撤不回。
+  新增 `collect.collected_skill_source()` / `is_withdrawn()`：由 collect 打包的 skill 候选（rationale 与 payload 形状可辨认），
+  如果对应的 learned skill 已不是 `candidate-common`（改了 layer 或删掉了），sweep 跳过并报 `withdrawn`。
+  drift / submit 候选不受影响，撤回方法是从 outbox 删除。rationale 字符串提取为常量 `COLLECT_RATIONALE`。
+- 文档：constitution-protection-mechanism（第 4 层说明）、iterate-constitution 验收项（加 WARN）、wrap-up 4c（撤回）、core-manual §11。
+- 测试：新增 `test_candidate_sweep_withdrawn.py`（5 个，不需要签名密钥，只 stub uplink 和 hub 查询）；
+  `test_audit_sub_constitutions_layout.py` 把原「放宽即 exit 1」改为告警，另加收紧措辞和声明 YES 两个用例。
+  反向校准（HEAD）：审计 3 FAIL / 2 PASS，sweep 2 FAIL（改 layer、删除）/ 3 PASS（对照）。
+  全量 pytest 389 passed，含 `__main__` 的 28 个测试文件全过；upgrade 无 drift，doctor exit 0。
+- 未处理：deva-vani 报的第 4 件事（业务 clone 会把 merge 进来的 core learned skill 当作自己的候选收集），不在本次批准范围，另行报告。
+
 ### 2026-11-06 — 修 drift 误报：从 core merge 进来的文件不算本地改动（0.49.1，未发布）
 
 - deva-vani 回报：业务 clone merge 了 core 提交的 gc-managed 文件，但其 manifest（untracked）还停在旧 baseline，于是 upgrade 把

@@ -173,6 +173,9 @@ python tools/candidate.py sweep
   授权，payload 过 secret-scan + origin 绑定；台账确保同一内容不重复发。
 - **无候选 / consent 缺失 / 网络或 `gh` 不可用** → 报告并跳过；`sweep`
   不返回非零、不阻断阶段总结。
+- **撤回**（0.49.1 起）→ 把 learned skill 的 `layer` 改成 `business`（或删掉该
+  skill），`sweep` 就跳过已收集的副本并报 `withdrawn`。drift / submit 候选不对应
+  learned skill，从 `.governance/candidate-outbox/` 删除即撤回。
 
 在检查清单标记上传了 N 个 / 跳过（原因）。**本步不可省** —— 省略 = 候选
 永远到不了收敛 hub（这正是 P-0072 修复的缺口）。

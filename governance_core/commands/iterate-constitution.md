@@ -144,7 +144,7 @@ docs(constitution): <one-line summary>
 - [x] Step 3 已应用: <文件路径>
 - [x] Step 4 验证:
        - regen: OK / FAIL
-       - audit_sub_constitutions: OK / SKIP / FAIL
+       - audit_sub_constitutions: OK / WARN（逐条人工复核）/ SKIP / FAIL
        - audit_knowledge: OK / SKIP / FAIL
        - validate_routing: OK / SKIP
        - CLAUDE.md budget: <chars>/30000
