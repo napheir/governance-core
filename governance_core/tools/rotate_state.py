@@ -213,11 +213,17 @@ def rotate(
     # Write files
     state_file.write_text(new_state, encoding="utf-8")
     archive_file.write_text(merged, encoding="utf-8")
+    # Committing STATE.md without the archive drops the rotated entries from
+    # git. That happens with a new, untracked archive (deva-vani, 0.48.3) and
+    # with a tracked one the per-day cap changed quietly (deva-vani, 0.51.0).
     if created:
-        # A new, untracked file: committing STATE.md without it drops the
-        # rotated entries from git (deva-vani, 0.48.3).
-        logger.warning("[rotate] created %s -- untracked: stage it together "
-                       "with STATE.md", archive_file)
+        logger.warning("[WARN] created %s (untracked, %d entries moved in): "
+                       "stage it together with STATE.md",
+                       archive_file, len(archive))
+    else:
+        logger.warning("[WARN] %s changed (%d entries moved in): "
+                       "stage it together with STATE.md",
+                       archive_file, len(archive))
 
     stats["action"] = "rotated"
     stats["archive_created"] = created

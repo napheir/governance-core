@@ -17,6 +17,18 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-10 — rotate_state 每次轮转都提示暂存 STATE_ARCHIVE.md（0.51.1，未发布）
+
+- **问题**（deva-vani 反馈）：忙的时候，每天最多保留 3 条的上限会把当天较早的条目轮转进已跟踪的 `STATE_ARCHIVE.md`，而输出里没有任何提示。
+  agent 只暂存了 STATE.md，被轮转的条目就从 git 里丢了。他们 content e71465c 和 core 646f7cf 各出过一次，都已补提交，内容没有丢。本仓库的 1aee998 也出过同样的事。
+- **修复**：以前只在新建归档文件时警告，现在每次真正轮转都打印 `[WARN] <path> changed (N entries moved in): stage it together with STATE.md`。
+  新建归档时打印的是 `created ... (untracked, ...)`。dry-run，或没有条目可轮转时，不打印。
+- **不改** `/wrap-up`：第 2 步从 0.48.4 起已经写明要一起暂存。
+- **未处理**：条目轮转出去后，里面的待办就不会再出现在 SessionStart 摘要里。deva-vani 目前手工把待办挪进最新条目。是否在上游解决，等 owner 决定。
+- **涉及文件**：`governance_core/tools/rotate_state.py`、`test_rotate_state_archive.py`。新增 2 个测试，新测试在 HEAD 版本上失败、在新版本上通过。版本升到 0.51.1。
+- **测试**：tools 513 个加 maintainer 5 个，共 518 个通过；command-guard 42/42；doctor OK。
+- **待 owner 批准**：P-0135 info 通知的确认方式修改。批准后也放进 0.51.1。
+
 ### 2026-11-06 — 发布 v0.51.0（含 0.50.0：P-0134 + P-0135）
 
 - owner「现在发布」。推送 eb7edf8..152f8a1，GitHub Release v0.51.0，release CI run 42196326998 success，
