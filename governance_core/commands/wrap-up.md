@@ -45,7 +45,7 @@ git diff --name-only HEAD~1 HEAD -- knowledge/
   net-new knowledge 到 master）
 - **无** knowledge 变更 → 在检查清单标记"跳过（本阶段无 knowledge 变更）"
 
-**为什么强制**：`sync_infra` 不路由 `knowledge/**`。若省略此步，master 的
+**为什么强制**：`/sync-repos` 只把 master 合并进各 clone（单向），upgrade 只装 gc 自带的知识文件；两者都不会把本 clone 新写的 `knowledge/**` 收回 master。若省略此步，master 的
 统一 dashboard 看不到本 agent 本阶段写入，其他 agent 也看不到。2026-04-24
 两次 dogfood 事故（EXP-2026-0010 + inspiration 库丢失）都是此步被跳过导致。
 
@@ -183,43 +183,33 @@ python tools/candidate.py sweep
 在检查清单标记上传了 N 个 / 跳过（原因）。**本步不可省** —— 省略 = 候选
 永远到不了收敛 hub（这正是 P-0072 修复的缺口）。
 
-## 5. 基础设施同步（仅 core agent）
+## 5. 基础设施检查（仅 core agent）
 
 > **Topology gate (P-0068)** — multi-agent step. If `.governance/config.json`
 > has a single agent (`agents` length 1), print `[N/A — single-agent
 > topology — skipped]` and skip this step — there are no other clones to
-> sync to. (A self-hosted single-agent repo reflects package-source changes
+> check. (A self-hosted single-agent repo reflects package-source changes
 > via `governance-core upgrade`, a separate mechanism — see core-manual.)
 > Otherwise proceed.
 
-如果本阶段修改了共享基础设施文件，自动同步到全体 agent clone。
+**只有一种接线方式（P-0137）**：每个 clone 由自己的 `governance-core upgrade --project-root <clone>`
+安装 gc 文件，并把所有 gc hook 接在本 clone（`${CLAUDE_PROJECT_DIR}/.claude/hooks/...`）；
+本项目自己的已跟踪文件经 `/sync-repos` 的 merge 到达各 clone。没有任何工具再往别的 clone 复制文件
+或写指向 core 的绝对路径。
 
-**权威源（唯一）：`tools/sync_infra.py` 的 `ALWAYS_COPY_FILES` + `SKILL_DIRS` + 中心化 hook 列表**。本 skill 不复列具体文件清单——drift 风险已被前次事故证伪（2026-04-27 此 trigger list 漏列 `edit-write-guard.py` / `build_knowledge_dashboard.py` / `contracts/**` 等导致 sync 误判跳过）。
-
-检查方式：
+本步只做检查（只读，不改任何 clone）：
 
 ```bash
-# 列出本阶段修改的所有文件
-git diff --name-only HEAD~1 HEAD
-
-# 提取 sync_infra 路由的所有路径（ALWAYS_COPY_FILES + SKILL_DIRS）
-python -c "
-import sys; sys.path.insert(0, 'tools')
-import sync_infra as s
-for p in s.ALWAYS_COPY_FILES: print(p)
-for d in s.SKILL_DIRS: print(d + '/**')
-"
+python tools/sync_infra.py
 ```
 
-如果两者有交集 → 跑 `python tools/sync_infra.py --execute`，无论 git diff 是否触及 wrap-up.md / extract-skill.md 等"明显"trigger。
+- **exit 0**：没有 FAIL。WARN（`wide-allow` / `copy-drift`）照抄进检查清单，交 owner 判断。
+- **exit 1**：每条 FAIL 按它打印的 `fix:` 处理（通常是对该 clone 跑 upgrade、修 config 的
+  `clone_dir`，或删掉一条指向别的 clone 的 hook），然后重跑，直到没有 FAIL。**有 FAIL 时不得在检查
+  清单里标"Infra 已检查"**。
+- **exit 2**：检查跑不起来（缺 config 等）——报告原因，不得当作通过。
 
-如果完全无交集：在检查清单标记"跳过（无基础设施变更）"。
-
-**两类同步语义**：
-- **Centralized hooks**（settings.local.json 绝对路径指向 core）：修改即时生效，无需 sync。这类 hook 在 sync_infra 内部以 `CENTRAL_HOOKS` 等结构维护。
-- **Per-clone copies**（每 clone 必须有本地副本，因 hook 用 `_REPO_ROOT` 解析自身 repo）：必须 sync 才生效。这类含 `.claude/hooks/edit-write-guard.py`、`.claude/hooks/scope-guard.py`，以及所有 `tools/`、`contracts/`、`.claude/commands/`、`.claude/agents/`、`.claude/skills/` 文件。
-
-凡是不确定属于哪一类，以 `tools/sync_infra.py --execute` 的 dry-run 输出为准（先跑一次看会动哪些文件，再决定是否真同步）。
+若 Step 5b 判定要跑 `/sync-repos`，merge 后再跑一次本检查。
 
 ## 5b. /sync-repos 触发判断（fast-path）
 
@@ -232,8 +222,8 @@ for d in s.SKILL_DIRS: print(d + '/**')
 stash + fetch + merge + 冲突解 + 推 feature 远程 ≈ 总 5-10s + ~3KB skill body
 重载）。**仅在以下任一条件成立时调用**：
 
-1. Step 5 实际跑了 `tools/sync_infra.py --execute`（即 git diff 与 sync 路由
-   有交集，per-clone copies 已变）
+1. 本阶段在 core 上升级了 gc 包（`governance-core upgrade`），或 Step 5 报了 `copy-drift`
+   （各 clone 要经 merge 拿到同样的已跟踪文件，再各自 upgrade）
 2. 本 commit 改了 `contracts/` / `agent_rules/` / `agents/` / 任何 hook 源文件
 3. 上游 origin/master 距任一 clone 落后 ≥ 10 commits 或 ≥ 3 天
    （session-context.py drift 阈值，session 启动 banner 会显式提示）
@@ -265,7 +255,7 @@ stash + fetch + merge + 冲突解 + 推 feature 远程 ≈ 总 5-10s + ~3KB skil
 - [x] 教训已分类（去向: memory / skill-guide / skill-learned / CLAUDE.md / knowledge / discard）
 - [x] Skill 已提取 / 跳过（原因: xxx）
 - [x] 候选已上传 / 跳过（原因: xxx）
-- [x] Infra 已同步 / 跳过（原因: xxx）
+- [x] Infra 已检查（sync_infra: 0 FAIL, N WARN）/ 跳过（原因: xxx）
 ```
 
 未输出此清单 = 阶段总结未完成 = 禁止继续下一任务。

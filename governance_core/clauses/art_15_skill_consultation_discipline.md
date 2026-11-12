@@ -32,7 +32,7 @@ phase_2_action: ready-to-use
   以免 prompt prefix 膨胀；该注入器由 governance-core 维护。
 - universal 集（`theme: universal` 的 skill + 各 agent 自有的 learned skill）与
   scenario-cluster 成员（`knowledge/skills/_scenario_clusters.json`）由**各 agent
-  在自己 clone 自著**（`theme` 由 sync_infra 强制路由）；契约见
+  在自己 clone 自著**（`theme` 由 SessionStart 注入与 `audit_knowledge` 执行）；契约见
   `knowledge/governance/skill-scenario-clusters.md`。
 
 **子宪法扩展点**：各 agent 可在子宪法补充本 agent 的 universal 集 / cluster 划分

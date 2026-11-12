@@ -46,8 +46,8 @@ and we burn tokens shipping the same names twice every session.
 `module` (not user-invocable; rarely needed in agent context).
 
 The `--inject` mode of `governance_core.discovery.registry` emits tiers A+B together
-as a single block; `session-context.py` (SessionStart hook, centralized via
-`sync_infra` to all clones) appends it to the session banner.
+as a single block; `session-context.py` (SessionStart hook, installed in every
+clone by `governance-core upgrade`) appends it to the session banner.
 
 ---
 

@@ -67,7 +67,7 @@ That's what `TaskCreate` / `STATE.md` / in-conversation notes are for. Proposals
 A proposal earns its weight when at least one of these is true:
 
 - **Cross-scope write**: "core needs to modify `agent_rules/rules.allow.txt`"
-- **Cross-clone operation**: "rules asks core to run `sync_infra.py --execute` from agent-core clone"
+- **Cross-clone operation**: "rules asks core to run `/sync-repos` and upgrade every clone from agent-core"
 - **Breaking change**: "generator v2 changes feature column semantics; list migration steps"
 - **ADR candidate**: "picked strategy A over B because X; future readers will ask why"
 - **Multi-session**: "the migration takes 3 weeks; handoff doc for whoever's on this next"

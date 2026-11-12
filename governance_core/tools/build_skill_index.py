@@ -3,7 +3,7 @@
 
 P-0118 retired the central knowledge/skills/_tiers.json: a skill's breadth now
 lives in its own `theme:` frontmatter (universal | core-only | <agent>), the
-field sync_infra already enforces for cross-clone routing. This builder derives
+field SessionStart injection and audit_knowledge already use. This builder derives
 the index from that field -- no central tier file, no hand-authored taxonomy.
 
 Determinism: same registry -> byte-identical output. We sort within each group

@@ -61,8 +61,8 @@ except ImportError as exc:
     sys.stderr.write(
         "\n[EDIT-WRITE GUARD FATAL] Cannot import _guard_common.py "
         f"(error: {exc}).\n"
-        "Broken clone state. Run from agent-core: "
-        "python tools/sync_infra.py --execute\n"
+        "Broken clone state. Reinstall this clone: "
+        "governance-core upgrade --project-root <this clone>\n"
         "Blocking tool call until resolved.\n"
     )
     sys.exit(2)
@@ -795,7 +795,7 @@ def main() -> None:
             f"Role:   {role}\n\n"
             ".claude/hooks/** and .claude/settings{,.local}.json define this\n"
             "clone's enforcement; only core changes them (governance-core\n"
-            "upgrade / sync_infra). Request the change via a proposal with\n"
+            "upgrade). Request the change via a proposal with\n"
             "handoff_to: core."
         )
 

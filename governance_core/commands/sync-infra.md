@@ -3,70 +3,51 @@ theme: core-only
 owner: core
 ---
 
-# /sync-infra - Cross-agent harness infrastructure sync
+# /sync-infra - Check every clone's harness wiring
 
-Deploy core harness capabilities to all agent clones. Run this after any architectural upgrade in agent-core.
+Read-only check, run from the core clone, that every business clone is wired the one way (P-0137). It changes nothing.
 
 > **Topology gate (P-0068)** — multi-agent command. First read
 > `.governance/config.json`; if `agents` has length 1 (single-agent
 > topology), print `[N/A — single-agent topology — skipped]` and stop —
-> there are no other clones to deploy to (a self-hosted single-agent repo
-> reflects package-source changes via `governance-core upgrade`, not this
-> command). Otherwise proceed: the full capability below is retained for
-> multi-agent consumers.
+> there are no other clones to check (a self-hosted single-agent repo
+> reflects package-source changes via `governance-core upgrade`).
 
-## When to Use
+## The one wiring model
 
-- After adding or modifying shared harness components (hooks, commands, skill infrastructure)
-- After upgrading /wrap-up with new steps
-- After adding new Notification hooks that all agents should have
-- As part of any architecture-level change in agent-core
+- **gc-managed files and hook wiring**: `pip install -U governance-core`, then `governance-core upgrade --project-root <clone>` in every clone. Upgrade installs the files and registers every gc hook clone-locally (`${CLAUDE_PROJECT_DIR}/.claude/hooks/...`).
+- **Tracked project files** (constitution source, project-authored skills and commands, routing tables): `/sync-repos` merges master into each clone.
+- Nothing writes into another clone or registers a hook as an absolute path into core. Before 0.52.0, `tools/sync_infra.py --execute` copied files and did exactly that, so it fought upgrade. `--execute` is now refused with exit 2.
+
+## When to use
+
+- In `/wrap-up` Step 5 (multi-agent).
+- After `/sync-repos`, and after upgrading the clones.
+- When a clone behaves as if it runs core's hooks, or seems to miss a hook.
 
 ## Workflow
 
-1. **Dry-run first** to review what will change:
-   ```bash
-   python tools/sync_infra.py
-   ```
+```bash
+python tools/sync_infra.py                 # all business clones
+python tools/sync_infra.py --agent <name>  # one clone
+python tools/sync_infra.py --json          # machine-readable
+python tools/sync_infra.py --project-root <core clone>   # check another project read-only
+```
 
-2. **Review the output**: Verify all pending [COPY], [MKDIR], [ADD] actions are expected.
+Clones are found next to the core clone: `<core clone's parent>/<agents[].clone_dir>`.
 
-3. **Execute**:
-   ```bash
-   python tools/sync_infra.py --execute
-   ```
+| check | level | meaning | fix (printed) |
+|---|---|---|---|
+| `clone-missing` | FAIL | the configured clone directory does not exist | fix `agents[].clone_dir`, or clone the branch there |
+| `settings-missing` | FAIL | no readable `.claude/settings.local.json` | `governance-core upgrade --project-root <clone>` |
+| `foreign-hook-ref` | FAIL | a hook command points outside the clone (e.g. core's `.claude/hooks/`) | upgrade; if the entry survives (a mixed group), remove it |
+| `hook-unregistered` | FAIL | a hook in the clone's `hooks_manifest.json` is not registered clone-locally | upgrade |
+| `wide-allow` | WARN | `Bash(rm:*)`, `Bash(del:*)`, `Bash(powershell:*)` or `Bash(pwsh:*)` in `permissions.allow` | the narrow replacements it lists; the owner applies them |
+| `copy-drift` | WARN | a path in `.governance/sync_files.json` `always_copy_files` differs from core's (line endings ignored) | `/sync-repos`, then upgrade |
 
-4. **Verify**: Re-run without --execute to confirm all items show [OK].
-
-5. **Single agent** (if needed):
-   ```bash
-   python tools/sync_infra.py --execute --agent rules
-   ```
-
-## What Gets Synced
-
-| Component | Source (core) | Action |
-|-----------|--------------|--------|
-| `/wrap-up` command | `.claude/commands/wrap-up.md` | Copy verbatim |
-| `/extract-skill` command | `.claude/commands/extract-skill.md` | Copy verbatim |
-| `skill-nudge.py` hook | `.claude/hooks/skill-nudge.py` | Copy + register in settings |
-| `learned/` directory | `.claude/skills/learned/` | Create if missing |
-
-## What Does NOT Get Synced
-
-- Agent-specific commands (each agent has its own set)
-- Agent-specific hooks with clone-specific paths (scope-guard, etc.)
-- Sub-constitutions (CLAUDE.md is agent-owned)
-- permissions in settings.local.json (agent-specific)
-
-## Properties
-
-- **Idempotent**: safe to run multiple times (skips up-to-date files)
-- **Non-destructive**: never deletes files, only copies or appends
-- **Path-aware**: hook registrations use each agent's own absolute path
+Exit codes: 0 = no FAIL, 1 = at least one FAIL, 2 = the check could not run.
 
 ## Notes
 
-- New shared infrastructure components should be added to SYNC_FILES in `tools/sync_infra.py`
-- Run this tool from agent-core working directory only (it's a core scope tool)
-- Reference: Constitution Art.12 (cross-agent collaboration)
+- Read-only: it never writes to any clone, so it is safe to run at any time.
+- `.governance/sync_files.json` is now read only for the drift WARN.

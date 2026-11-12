@@ -194,7 +194,7 @@ python tools/audit_knowledge.py
 
 调用 `/publish-knowledge` skill 把本次 knowledge 写入推到 origin。
 
-**为什么强制**：sync_infra 不路由 knowledge 内容，master 的统一 dashboard
+**为什么强制**：`/sync-repos` 只把 master 合并进各 clone，不会把本 clone 新写的 knowledge 收回 master；master 的统一 dashboard
 要看到此次写入，本分支必须 push（或 core 跨 clone collect）。两次 dogfood
 "dashboard 缺了最新 entry"（2026-04-24 EXP-2026-0010 + inspiration 库）
 都是因为这一步被跳过——此 skill 把它从隐性纪律变成显式闭环。

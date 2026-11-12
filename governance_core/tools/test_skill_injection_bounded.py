@@ -1,7 +1,7 @@
 """Tests for the bounded SessionStart skill menu (P-0103 part A, issue #100).
 
 P-0118 reworked the universal-pool derivation: it now reads each skill's
-pre-existing ``theme:`` frontmatter (sync_infra's breadth field) instead of a
+pre-existing ``theme:`` frontmatter (the skill's breadth field) instead of a
 central ``knowledge/skills/_tiers.json``. The pool is every ``learned`` skill
 (this agent's own) plus every ``guide`` whose ``theme == "universal"``. These
 drive the reader with synthetic skill files + ``_scenario_clusters.json`` under

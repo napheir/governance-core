@@ -49,9 +49,9 @@ except ImportError as exc:
     sys.stderr.write(
         "\n[SCOPE GUARD FATAL] Cannot import _guard_common.py "
         f"(error: {exc}).\n"
-        "This indicates a broken clone state. Run from agent-core:\n"
-        "  python tools/sync_infra.py --execute\n"
-        "to restore .claude/hooks/_guard_common.py in this clone.\n"
+        "This indicates a broken clone state. Reinstall this clone:\n"
+        "  governance-core upgrade --project-root <this clone>\n"
+        "to restore .claude/hooks/_guard_common.py.\n"
         "Blocking tool call until resolved.\n"
     )
     sys.exit(2)

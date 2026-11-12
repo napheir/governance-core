@@ -37,28 +37,32 @@ surfaced, bodies remain lazy. When neither index is authored (e.g. a hub with
 ## Reuse / breadth: the `theme` field (P-0118)
 
 **Orthogonal to scenario.** "How widely does this skill apply?" is answered by the
-**pre-existing per-skill `theme:` frontmatter field** — `sync_infra`'s cross-clone
-routing field — NOT a new field. P-0118's finding: gc already had a gc-native,
+**pre-existing per-skill `theme:` frontmatter field** — originally the pre-0.52
+`sync_infra` cross-clone routing field — NOT a new field. P-0118's finding: gc already had a gc-native,
 per-skill, frontmatter breadth field (`theme`); the central
 `knowledge/skills/_tiers.json` was a *second, overlapping* breadth axis. So P-0118
 retires `_tiers.json` authoring and derives injection / index from `theme`, rather
 than inventing a third term.
 
-### The field (owned by sync_infra, now also read by injection)
+### The field (read by injection and the index; validated by audit_knowledge)
 
 ```yaml
-# on .claude/{commands,agents,skills}/*.md frontmatter; enforced by sync_infra
+# on .claude/{commands,agents,skills}/*.md frontmatter; validated by audit_knowledge
 theme: universal
 ```
 
-| value | routing (sync_infra) | injection / index (P-0118) |
-|-------|----------------------|-----------------------------|
-| `universal` | copied to every clone | in the SessionStart always-inject pool + "universal" index group |
-| `core-only` | stays only in core | not every-session; reachable via a scenario cluster |
-| `<agent>` (an agent name from config, e.g. `platform`) | copied only to that clone | that agent's index group; not in the universal pool |
+| value | injection / index (P-0118) |
+|-------|-----------------------------|
+| `universal` | in the SessionStart always-inject pool + "universal" index group |
+| `core-only` | not every-session; reachable via a scenario cluster |
+| `<agent>` (an agent name from config, e.g. `platform`) | that agent's index group; not in the universal pool |
+
+Files no longer move by `theme`: since 0.52.0 (P-0137) every tracked file reaches
+every clone through the `/sync-repos` merge, and gc-shipped files through
+`governance-core upgrade`. `theme` decides which sessions inject a skill.
 
 `learned` skills (`.claude/skills/learned/`) carry **no** `theme` — they are per-agent
-session extractions, deliberately excluded from `sync_infra` routing. For injection
+session extractions that stay in the clone that made them. For injection
 they are always treated as the owning agent's own universal set (every learned skill
 is in the pool).
 

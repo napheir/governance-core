@@ -60,8 +60,8 @@ except ImportError as exc:
     sys.stderr.write(
         "\n[DATA-SOURCE GUARD FATAL] Cannot import _guard_common.py "
         f"(error: {exc}).\n"
-        "Broken clone state. Run from agent-core: "
-        "python tools/sync_infra.py --execute\n"
+        "Broken clone state. Reinstall this clone: "
+        "governance-core upgrade --project-root <this clone>\n"
         "Blocking tool call until resolved.\n"
     )
     sys.exit(2)

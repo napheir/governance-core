@@ -237,8 +237,8 @@ LLM scripting.
 
 Weakness: must be configured per-machine by user; not portable across
 clones. trade-agent's hook layer (proposal #3 + harden-guard +
-harden_indirect_attack_paths) is portable via sync_infra; resource
-layer is not.
+harden_indirect_attack_paths) is portable: every clone gets it through
+`governance-core upgrade`; resource layer is not.
 
 **Recommended posture**: hook layer for portable, version-controlled
 defense; resource layer for last-ditch unbypassable defense. Both are

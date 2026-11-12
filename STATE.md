@@ -17,6 +17,29 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-12 — P-0137 Phase 2：文档统一到"只有一种接线方式"（0.52.0，未发布）
+
+- **命令**：
+  - `/wrap-up` 第 5 步改为跑只读检查：有 FAIL 必须先修，清单上改记"Infra 已检查"；5b 的触发条件 1 和 2b 的理由也跟着改了措辞。
+  - `/sync-infra` 改写成检查说明。
+  - `/iterate-constitution` 的 Step 5 传播表改为：已跟踪文件走 `/sync-repos`，gc 文件走发版加 upgrade。
+  - `/update-skill` Step 3 不再提 COPY_COMMANDS 清单。
+  - curate-candidate、learn、publish-knowledge 改了措辞。
+- **条款 art_15**：`theme` 由 SessionStart 注入和 audit_knowledge 执行。
+- **skill**：
+  - 重写 `cross-clone-base-promotion`。原来的"反向漂移"讲的是 sync_infra，现在改成 `/sync-repos` 和 upgrade 这两条单向通道。
+  - 重写 `slash-command-hot-reload`：merge 或 upgrade 改动了命令文件后，必须重启会话或重新调用命令。并补上 deva-vani 遇到的情况：照着会话早期加载的旧版 skill 做事。
+  - 另有 5 个 skill 改了措辞。
+- **知识库**：skill-scenario-clusters 删掉了"按 theme 路由"那一列，另外两篇改了措辞。
+- **代码里的文字**：
+  - 3 个 guard 的 FATAL 提示改为 `governance-core upgrade --project-root <this clone>`；
+  - 各处 docstring；
+  - session-context 的重启标记说明。现在已经没有地方写这个标记，但遗留的标记仍会显示一次。
+- **docs**：architecture.md；core-manual 新增 §16"只有一种接线方式"，并补充了多 clone 项目经 master 合并拿到升级文件的说明（来自 deva-vani 的反馈）。
+- **检查结果**：
+  - 用 grep 核对过，已经没有任何文字说 sync_infra 会复制、路由或改接线。
+  - 全部 549 个测试通过，command-guard 42/42，doctor 正常，知识库健康，regen --check 与宪法源一致。
+
 ### 2026-11-12 — 发布 v0.51.3；P-0137 Phase 1：sync_infra 改为只读检查（0.52.0，未发布）
 
 - **发布 0.51.3**：owner 说"发布"。
@@ -70,25 +93,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   - 全部 543 个通过，command-guard 42/42，doctor 正常（注册了 24 个 hook）。
   - 单 agent 项目里，标题 hook 约 141 毫秒退出。
 - **现场验证**：experience 的 8fc9aa 和 content 的 a404d1 先保留不确认。升级后标题应显示 `[ALERT 1] <agent>`，确认后应改回原名。
-
-### 2026-11-12 — 撤回首条输入拦截（notice-gate），准备 0.51.2（未发布）
-
-- **出了什么问题**：deva-vani 升级到 0.51.1 之后，experience 有一条未确认的 alert。这时会话里收到的第一条"输入"其实是 core 发来的同伴消息，结果被拦下了。被拦的输入会被丢弃，所以 experience 的 agent 根本没收到这条消息，后来由 deva-vani 的 core 重发。
-  - Claude Code 确实会显示拦截原因，但还会把原消息整条回显出来，占了小半屏。owner 说："感觉有点乱……也许我们该撤回这个并做一些优化再重新上线"。
-- **撤回了什么**：
-  - 删掉 `hooks/notice-gate.py`、它在 manifest 里的注册、`FAIL_OPEN_GC_IMPORTERS` 里的条目、`ownership.alert_gate`，以及 5 个拦截测试；
-  - 新增 1 个测试，确认不再随包发布拦截 hook；
-  - 契约升为 1.1.1；
-  - `notice_gate_seen.json` 的忽略规则保留，这样残留的文件仍会被忽略；
-  - 在 hub 上已验证，upgrade 会自动删掉已安装的这个 hook，注册项也会清掉；
-  - 版本号升为 0.51.2。
-- **保留不变**：0.51.1 的其余改动都留着，包括 Edit/Write 记入日志、按路径链解释变更、info 通知在两个会话里显示过才确认、`list --recent`，以及 guard 覆盖所有改文件的工具。
-- **测试**：全部 537 个通过，command-guard 42/42，doctor 正常（注册了 23 个 hook）。
-- **待定**：送达方式重新设计，待 owner 决定。备选方案有三个：只拦真人输入、在会话标题上显示、把 alert 做成待办台事项。
-- **deva-vani 的回报**：
-  - 四个 clone 都已升到 0.51.1；
-  - experience 的 8fc9aa 和 content 的 a404d1 都是 0.51.1 之前自己 Edit 留下的老误报；
-  - 业务 clone 是通过 master 合并拿到升级文件的，以后在 `/upgrade` 里给多 clone 项目补一句说明。
 
 ### 2026-11-10 — rotate_state 每次轮转都提示暂存 STATE_ARCHIVE.md（0.51.1，未发布）
 

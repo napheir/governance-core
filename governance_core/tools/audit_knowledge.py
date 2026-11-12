@@ -328,7 +328,7 @@ def _audit_skill_themes(root: Path) -> tuple[int, int]:
     """Audit per-skill ``theme`` frontmatter + INDEX.md freshness (P-0118).
 
     Replaces the retired ``knowledge/skills/_tiers.json`` bijection. Because
-    ``theme`` lives on each skill file (sync_infra-enforced) rather than a
+    ``theme`` lives on each skill file (validated here) rather than a
     central globally-synced list, the old central-vs-registry bijection AND its
     whole family of non-hub carve-outs (gc #101/#102/#114) are gone -- there is
     no central list to drift or to hold phantoms:

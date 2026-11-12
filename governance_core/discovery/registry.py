@@ -314,11 +314,11 @@ class SkillRegistry:
 
         Returns:
             Tuple of (description, tags, theme). `theme` is the raw
-            sync/reuse-breadth value ("universal"|"core-only"|"<agent>") that
-            sync_infra already enforces on shared skills, or "" when absent
-            (e.g. a learned skill). P-0118 also reads it to derive the
-            SessionStart universal-injection pool; enum validation stays with
-            sync_infra / the auditor, not this reader.
+            reuse-breadth value ("universal"|"core-only"|"<agent>") on shared
+            skills, or "" when absent (e.g. a learned skill). P-0118 reads it
+            to derive the SessionStart universal-injection pool; enum
+            validation stays with the auditor (audit_knowledge), not this
+            reader.
         """
         match = _FRONTMATTER_RE.match(content)
         if not match:
@@ -441,7 +441,7 @@ def emit_bounded_injection(registry: "SkillRegistry") -> Optional[str]:
     """Return a bounded SessionStart skill menu, or None if nothing to surface.
 
     Issue #100 / P-0103 part A; universal derivation reworked by P-0118 to read
-    the pre-existing per-skill ``theme:`` frontmatter (sync_infra's breadth
+    the pre-existing per-skill ``theme:`` frontmatter (the skill's breadth
     field) instead of a central ``_tiers.json``. Re-balances
     prefix_cost_optimization.md C3 (counts-only) with a BOUNDED names menu so an
     agent can actually consult learned skills:
@@ -486,7 +486,7 @@ def emit_bounded_injection(registry: "SkillRegistry") -> Optional[str]:
 
     # Universal pool from the pre-existing `theme` field (P-0118): a learned
     # skill is always this agent's own; a guide is shared-universal when
-    # sync_infra themed it `universal`. No central `_tiers.json` read.
+    # it is themed `universal`. No central `_tiers.json` read.
     universal = [e["name"] for e in inject_entries
                  if e["source_type"] == "learned" or e["theme"] == "universal"]
 

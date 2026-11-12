@@ -89,7 +89,7 @@ Edit/Write triggered
 | **governance** | `CLAUDE.md` / `constitution/**/*.md` / `contracts/**/*` / `agent_rules/**/*` / `.governance/**/*` | Constitution-level files; editing = governance change (L1 Art.13 + L2 §1 改全局治理) |
 | **harness** | `.claude/commands/**/*.md` / `.claude/hooks/**/*.py` / `.claude/skills/*.md` / `.claude/agents/**/*.md` | Skill/hook/agent definitions; editing changes claude harness behavior. `.claude/skills/learned/*.md` excluded (agent-generated extractions) |
 | **routing** | `knowledge/INDEX.routing.json` / `tools/proposal-classify-keywords.json` / `tools/proposal-classify-paths.json` | Router/keyword configs driving auto-injection and gate behavior |
-| **infra** | `tools/sync_infra.py` / `tools/proposal_lib.py` / `tools/audit_*.py` | Cross-clone sync / proposal lifecycle / audit tooling; affects all 5 clones |
+| **infra** | `tools/sync_infra.py` / `tools/proposal_lib.py` / `tools/audit_*.py` | Cross-clone wiring check / proposal lifecycle / audit tooling; affects every clone |
 | **settings** | `.claude/settings.local.json` / `.claude/settings.json` | Claude Code permissions / hook registration |
 
 Total empirical match: 133 files (~9% of repo); 91% of routine Edits pass through unimpeded.

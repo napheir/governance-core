@@ -74,8 +74,8 @@ author remembering at the right time.
 # 2. Validate schema:
 python tools/validate_routing.py
 
-# 3. Sync to all clones (INDEX.routing.json is in ALWAYS_COPY_FILES):
-python tools/sync_infra.py --execute
+# 3. Commit to master, then merge into every clone (/sync-repos) and check:
+python tools/sync_infra.py
 ```
 
 ---

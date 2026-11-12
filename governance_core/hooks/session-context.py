@@ -346,12 +346,12 @@ def _check_cross_clone_drift(role: str) -> str:
 
 
 def _check_restart_required() -> str:
-    """Surface sync_infra's pending-restart marker (R9 from harness audit).
+    """Surface a pending-restart marker (R9 from harness audit).
 
-    sync_infra.py writes ~/.claude/cache/restart_required.json after
-    updating slash-command files in any clone. The next SessionStart in
-    any clone displays the warning once, then deletes the marker so it
-    doesn't re-surface forever.
+    The pre-0.52 sync_infra.py wrote ~/.claude/cache/restart_required.json
+    after updating slash-command files in any clone; nothing writes it now
+    (P-0137), but a leftover marker is still shown once and then deleted
+    so it doesn't re-surface forever.
     """
     marker = Path.home() / ".claude" / "cache" / "restart_required.json"
     if not marker.is_file():
@@ -367,7 +367,7 @@ def _check_restart_required() -> str:
     age_min = max(0, (time.time() - ts) / 60.0)
 
     lines = [
-        "[RESTART REQUIRED] sync_infra reported pending changes "
+        "[RESTART REQUIRED] an infra sync reported pending changes "
         f"({age_min:.0f} min ago, reason: {reason}):"
     ]
     for c in clones:

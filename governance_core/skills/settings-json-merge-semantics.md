@@ -22,7 +22,7 @@ Hook 是串联而非覆盖 → 同一 hook 可能被登记多次：
 
 ## 规范
 
-1. **唯一规范 home 是 `settings.local.json`**，这是 sync_infra 和 audit_hooks 的作用对象
+1. **唯一规范 home 是 `settings.local.json`**，这是 `governance-core install/upgrade`（写受管 hook 组）和 audit_hooks 的作用对象
 2. 任何 `.claude/settings.json` 包含 `hooks` 或 `enabledPlugins`，视为漂移——走
    `proposals/` 或直接 `git rm` 清除，把内容迁到 `settings.local.json`
 3. 新 clone 不要在 `settings.json` 里放 `hooks` / `enabledPlugins`。`settings.json` 只承载需要跨 clone
@@ -40,6 +40,7 @@ Hook 是串联而非覆盖 → 同一 hook 可能被登记多次：
 
 ## 相关
 
-- `tools/sync_infra.py` —— 只写 settings.local.json，不会去读/写 settings.json
+- `governance-core upgrade` —— 只重写 settings.local.json 里受管的 hook 组，不碰 settings.json
+- `tools/sync_infra.py` —— 只读检查各 clone 的 settings.local.json（P-0137 起不再写）
 - `tools/audit_hooks.py._check_legacy_settings_json` —— 漂移报警器
 - Claude Code 官方文档：Settings precedence

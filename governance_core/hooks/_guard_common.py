@@ -20,8 +20,8 @@ governance_core (knowledge/governance/runtime-import-discipline.md). Tools
 that need the agent identity (proposal_lib, regen_constitution, the
 pre-commit gate) load THIS file by path, so there is one implementation.
 
-Sync: this file is in sync_infra.ALWAYS_COPY_FILES, so every clone has
-its own copy (each guard resolves _REPO_ROOT relative to its own clone).
+Install: governance-core upgrade puts a copy in every clone (each guard
+resolves _REPO_ROOT relative to its own clone).
 """
 import json
 import os

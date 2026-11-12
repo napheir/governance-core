@@ -62,7 +62,7 @@ version after the revision).
 - **Completeness** — are *all* referenced payloads attached? An incomplete
   bundle (a hook whose config/helper/tests were never uploaded) is **not
   promotable**: comment requesting the rest and keep the issue OPEN.
-- **Topology** — multi-clone-only pieces (e.g. `sync_infra` distribution wiring)
+- **Topology** — multi-clone-only pieces (e.g. `/sync-repos` merge or per-clone upgrade wiring)
   are N/A for a single-agent hub; exclude them.
 
 ### 3. Verify BEFORE applying

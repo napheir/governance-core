@@ -1093,3 +1093,24 @@ python tools/notices.py list [--all]
 python tools/notices.py list --recent [--days 7] [--all]   # acked notices, for review
 python tools/notices.py ack <id>      # only when the owner says so
 ```
+
+## 16. One wiring model for multi-clone consumers (P-0137, v0.52.0)
+
+Files reach each clone in exactly two ways, and nothing else writes into another clone:
+
+- **gc-managed files and hook wiring.** Run `pip install -U governance-core`, then `governance-core upgrade --project-root <clone>` in every clone. Upgrade registers every gc hook clone-locally (`${CLAUDE_PROJECT_DIR}/.claude/hooks/...`) and prunes files dropped from the package.
+  - In a multi-clone consumer, a business clone's pre-commit scope gate blocks a direct commit of the upgraded gc-managed files. They reach the business branches through the master merge instead (deva-vani, 0.51.x).
+- **Tracked project files** (constitution source, project-authored skills and commands, routing tables) travel through the `/sync-repos` merge, from master into the clones.
+
+`tools/sync_infra.py` is a read-only check, run from the core clone. It no longer copies or rewires anything, and `--execute` exits 2.
+- **How it finds clones.** It looks for them next to the core clone (the core clone's parent directory plus each `clone_dir`), so it works in both flat and nested project layouts.
+- **FAIL** when a clone is missing, its settings are unreadable, a hook points outside the clone (e.g. at core's `.claude/hooks/`), or a manifest hook is not registered clone-locally.
+- **WARN** for a wide allow entry, or a file in `sync_files.json` that differs from core's.
+
+```bash
+python tools/sync_infra.py                    # all business clones; exit 0/1/2
+python tools/sync_infra.py --agent NAME --json
+python tools/sync_infra.py --project-root ../other-project/agent-core   # read-only
+```
+
+`/wrap-up` Step 5 runs it. Every FAIL is fixed as printed before the checklist says "Infra 已检查".

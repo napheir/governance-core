@@ -47,7 +47,7 @@ read from the downstream project's `.governance/` directory at runtime:
   │                         # upstream_branch, constitution_layout
   ├── core_keywords.json    # red-line clauses for audit +
   │                         # extra_protected_patterns for check_constitution_change
-  ├── sync_files.json       # ALWAYS_COPY_FILES for sync_infra
+  ├── sync_files.json       # always_copy_files for sync_infra's drift check
   ├── data_source_entries.json  # prepare_dataset entry imports for data-source-guard
   ├── installed_files.json  # P-0065 manifest: every install-managed file +
   │                         # baseline sha256 + source version + category

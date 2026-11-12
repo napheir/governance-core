@@ -5,6 +5,26 @@
 
 ---
 
+### 2026-11-12 — 撤回首条输入拦截（notice-gate），准备 0.51.2（未发布）
+
+- **出了什么问题**：deva-vani 升级到 0.51.1 之后，experience 有一条未确认的 alert。这时会话里收到的第一条"输入"其实是 core 发来的同伴消息，结果被拦下了。被拦的输入会被丢弃，所以 experience 的 agent 根本没收到这条消息，后来由 deva-vani 的 core 重发。
+  - Claude Code 确实会显示拦截原因，但还会把原消息整条回显出来，占了小半屏。owner 说："感觉有点乱……也许我们该撤回这个并做一些优化再重新上线"。
+- **撤回了什么**：
+  - 删掉 `hooks/notice-gate.py`、它在 manifest 里的注册、`FAIL_OPEN_GC_IMPORTERS` 里的条目、`ownership.alert_gate`，以及 5 个拦截测试；
+  - 新增 1 个测试，确认不再随包发布拦截 hook；
+  - 契约升为 1.1.1；
+  - `notice_gate_seen.json` 的忽略规则保留，这样残留的文件仍会被忽略；
+  - 在 hub 上已验证，upgrade 会自动删掉已安装的这个 hook，注册项也会清掉；
+  - 版本号升为 0.51.2。
+- **保留不变**：0.51.1 的其余改动都留着，包括 Edit/Write 记入日志、按路径链解释变更、info 通知在两个会话里显示过才确认、`list --recent`，以及 guard 覆盖所有改文件的工具。
+- **测试**：全部 537 个通过，command-guard 42/42，doctor 正常（注册了 23 个 hook）。
+- **待定**：送达方式重新设计，待 owner 决定。备选方案有三个：只拦真人输入、在会话标题上显示、把 alert 做成待办台事项。
+- **deva-vani 的回报**：
+  - 四个 clone 都已升到 0.51.1；
+  - experience 的 8fc9aa 和 content 的 a404d1 都是 0.51.1 之前自己 Edit 留下的老误报；
+  - 业务 clone 是通过 master 合并拿到升级文件的，以后在 `/upgrade` 里给多 clone 项目补一句说明。
+
+
 ### 2026-11-12 — 发布 v0.51.1（P-0136 + rotate_state 提醒），归档 P-0134
 
 - **发布**：owner 说"发布"。

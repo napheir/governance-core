@@ -14,16 +14,15 @@ owner: core
 - `.claude/commands/*.md`（斜杠命令，如 `/wrap-up`、`/audit`）
 - `.claude/agents/*.md`（子 agent 角色定义）
 - `.claude/hooks/*.py`（harness hook 脚本）
-- `tools/sync_infra.py` 的 `COPY_COMMANDS` / `COPY_AGENTS` / `CENTRAL_HOOKS` 清单
 
 **不触发**：`.claude/skills/learned/*.json`（per-agent runtime tracker state，由 SkillTracker 运行时维护，不与宪法耦合）。
 
 ## Step 1：识别本阶段改过的 skill 文件
 
 ```bash
-git diff --name-only HEAD~1 2>/dev/null | grep -E '^\.claude/(commands|agents|hooks)/|^tools/sync_infra\.py$'
+git diff --name-only HEAD~1 2>/dev/null | grep -E '^\.claude/(commands|agents|hooks)/'
 # 或针对未提交的：
-git status --short | grep -E '\.claude/(commands|agents|hooks)/|tools/sync_infra\.py'
+git status --short | grep -E '\.claude/(commands|agents|hooks)/'
 ```
 
 列出命中文件。若为空，本 skill 跳过，在阶段总结声明"本阶段未改动 authored skill"。
@@ -57,15 +56,17 @@ skill 步骤随工程实践演化，本宪法不复述其内容。
 > are no other clones to propagate to or drift-check. Resume at Step 5.
 > Otherwise proceed.
 
+只有一种接线方式（P-0137）：
+
+- **项目自著的 command / agent / skill**：提交到 master，用 `/sync-repos` merge 到各 clone。
+  `theme`（universal / core-only / <agent>）决定哪些 clone 的会话注入它，不决定文件去哪。
+- **gc 自带的 command / agent / hook**：不要在本项目里改（那是安装产物）——去 governance-core
+  改包源并发版，然后各 clone `governance-core upgrade --project-root <clone>`。
+- 传播后在 core 跑只读检查，确认 0 FAIL：
+
 ```bash
-python tools/sync_infra.py            # dry-run 预览
-python tools/sync_infra.py --execute  # 有 [COPY] 项则执行
+python tools/sync_infra.py
 ```
-
-仅当 skill 在 `sync_infra.py` 的 `COPY_COMMANDS` / `COPY_AGENTS` 清单内才会传播。
-若新增的 skill 需要跨 clone 共享，必须先把文件加入这两个清单再跑 sync_infra。
-
-Hooks 不需要复制（`CENTRAL_HOOKS` 走中央引用，clones 自动看到新版）。
 
 ## Step 4：drift 零残留校验
 
@@ -79,7 +80,7 @@ for clone in agent-rules agent-trade agent-data agent-research; do
 done
 ```
 
-期望：全部输出 `(clean)`。若有 `[SKILL DRIFT]`，回到 Step 3 重跑 sync_infra。
+期望：全部输出 `(clean)`。若有 `[SKILL DRIFT]`，回到 Step 3：该 clone 还没 merge 到新版（`/sync-repos`）或还没 upgrade。
 
 ## Step 5：STATE.md 登记
 
@@ -89,7 +90,7 @@ done
 ### YYYY-MM-DD — Skill update: <skill-name>
 - 改动：<一句话描述>
 - 宪法同步：Art.X 重构为 pointer / 无宪法引用
-- 传播：sync_infra --execute 覆盖 N 个 clone / 仅 core 本地
+- 传播：/sync-repos merge 到 N 个 clone + sync_infra 检查 0 FAIL / 仅 core 本地
 - Drift 校验：clean
 ```
 
@@ -99,7 +100,7 @@ done
 Skill update 闭环:
 - [x] Step 1: 识别到 <N> 个改动文件: <list>
 - [x] Step 2: 宪法引用审计 (重构 Art.X / 无命中)
-- [x] Step 3: sync_infra --execute (传播 M 个文件 / 无需传播)
+- [x] Step 3: /sync-repos merge + sync_infra 检查 0 FAIL / 无需传播
 - [x] Step 4: 4 clone drift 校验 clean
 - [x] Step 5: STATE.md 已登记
 ```

@@ -18,7 +18,7 @@ theme: universal
 
 知识库联邦模型：
 - 每个 agent 在自己 scope 的 `knowledge/<subdir>/**` 写入
-- `sync_infra` 单向流 core → clones，**不**路由 knowledge 内容
+- `/sync-repos` 单向流 master → clones，**不**把 clone 里新写的 knowledge 收回 master
 - 结果：knowledge 跨 agent 流通必须靠 git push + merge
 
 历史教训（2026-04-24 两次触发）：rules 写完 EXP-2026-0010、research 写完

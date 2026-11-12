@@ -45,7 +45,7 @@ Review `git status` output:
 
 - **Modifications to your own in-progress work** → commit or stash before context switching
 - **Untracked files that look like build artifacts** (`*.tsbuildinfo`, `next-env.d.ts`, `__pycache__/`, logs) → add to `.gitignore` rather than commit or ignore
-- **Files outside your scope** (`.claude/commands/*.md` modified by a recent `sync_infra` from core) → commit with `chore(infra): sync ...` message. These are propagations from core, safe to commit.
+- **Files outside your scope** (`.claude/commands/*.md` changed by a recent `governance-core upgrade` of this clone) → commit with a `chore(infra): upgrade ...` message. These are installs from the package, safe to commit.
 - **Legacy drift that pre-dates this session** (deletions from an old reorganization, unknown untracked dirs) → triage separately, not during session start. Make a note in STATE.md if you need to defer.
 
 ### Both clean
@@ -57,7 +57,7 @@ Proceed. Hook prints nothing; you see only the standard `[Session Context]` bann
 - **Starting new work with drift visible and no plan to address it.** The drift compounds; next session has even more. Burn 2 minutes upfront.
 - **`git push --force` without verifying upstream state.** Never force-push to master; for feature branches, only after confirming no one else works from that branch.
 - **Committing unrelated files in one commit** just to clear `git status`. Split by concern (infra sync, feature work, config).
-- **Ignoring `[RESTART REQUIRED]` from `sync_infra`** — see `.claude/skills/slash-command-hot-reload.md`. A stale slash-command cache won't show up in `git status` but will produce wrong behavior.
+- **Ignoring a command-file change from a merge or upgrade** — see `.claude/skills/slash-command-hot-reload.md`. A stale slash-command cache won't show up in `git status` but will produce wrong behavior.
 
 ## Why not a constitutional requirement?
 
@@ -67,5 +67,5 @@ Article 14 covers end-of-phase discipline (STATE.md + Git + Notion). This is the
 
 - `.claude/hooks/session-context.py` — the SessionStart hook that prints the summary
 - CLAUDE.md 第十四条 — end-of-phase wrap-up (mirror principle)
-- `.claude/skills/slash-command-hot-reload.md` — why sync_infra drift needs restart, not just commit
+- `.claude/skills/slash-command-hot-reload.md` — why changed command files need a restart, not just a commit
 - `.claude/skills/lesson-classification.md` — why this is a guide (recurring behavior with clear trigger) rather than constitutional

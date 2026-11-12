@@ -2,8 +2,8 @@
 """Regenerate CLAUDE.md from constitution/total.md + constitution/agent.<role>.md.
 
 Source of truth:
-  constitution/total.md         — universal constitution, synced from agent-core
-                                  to all clones via sync_infra.py
+  constitution/total.md         — universal constitution, merged from master
+                                  into every clone by /sync-repos
   constitution/agent.<role>.md  — this clone's agent-specific articles
                                   (per-role file, owned by that agent only)
   .governance/config.json       — agents[].clone_dir decides this clone's

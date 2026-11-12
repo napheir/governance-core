@@ -89,14 +89,19 @@ wc -l CLAUDE.md
 
 ### Step 5：同步与传播
 
+单 agent 项目只需本 clone 生效；多 agent 项目按下表传播（P-0137：只有一种接线方式，
+upgrade 管 gc 文件和 hook 接线，`/sync-repos` 管已跟踪的项目文件）：
+
 | 改动类型 | 同步方式 |
 |---------|---------|
-| `constitution/total.md` | `tools/sync_infra.py --execute` 推到全 clone（total.md 在 ALWAYS_COPY_FILES）|
+| `constitution/total.md` | 提交到 master，`/sync-repos` merge 到全 clone，各 clone 再 regen 自己的 CLAUDE.md |
 | `constitution/agent.md` | **仅本 clone**（per-clone owned，不跨 sync）|
-| `.claude/commands/*.md` 新 skill | sync_infra（SKILL_DIRS 路由）|
-| `.claude/hooks/*.py` 新 hook | sync_infra（per-clone copy 必须）|
-| `knowledge/INDEX.routing.json` 新 trigger | sync_infra（ALWAYS_COPY_FILES）|
+| `.claude/commands/*.md` 新 skill（项目自著） | 提交到 master，`/sync-repos` merge；`theme` 决定谁的会话注入它 |
+| gc 自带的 command / hook / tool | 在 governance-core 改包源并发版，各 clone `governance-core upgrade` |
+| `knowledge/INDEX.routing.json` 新 trigger | 提交到 master，`/sync-repos` merge |
 | `knowledge/decisions/*.md` 新 ADR | `/publish-knowledge`（federated）|
+
+传播后在 core 跑 `python tools/sync_infra.py`（只读检查），确认 0 FAIL。
 
 ### Step 6：Commit-ready summary
 
@@ -114,7 +119,7 @@ Audience: all agents
 <详细说明>
 - 修改原因: ...
 - 影响 article 表 / 红线清单: yes/no
-- 后续: sync_infra 已跑 / 待 sync-repos 推到 4 clone
+- 后续: 已 /sync-repos merge 到各 clone / 待 merge（单 agent: 仅本 clone）
 ```
 
 #### 改 `agent.md` 的 commit message 模板（**强制**）
@@ -148,7 +153,7 @@ docs(constitution): <one-line summary>
        - audit_knowledge: OK / SKIP / FAIL
        - validate_routing: OK / SKIP
        - CLAUDE.md budget: <chars>/30000
-- [x] Step 5 同步: <sync_infra 已跑 / 仅本 clone / publish-knowledge 已跑>
+- [x] Step 5 同步: <已 /sync-repos merge + sync_infra 检查 0 FAIL / 仅本 clone / publish-knowledge 已跑>
 - [x] Step 6 Commit message: <粘贴上方模板填好的内容>
 ```
 
@@ -170,4 +175,4 @@ docs(constitution): <one-line summary>
 - 复用 `tools/audit_knowledge.py`（Step 4c）
 - 复用 `tools/validate_routing.py`（Step 4d，R8 引入）
 - 复用 `tools/check_constitution_change.py`（pre-commit 已用，本 skill 提前调一次给即时反馈）
-- 复用 `tools/sync_infra.py --execute`（Step 5）
+- 复用 `/sync-repos` 与 `tools/sync_infra.py` 只读检查（Step 5）
