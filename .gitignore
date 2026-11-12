@@ -105,6 +105,7 @@ htmlcov/
 /.governance/installed_files.json
 /.governance/candidate-outbox/
 /.governance/state_seen.json
+/.governance/pending_writes/
 # Authorization code (secret). A PRIVATE repo may re-include it with
 # !/.governance/auth_code after this block.
 /.governance/auth_code

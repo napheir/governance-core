@@ -59,6 +59,12 @@ FAIL_OPEN_GC_IMPORTERS: frozenset[str] = frozenset({
     # without output, so a broken package silences it -- never breaks
     # SessionStart.
     "foreign-change-notice.py",
+    # P-0136: the own-write pair (Pre capture, Post journal) imports
+    # governance_core.ownership inside main()'s try; any failure exits 0
+    # silently, so a broken package stops journaling -- never blocks an
+    # Edit/Write. The allow/deny decision stays with edit-write-guard.
+    "own-write-capture.py",
+    "own-write-journal.py",
 })
 
 # Fail-CLOSED governance_core importers grandfathered pending a

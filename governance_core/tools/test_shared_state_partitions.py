@@ -156,6 +156,22 @@ def test_edit_lib_only_and_unpartitioned_blocked(project: dict, rel: str) -> Non
     assert res.returncode == 2, res.stderr
 
 
+def test_notebook_and_multi_edit_are_guarded_too(project: dict) -> None:
+    """P-0136: every file-editing tool reaches the guard and is checked."""
+    target = project["shared"] / "proposals/content/n.ipynb"
+    res = _hook(project["platform"], "edit-write-guard", {
+        "tool_name": "NotebookEdit",
+        "tool_input": {"notebook_path": str(target), "new_source": "x"}})
+    assert res.returncode == 2 and "another agent's shared_state partition" in res.stderr
+    res = _hook(project["platform"], "edit-write-guard", {
+        "tool_name": "MultiEdit",
+        "tool_input": {"file_path": str(target), "edits": [{"new_string": "x"}]}})
+    assert res.returncode == 2, res.stderr
+    manifest = json.loads((_HOOKS / "hooks_manifest.json").read_text(encoding="utf-8"))
+    tools = set(manifest["hooks"]["edit-write-guard.py"]["matcher"].split("|"))
+    assert {"Edit", "Write", "MultiEdit", "NotebookEdit"} <= tools
+
+
 def test_edit_configured_partition_allowed(project: dict) -> None:
     res = _write(project["platform"], project["shared"] / "todos/platform/t.md")
     assert res.returncode == 0, res.stderr

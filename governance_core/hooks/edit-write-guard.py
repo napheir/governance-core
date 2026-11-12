@@ -681,6 +681,9 @@ def main() -> None:
 
     tool_input = data.get("tool_input", {})
     file_path = tool_input.get("file_path", "")
+    if not file_path and data.get("tool_name") == "NotebookEdit":
+        # NotebookEdit names its target notebook_path (P-0136).
+        file_path = tool_input["notebook_path"] if "notebook_path" in tool_input else ""
     if not file_path:
         sys.exit(0)
 
@@ -728,11 +731,13 @@ def main() -> None:
     _content_to_scan = ""
     if data.get("tool_name") == "Write":
         _content_to_scan = tool_input.get("content", "")
-    elif data.get("tool_name") == "Edit":
+    elif data.get("tool_name") in ("Edit", "MultiEdit"):
         _content_to_scan = tool_input.get("new_string", "")
         for edit in tool_input.get("edits", []) or []:
             if isinstance(edit, dict):
                 _content_to_scan += "\n" + edit.get("new_string", "")
+    elif data.get("tool_name") == "NotebookEdit":
+        _content_to_scan = tool_input["new_source"] if "new_source" in tool_input else ""
     if _content_to_scan:
         _destructive_content_check(rel_path_for_l6, _content_to_scan, role)
 

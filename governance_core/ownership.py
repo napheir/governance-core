@@ -3,8 +3,9 @@
 contracts/shared_state_ownership.md §4-5. Three stores:
 
 - the journal, `<shared_state>/_journal.jsonl`: append-only and hash-chained,
-  one line per lib write: `{ts, actor, op, path, sha_before, sha_after,
-  prev[, notice]}`;
+  one line per recorded write (a lib call, or an Edit/Write journaled by the
+  own-write hooks, P-0136): `{ts, actor, op, path, sha_before, sha_after,
+  via, prev[, notice]}`;
 - notices, `<shared_state>/notices/<agent>/<id>.json`: what an agent and its
   owner must be told; acked ones move to `notices/<agent>/acked/`;
 - the last-seen manifest, `<clone>/.governance/state_seen.json`: the shas this
@@ -37,6 +38,10 @@ JOURNAL_LOCK = "_journal.lock"
 JOURNAL_ROTATE_BYTES = 5 * 1024 * 1024
 NOTICES_DIR = "notices"
 MANIFEST_REL = ".governance/state_seen.json"
+PENDING_REL = ".governance/pending_writes"
+PENDING_TTL_SECONDS = 24 * 3600
+EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
+VIAS = ("lib", "edit")
 SCHEMA = 1
 
 
@@ -151,19 +156,58 @@ def _append_journal(root: Path, record: dict) -> None:
             f.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
 
 
-def journal_records(root: Path) -> list:
-    """Records of the current journal file (oldest first)."""
-    journal = root / JOURNAL_NAME
-    if not journal.is_file():
-        return []
+def journal_records(root: Path, rotated: bool = False) -> list:
+    """Journal records, oldest first: the current file, or every file when
+    `rotated` (the rotated files, then the current one)."""
+    files = (_rotations(root) if rotated else []) + [root / JOURNAL_NAME]
     out = []
-    for line in journal.read_text(encoding="utf-8").split("\n"):
-        if line.strip():
-            try:
-                out.append(json.loads(line))
-            except ValueError:
-                out.append({"corrupt": line})
+    for path in files:
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8").split("\n"):
+            if line.strip():
+                try:
+                    out.append(json.loads(line))
+                except ValueError:
+                    out.append({"corrupt": line})
     return out
+
+
+def _chain(records: list, rel: str, start: str | None, end: str | None) -> tuple:
+    """(explained, consumed, follower) for a change of `rel` from `start` to `end`.
+
+    Explained when a run of journal lines for `rel`, oldest first, leads from
+    sha `start` to sha `end` (§4 "Explained changes"); a line that merely
+    ends at `end` is not enough. `consumed` is that run. `follower` is the
+    first line for `rel` after the run that did not continue it -- the write
+    that came after a gap -- or None.
+    """
+    cur, consumed, follower = start, [], None
+    for rec in records:
+        if "path" not in rec or rec["path"] != rel:
+            continue
+        if rec["sha_before"] == cur:
+            cur = rec["sha_after"]
+            consumed.append(rec)
+            follower = None
+        elif follower is None:
+            follower = rec
+    return cur == end, consumed, follower
+
+
+def _what(before: str | None, after: str | None) -> str:
+    """'deleted', 'created' or 'changed' for a sha transition."""
+    if after is None:
+        return "deleted"
+    return "created" if before is None else "changed"
+
+
+def _gap_detail(what: str, follower: dict | None) -> str:
+    """Notice detail for a change no journal run explains."""
+    if follower is None:
+        return f"{what} outside the governance libs; actor unknown"
+    return (f"{what} outside the governance libs before {follower['op']} by "
+            f"{follower['actor']}; actor unknown")
 
 
 def verify_chain(root: Path) -> tuple:
@@ -267,15 +311,27 @@ def partition_files(project_root: Path, agent: str) -> dict:
 
 # --- public API -------------------------------------------------------------------
 
-def record_write(project_root: Path, op: str, rel_path: str,
-                 sha_before: str | None, sha_after: str | None) -> None:
-    """Record a lib write of shared_state path `rel_path` by this clone's agent.
+def _severity(actor: str, via: str, core: str) -> str:
+    """info only for a lib write by the core agent (§5); alert otherwise."""
+    return "info" if actor == core and via == "lib" else "alert"
 
-    Appends a journal line. If the actor owns the path, its last-seen
-    manifest moves too (its own write is not news). If another agent owns
-    it, that agent gets a foreign-write notice: info when the actor is the
-    core agent, alert otherwise. No-op in a single-agent project.
+
+def record_write(project_root: Path, op: str, rel_path: str,
+                 sha_before: str | None, sha_after: str | None,
+                 via: str = "lib") -> None:
+    """Record a write of shared_state path `rel_path` by this clone's agent.
+
+    `via` is "lib" for a lib call and "edit" for an Edit/Write journaled by
+    the own-write hooks. Appends a journal line.
+    - If the actor owns the path: a change from the actor's last-seen sha to
+      `sha_before` that no journal run explains becomes an alert first, so
+      the write cannot absorb it; then the last-seen manifest moves.
+    - If another agent owns it: that agent gets a foreign-write notice, info
+      for a core lib write and alert otherwise.
+    No-op in a single-agent project.
     """
+    if via not in VIAS:
+        raise OwnershipError(f"via must be one of {VIAS}, not {via!r}")
     project_root = Path(project_root)
     topo = topology(project_root)
     if len(topo["agents"]) < 2:
@@ -283,22 +339,127 @@ def record_write(project_root: Path, op: str, rel_path: str,
     root = shared_root(project_root)
     actor = topo["self"]
     owner = owner_of(project_root, rel_path, topo["agents"])
+    seen = load_manifest(project_root) if owner == actor else None
+    if seen is not None:
+        was = seen[rel_path] if rel_path in seen else None
+        if was != sha_before:
+            ok, _, _ = _chain(journal_records(root, rotated=True),
+                              rel_path, was, sha_before)
+            if not ok:  # the write that follows the gap is this one
+                write_notice(root, actor, kind="foreign-write", severity="alert",
+                             frm="unknown", paths=[rel_path],
+                             detail=_gap_detail(_what(was, sha_before),
+                                                {"op": op, "actor": actor}))
     record = {"ts": _now(), "actor": actor, "op": op, "path": rel_path,
-              "sha_before": sha_before, "sha_after": sha_after}
+              "sha_before": sha_before, "sha_after": sha_after, "via": via}
     if owner is not None and owner != actor:
         record["notice"] = write_notice(
             root, owner, kind="foreign-write",
-            severity="info" if actor == topo["core"] else "alert", frm=actor,
+            severity=_severity(actor, via, topo["core"]), frm=actor,
             paths=[rel_path], detail=f"{op} by {actor}")
     _append_journal(root, record)
-    if owner == actor:
-        seen = load_manifest(project_root)
-        if seen is not None:
-            if sha_after is not None:
-                seen[rel_path] = sha_after
-            elif rel_path in seen:
-                del seen[rel_path]
-            save_manifest(project_root, seen)
+    if seen is not None:
+        if sha_after is not None:
+            seen[rel_path] = sha_after
+        elif rel_path in seen:
+            del seen[rel_path]
+        save_manifest(project_root, seen)
+
+
+# --- Edit/Write journal (own-write hooks) -----------------------------------------
+
+def _field(data: Any, key: str) -> Any:
+    """data[key] when `data` is a dict holding `key`, else None."""
+    return data[key] if isinstance(data, dict) and key in data else None
+
+
+def edit_target(payload: dict) -> tuple | None:
+    """(key, tool, absolute path) of a file-editing tool call, from hook input.
+
+    The key is `tool_use_id`; without one, `<session_id>-<sha1 of path>`.
+    None when the call is not a file edit or cannot be keyed.
+    """
+    tool = _field(payload, "tool_name")
+    if tool not in EDIT_TOOLS:
+        return None
+    tool_input = _field(payload, "tool_input")
+    raw = _field(tool_input, "file_path") or _field(tool_input, "notebook_path")
+    if not isinstance(raw, str) or not raw:
+        return None
+    path = Path(raw)
+    cwd = _field(payload, "cwd")
+    if not path.is_absolute() and isinstance(cwd, str) and cwd:
+        path = Path(cwd) / path
+    key = _field(payload, "tool_use_id")
+    if not isinstance(key, str) or not key:
+        session = _field(payload, "session_id")
+        if not isinstance(session, str) or not session:
+            return None
+        key = f"{session}-{hashlib.sha1(str(path).encode('utf-8')).hexdigest()[:16]}"
+    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in key)
+    return safe, tool, path
+
+
+def _prune_pending(folder: Path) -> None:
+    """Remove pending captures older than PENDING_TTL_SECONDS."""
+    if not folder.is_dir():
+        return
+    cutoff = datetime.datetime.now().timestamp() - PENDING_TTL_SECONDS
+    for p in folder.glob("*.json"):
+        try:
+            if p.stat().st_mtime < cutoff:
+                p.unlink()
+        except OSError:
+            pass
+
+
+def capture_before(project_root: Path, payload: dict) -> None:
+    """PreToolUse: store the sha of a partition file about to be edited.
+
+    Writes `<clone>/.governance/pending_writes/<key>.json` = {path,
+    sha_before, ts}. Only files in some agent's partition, only in a
+    multi-agent project.
+    """
+    project_root = Path(project_root)
+    target = edit_target(payload)
+    if target is None:
+        return
+    key, _, path = target
+    topo = topology(project_root)
+    if len(topo["agents"]) < 2:
+        return
+    rel = shared_rel(project_root, path)
+    if rel is None or owner_of(project_root, rel, topo["agents"]) is None:
+        return
+    folder = project_root / PENDING_REL
+    _prune_pending(folder)
+    _write_json_atomic(folder / f"{key}.json",
+                       {"path": rel, "sha_before": file_sha(path), "ts": _now()})
+
+
+def journal_edit(project_root: Path, payload: dict) -> None:
+    """PostToolUse: journal the edit captured by capture_before().
+
+    Reads and removes the pending capture, then records the write with
+    `op` = "edit:<Tool>" and via "edit". Nothing is journaled without a
+    capture or when the sha did not change.
+    """
+    project_root = Path(project_root)
+    target = edit_target(payload)
+    if target is None:
+        return
+    key, tool, path = target
+    pending = project_root / PENDING_REL / f"{key}.json"
+    if not pending.is_file():
+        return
+    data = json.loads(pending.read_text(encoding="utf-8"))
+    pending.unlink()
+    rel = shared_rel(project_root, path)
+    sha_after = file_sha(path)
+    if rel != data["path"] or sha_after == data["sha_before"]:
+        return
+    record_write(project_root, f"edit:{tool}", rel, data["sha_before"], sha_after,
+                 via="edit")
 
 
 def scan(project_root: Path) -> dict:
@@ -322,28 +483,28 @@ def scan(project_root: Path) -> dict:
     if seen is None:
         result["first_run"] = True
     else:
-        by_after: dict = {}
-        for rec in journal_records(root):
-            if "path" in rec:
-                by_after[(rec["path"], rec["sha_after"])] = rec
+        records = journal_records(root, rotated=True)
         for rel in sorted(set(current) | set(seen)):
             now_sha = current[rel] if rel in current else None
             was_sha = seen[rel] if rel in seen else None
             if now_sha == was_sha:
                 continue
-            rec = by_after[(rel, now_sha)] if (rel, now_sha) in by_after else None
-            if rec is not None and rec["actor"] == me:
-                continue  # our own write; the manifest just lagged
-            if rec is not None and "notice" in rec:
-                continue  # record_write already told us
-            frm = rec["actor"] if rec is not None else "unknown"
-            what = "deleted" if now_sha is None else ("created" if was_sha is None else "changed")
-            detail = (f"{what} by {frm} ({rec['op']})" if rec is not None
-                      else f"{what} outside the governance libs; actor unknown")
-            nid = write_notice(root, me, kind="foreign-write",
-                               severity="info" if frm == topo["core"] else "alert",
-                               frm=frm, paths=[rel], detail=detail)
-            result["new"].append(nid)
+            what = _what(was_sha, now_sha)
+            ok, consumed, follower = _chain(records, rel, was_sha, now_sha)
+            if not ok:
+                result["new"].append(write_notice(
+                    root, me, kind="foreign-write", severity="alert", frm="unknown",
+                    paths=[rel], detail=_gap_detail(what, follower)))
+                continue
+            for rec in consumed:  # own writes are silent; foreign ones told us
+                if rec["actor"] == me or "notice" in rec:
+                    continue
+                via = rec["via"] if "via" in rec else "lib"
+                result["new"].append(write_notice(
+                    root, me, kind="foreign-write",
+                    severity=_severity(rec["actor"], via, topo["core"]),
+                    frm=rec["actor"], paths=[rel],
+                    detail=f"{what} by {rec['actor']} ({rec['op']})"))
     save_manifest(project_root, current)
     result["chain_ok"], result["chain_detail"] = verify_chain(root)
     result["notices"] = list_notices(root, me)
