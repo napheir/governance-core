@@ -17,6 +17,24 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-12 — 发布 v0.51.1（P-0136 + rotate_state 提醒），归档 P-0134
+
+- **发布**：owner 说"发布"。
+  - 推送 ed08ddc..c71e30a。
+  - GitHub Release v0.51.1（Latest），release CI run 43171506437 成功。
+  - PyPI 上 0.51.1 可见，有 wheel 和 sdist。
+  - 发布前构建的 wheel 已确认：含 3 个新 hook，契约为 1.1.0，没有混入 `maintainer/`。
+- **发布说明**：只写行为变化和升级步骤，并提醒消费者的库要传入真实的 `sha_before`。
+- **通知 deva-vani**：发给其 core 会话 `agent-core-7d`，包括升级步骤和 4 步现场验证。第 4 步请他们的 owner 确认，被拦截时是否看到了原因文字。
+  - 原来的会话地址已经失效，改用 ListAgents 查到的新地址。
+  - 现场验证通过后，P-0135 和 P-0136 一起结案归档。
+- **归档**：owner 说"归档"。P-0134 已归档到 `proposals/_archive/2026/`。
+- **P-0133**：owner 恢复会话时又看到了 `[WARN]`。核对后发现这个会话的 PATH 里排第一的是全局 Python，没有 venv，说明它不是通过 `gchub` 启动的，警告属实。下一步要弄清 owner 是从哪种 shell 启动的。
+- **待办**：
+  - 起草 sync_infra 提案；
+  - 起草待办台提案（台账、每周回顾、底线），推送方式到时再定；
+  - P-0132（trade、auto-tax）。
+
 ### 2026-11-12 — P-0136 Phase 3：确保 owner 看到所有权通知（0.51.1，未发布）
 
 - **info 通知**：`foreign-change-notice.py` 从 hook 输入里读取 `session_id`。
@@ -55,22 +73,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   - 在 0.51.0 的代码上，13 个会失败；跨轮转日志那一个是防回归用的，新旧代码上都通过。
   - 全部 532 个测试通过，command-guard 42/42，doctor 正常（注册了 23 个 hook）。
 - **单 agent 项目**（包括本 hub）：新逻辑全部不起作用，没有行为变化。
-
-### 2026-11-12 — P-0136 Phase 1：所有权契约 1.1.0（0.51.1，未发布）
-
-- **P-0136 已批准**：owner 说"批准P-0136"，按决策卡上的默认值执行，进入 in-progress。它是 P-0135 的后续，草稿留在 `shared_state/`，修复发布前不归档。
-- **契约 `shared_state_ownership.md` 升到 1.1.0**：
-  - **Edit/Write 也记入写日志。** 由两个出错时放行的 hook 负责：写入前记下原 sha，写入后记一行，`via` 为 `edit`，`op` 为 `edit:<Tool>`。覆盖所有改文件的工具。
-  - **怎样算"能解释的变更"。** 同一路径的日志行要从上次看到的 sha 一路接到当前 sha；只有一行恰好以当前 sha 结尾，不算。自己写入前也要先做这项检查，然后才更新清单。
-  - **core 直接 Edit 别人的分区**，算 alert。
-  - **info 通知**在两个不同会话里显示过才自动确认（`shown`、`shown-2`）。
-  - **有未确认的 alert 时**，每个会话的第一条输入被拦一次。
-  - **新增** `notices.py list --recent`，可以事后查看已确认的通知。
-- **下一步**：Phase 2 实现 Edit/Write 写日志和链式检查，Phase 3 实现通知送达。
-- **另外两个已获批的方向**：
-  - **sync_infra**：查 clone 路径的逻辑和 hook 接线方式要一起改，待起草提案。
-  - **决策台账、每周回顾、owner 底线**：做成一个 gc 提案。每周回顾要在打开会话时检查本周做了没有，没做就补上。owner 待办台（中央 todo board）另行讨论。
-- **测试**：所有权相关测试 85 个全部通过，知识库检查通过。
 
 ### 2026-11-10 — rotate_state 每次轮转都提示暂存 STATE_ARCHIVE.md（0.51.1，未发布）
 
