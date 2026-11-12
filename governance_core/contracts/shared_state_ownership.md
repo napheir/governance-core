@@ -1,6 +1,6 @@
 # Contract: Ownership of agent content in multi-agent projects
 
-**Version**: 1.0.0
+**Version**: 1.1.0
 **Status**: active
 **Owner**: core
 **Consumers**:
@@ -8,8 +8,9 @@
 - `hooks/edit-write-guard.py`, `hooks/scope-guard.py`, `hooks/_guard_common.py` (partitions);
 - `tools/proposal_lib.py` (owner checks, actor, journal);
 - `governance_core/ownership.py` (journal, notices, last-seen manifest);
-- `hooks/foreign-change-notice.py` (SessionStart);
-- `tools/notices.py` (list / ack);
+- `hooks/own-write-capture.py`, `hooks/own-write-journal.py` (Edit/Write journal);
+- `hooks/foreign-change-notice.py` (SessionStart), `hooks/notice-gate.py` (UserPromptSubmit);
+- `tools/notices.py` (list / ack / recent);
 - `.claude/commands/{sync-repos,audit,publish-knowledge,proposal}.md`.
 
 In a multi-agent project each agent works in its own clone and shares one `shared_state/` directory. This contract defines what each agent owns and how a change by anyone else is prevented, detected and reported (P-0135).
@@ -85,6 +86,7 @@ In a multi-agent project each agent works in its own clone and shares one `share
 | business agent, proposal_lib | allow | deny (owner check) | via lib only | n/a |
 | core agent | allow | allow, attributed and noticed (§5) | via lib only | allow |
 
+- **Edit/Write** means every Claude Code file-editing tool: `Edit`, `Write`, `MultiEdit` and `NotebookEdit` (target `file_path`, or `notebook_path`).
 - **Bash write-shaped commands** are output redirects (`>`, `>>`), `tee`, `cp`, `mv`, `rm`, `rmdir`, `touch`, `mkdir`, `ln`, `sed -i`, and writes inside `python -c`. Any other way of writing a file is caught by detection (§4).
 
 ## 3. Proposal owner checks and actor
@@ -101,18 +103,38 @@ In a multi-agent project each agent works in its own clone and shares one `share
 ```json
 {"ts": "2026-11-06T09:00:00Z", "actor": "core", "op": "transition",
  "path": "proposals/content/p-0005-x.md", "sha_before": "<sha256|null>",
- "sha_after": "<sha256|null>", "prev": "<sha256 of the previous line|null>"}
+ "sha_after": "<sha256|null>", "via": "lib|edit",
+ "prev": "<sha256 of the previous line|null>"}
 ```
 
 - **Paths.** `path` is relative to the shared_state root, with `/` separators.
-- **Hashes.** `sha_*` is the sha256 of the file bytes, null when absent.
+- **Hashes.**
+  - `sha_*` is the sha256 of the file bytes, null when absent.
+  - `sha_before` must be the sha of the file immediately before this write. Detection relies on it (see "Explained changes" below).
+- **How the write was made.** `via` is `lib` for a lib call and `edit` for an Edit/Write journaled by the hooks below. A missing `via` (1.0.0 lines) means `lib`.
+  - Hook-journaled lines have `op` = `edit:<ToolName>`, e.g. `edit:Edit`.
 - **Hash chain.** `prev` chains the lines: an edit or truncation breaks the chain, and readers report a broken chain.
-- **Rotation.** At 5 MB the file is renamed to `_journal.<n>.jsonl`. The first line of the new file carries the old file's last-line hash as `prev`.
-- **Public API** for gc libs and consumer libs: `governance_core.ownership.record_write(project_root, op, rel_path, sha_before, sha_after)`.
+- **Rotation.** At 5 MB the file is renamed to `_journal.<n>.jsonl`. The first line of the new file carries the old file's last-line hash as `prev`. Readers that explain changes read the rotated files too.
+- **Public API** for gc libs and consumer libs: `governance_core.ownership.record_write(project_root, op, rel_path, sha_before, sha_after, via="lib")`.
   - It appends a line, with the actor taken from the clone's config-derived identity.
-  - If the actor owns the path, it also updates the actor's last-seen manifest.
+  - If the actor owns the path, it first checks that the actor's last-seen sha leads to `sha_before`. If that change is not explained, it writes an alert (§5). Then it moves the actor's last-seen manifest to `sha_after`.
   - If another agent owns the path, it also writes that agent's foreign-write notice (§5).
   - `governance_core.ownership.file_sha(path)` returns the sha256, or None if the file is absent.
+
+**Edit/Write journal.** In a multi-agent project, an Edit/Write (§2) of a shared_state file is journaled by two fail-open hooks:
+- `hooks/own-write-capture.py` (PreToolUse) stores the file's current sha in `<clone>/.governance/pending_writes/<key>.json` as `{"path", "sha_before", "ts"}`.
+  - `<key>` is the hook input's `tool_use_id`. Without one, it is `<session_id>-<sha1 of path>`.
+  - The file is clone-local and gitignored. A pending file older than 24 hours is removed.
+- `hooks/own-write-journal.py` (PostToolUse) reads and removes the pending file, then calls `record_write(op="edit:<Tool>", ..., via="edit")`.
+  - It journals nothing when the pending file is missing or the sha did not change. A missing pending file therefore surfaces later as an unexplained change.
+- Bash writes are not journaled. A shell write to an agent's own partition shows up as an unexplained change.
+
+**Explained changes.** A change of path P from sha A to sha B is explained only when a run of journal lines for P, oldest first, leads from A to B:
+- the first line has `sha_before` = A;
+- each later line has `sha_before` = the previous line's `sha_after`;
+- the last line has `sha_after` = B.
+
+A journal line that merely ends at B does not explain the change.
 
 **Last-seen manifest.** `<clone>/.governance/state_seen.json` is clone-local and gitignored:
 
@@ -121,7 +143,7 @@ In a multi-agent project each agent works in its own clone and shares one `share
 ```
 
 - It covers the agent's own partitions.
-- It is updated when this agent's own lib call writes a file.
+- It is updated when this agent's own write is recorded (lib or Edit/Write), after the gap check above.
 - It is rewritten at the end of the agent's SessionStart, after foreign changes have been turned into notices (§5).
 
 ## 5. Notices and how they reach the owner
@@ -131,30 +153,58 @@ In a multi-agent project each agent works in its own clone and shares one `share
 ```json
 {"schema": 1, "id": "20261106T090000Z-1a2b3c", "ts": "...",
  "from": "core|<agent>|unknown", "kind": "scope-violation|foreign-write",
- "severity": "alert|info", "paths": ["..."], "commits": ["..."], "detail": "..."}
+ "severity": "alert|info", "paths": ["..."], "commits": ["..."], "detail": "...",
+ "shown": ["<session_id>", "..."]}
 ```
 
+`shown` is present on info notices only (see Acknowledgement).
+
 **Severity.**
-- **info** is used for one case only: an attributed lib write by the core agent into another agent's partition. Core is allowed to do this (§2), for example creating a coordination item for an agent. An info notice is shown at the owner's next SessionStart and then acked automatically (`acked_by: "shown"`).
-- **alert** covers everything else: scope violations, writes whose actor is unknown, and any non-core actor. An alert repeats until the owner acks it.
+- **info** is used for one case only: a lib write (`via: "lib"`) by the core agent into another agent's partition, attributed in the journal. Core is allowed to do this (§2), for example creating a coordination item for an agent.
+- **alert** covers everything else:
+  - scope violations;
+  - changes that are not explained (§4), whose actor is unknown;
+  - any write by a non-core agent into another agent's partition;
+  - a core Edit/Write (`via: "edit"`) into another agent's partition, which bypasses the libs' checks.
+
+  An alert repeats until the owner acks it.
 
 **What writes a notice.**
 - **scope-violation.** Core's branch audit (§1), when run with `--notify`, writes one per affected owner (each agent in `owners`) and one to the audited agent.
-- **foreign-write**, two sources:
-  - a lib write by agent B to agent A's partition, attributed to B;
-  - at A's SessionStart, any file in A's partitions whose sha differs from A's last-seen manifest and that A did not write itself. `from` is the journal actor when a journal line matches `sha_after`, otherwise `unknown`.
+- **foreign-write**, three sources:
+  - a recorded write (lib or Edit/Write) by agent B to agent A's partition, attributed to B;
+  - at A's SessionStart, any file in A's partitions whose sha differs from A's last-seen manifest by a change that is not explained (§4). `from` is `unknown`. The detail names the first journaled write that followed the gap, if any;
+  - an own write by A whose `sha_before` is not explained from A's last-seen sha (§4). The alert is written before the manifest moves, so the earlier change is not absorbed.
 
-**How the owner sees it.** At each SessionStart, `hooks/foreign-change-notice.py`:
-1. persists foreign changes as notices, then rewrites the manifest;
-2. emits SessionStart hook JSON:
-   - `systemMessage` is shown in the owner's UI and lists this agent's un-acked notices plus a broken-chain warning;
-   - `hookSpecificOutput.additionalContext` carries the same text and tells the agent to report it to the owner first;
-3. adds one line to every clone's output with the project-wide count of un-acked notices per agent.
+**How the owner sees it.**
+- **At each SessionStart**, `hooks/foreign-change-notice.py`:
+  1. persists foreign changes as notices, then rewrites the manifest;
+  2. emits SessionStart hook JSON:
+     - `systemMessage` lists this agent's un-acked notices plus a broken-chain warning, for the owner's UI;
+     - `hookSpecificOutput.additionalContext` carries the same text and tells the agent to report it to the owner first;
+  3. adds one line to every clone's output with the project-wide count of un-acked notices per agent.
+- **At the first prompt of a session**, `hooks/notice-gate.py` (UserPromptSubmit) acts when this agent has un-acked alerts:
+  - It blocks that prompt once (`decision: "block"`), with a `reason` that summarises the alerts and asks the owner to resend. Claude Code shows the reason to the user and discards the prompt.
+  - It records the `session_id` in `<clone>/.governance/notice_gate_seen.json` (clone-local, gitignored, last 50 ids), so a session is blocked at most once.
+  - A resumed or compacted session keeps its `session_id`. An unattended run (`claude -p`) stops at that prompt, by design.
+  - Any error lets the prompt through.
 
 **Acknowledgement.**
 - `python tools/notices.py ack <id>` moves the notice to `notices/<agent>/acked/` and adds `{acked_by, acked_at}`.
-- An agent acks an alert only when its owner says so in that turn. Un-acked alerts repeat every session. Info notices are acked automatically once shown.
+- An agent acks an alert only when its owner says so in that turn. Un-acked alerts repeat every session.
+- An info notice records each distinct `session_id` that displayed it in `shown`. It is acked automatically (`acked_by: "shown-2"`) once two distinct sessions have shown it. Showing it again in the same session never counts twice.
+- `python tools/notices.py list --recent [--days N]` lists acked notices whose `acked_at` falls within the last N days (default 7), newest first, for review after the fact.
 
 ## 6. Versioning
 
 SemVer. Minor = a new optional field or a new notice kind. Major = a change to the partition rule, the journal chain or the report schema (needs a `proposals/` entry).
+
+**Changes.**
+- **1.1.0** (P-0136):
+  - Edit/Write is journaled (`via`, `op` = `edit:<Tool>`) and covers every file-editing tool.
+  - Changes are explained only by a per-path run of journal lines, and own writes check that run before the manifest moves.
+  - A core Edit/Write into another agent's partition is an alert.
+  - Info notices are acked after two distinct sessions (`shown`, `shown-2`).
+  - Alerts block the first prompt of a session once.
+  - `notices.py list --recent` lists acked notices.
+- **1.0.0** (P-0135): initial version.
