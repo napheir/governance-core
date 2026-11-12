@@ -645,6 +645,7 @@ GITIGNORE_RUNTIME_PATTERNS = (
     # Written by the 0.51.1 notice-gate (withdrawn in 0.51.2); kept so a
     # leftover file stays ignored.
     "/.governance/notice_gate_seen.json",
+    "/.governance/notice_title.json",
 )
 # P-0132: the authorization code file. Ignored by default; a private repo
 # that wants every clone to receive it through git re-includes it with

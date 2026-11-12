@@ -17,6 +17,33 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-12 — 发布 v0.51.2；用会话标题提示未确认的 alert（0.51.3，未发布）
+
+- **发布 0.51.2**：owner 说"按卡片发布"。
+  - 推送 fd5d4b3..db1a8cf。
+  - GitHub Release v0.51.2（Latest），CI run 43176222541 成功。
+  - PyPI 上 0.51.2 有 wheel 和 sdist。
+  - 已通知 deva-vani。他们预演过：4 个 clone 都会删掉 notice-gate.py，没有漂移。
+- **做法 (b)**：owner 说"然后做 (b)"，记为 P-0136 Phase 5 范围修订。
+  - 有 N 条未确认的 alert 时，会话标题显示 `[ALERT N] <agent>`，也就是输入框边框上那个标签；alert 都确认后改回 `<agent>`。
+  - 由两处设置，都通过 `hookSpecificOutput.sessionTitle`：
+    - SessionStart：`foreign-change-notice.py`；
+    - 每次输入：新增的 `notice-title.py`（UserPromptSubmit）。它从不拦截，也不往上下文里加东西。
+  - 只在数量变化时才改标题。从没有过 alert 的会话保持原标题；用户 `/rename` 的名字会一直保留，直到数量变化。
+  - 各会话的计数记在 `.governance/notice_title.json`（clone 本地，已加入 gitignore，保留最近 50 个会话）。
+  - 依据是 Claude Code 更新日志："SessionStart hooks can now set the session title via hookSpecificOutput.sessionTitle on startup and resume"，以及 UserPromptSubmit 的 sessionTitle。
+- **涉及文件**：
+  - `ownership.title_update` / `alert_title`；
+  - `foreign-change-notice.py`；
+  - 新增 `hooks/notice-title.py`，已登记到 manifest 和 FAIL_OPEN；
+  - 契约升到 1.2.0，更新 core-manual §15；
+  - 版本升到 0.51.3。
+- **测试**：
+  - 新增 7 个，另替换 1 个。其中 6 个在 0.51.2 上会失败；"无 alert 不改标题"在新旧代码上都通过。
+  - 全部 543 个通过，command-guard 42/42，doctor 正常（注册了 24 个 hook）。
+  - 单 agent 项目里，标题 hook 约 141 毫秒退出。
+- **现场验证**：experience 的 8fc9aa 和 content 的 a404d1 先保留不确认。升级后标题应显示 `[ALERT 1] <agent>`，确认后应改回原名。
+
 ### 2026-11-12 — 撤回首条输入拦截（notice-gate），准备 0.51.2（未发布）
 
 - **出了什么问题**：deva-vani 升级到 0.51.1 之后，experience 有一条未确认的 alert。这时会话里收到的第一条"输入"其实是 core 发来的同伴消息，结果被拦下了。被拦的输入会被丢弃，所以 experience 的 agent 根本没收到这条消息，后来由 deva-vani 的 core 重发。
@@ -53,26 +80,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   - 起草 sync_infra 提案；
   - 起草待办台提案（台账、每周回顾、底线），推送方式到时再定；
   - P-0132（trade、auto-tax）。
-
-### 2026-11-12 — P-0136 Phase 3：确保 owner 看到所有权通知（0.51.1，未发布）
-
-- **info 通知**：`foreign-change-notice.py` 从 hook 输入里读取 `session_id`。
-  - 每显示一次，就把这个 id 记进通知的 `shown`。
-  - 等两个不同会话都显示过，才自动确认，`acked_by` 记为 `shown-2`。恢复或压缩会话时 id 不变，不会重复计数。
-  - 拿不到 id 时，只显示，不计数。
-  - alert 显示多少次都不会自动确认。
-- **新增 `notices.py list --recent [--days N]`**：查看最近 N 天已确认的通知，默认 7 天。
-- **新增 `notice-gate.py`（UserPromptSubmit）**：
-  - 只要还有未确认的 alert，每个会话的第一条输入会被拦一次，并附上 alert 摘要。
-  - 拦过的会话 id 记在 `.governance/notice_gate_seen.json`，这个文件是 clone 本地的，已加进受管的 `.gitignore`。
-  - 单 agent 项目只读一下配置就退出；自身出错时放行。
-  - 被拦的原因会不会显示给用户，文档里没有写，留到 Phase 4 由 deva-vani 的 owner 现场确认。
-- **文档**：core-manual §15，以及 `/proposal` 里说明 body Edit 会被记入日志。
-- **测试**：
-  - `test_ownership_delivery.py` 新增 9 个，其中 8 个在 Phase 2 的代码上会失败；剩下那个检查无 alert 时放行，新旧代码上都通过。
-  - 已有测试改为：info 不再在第一次显示时确认。
-  - 全部 541 个测试通过，command-guard 42/42，doctor 正常（注册了 24 个 hook）。
-- **下一步**：Phase 4，请 owner 确认发布 0.51.1（含 6a6ae5b），然后 deva-vani 按顺序现场验证。
 
 ### 2026-11-10 — rotate_state 每次轮转都提示暂存 STATE_ARCHIVE.md（0.51.1，未发布）
 

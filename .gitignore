@@ -107,6 +107,7 @@ htmlcov/
 /.governance/state_seen.json
 /.governance/pending_writes/
 /.governance/notice_gate_seen.json
+/.governance/notice_title.json
 # Authorization code (secret). A PRIVATE repo may re-include it with
 # !/.governance/auth_code after this block.
 /.governance/auth_code

@@ -5,6 +5,27 @@
 
 ---
 
+### 2026-11-12 — P-0136 Phase 3：确保 owner 看到所有权通知（0.51.1，未发布）
+
+- **info 通知**：`foreign-change-notice.py` 从 hook 输入里读取 `session_id`。
+  - 每显示一次，就把这个 id 记进通知的 `shown`。
+  - 等两个不同会话都显示过，才自动确认，`acked_by` 记为 `shown-2`。恢复或压缩会话时 id 不变，不会重复计数。
+  - 拿不到 id 时，只显示，不计数。
+  - alert 显示多少次都不会自动确认。
+- **新增 `notices.py list --recent [--days N]`**：查看最近 N 天已确认的通知，默认 7 天。
+- **新增 `notice-gate.py`（UserPromptSubmit）**：
+  - 只要还有未确认的 alert，每个会话的第一条输入会被拦一次，并附上 alert 摘要。
+  - 拦过的会话 id 记在 `.governance/notice_gate_seen.json`，这个文件是 clone 本地的，已加进受管的 `.gitignore`。
+  - 单 agent 项目只读一下配置就退出；自身出错时放行。
+  - 被拦的原因会不会显示给用户，文档里没有写，留到 Phase 4 由 deva-vani 的 owner 现场确认。
+- **文档**：core-manual §15，以及 `/proposal` 里说明 body Edit 会被记入日志。
+- **测试**：
+  - `test_ownership_delivery.py` 新增 9 个，其中 8 个在 Phase 2 的代码上会失败；剩下那个检查无 alert 时放行，新旧代码上都通过。
+  - 已有测试改为：info 不再在第一次显示时确认。
+  - 全部 541 个测试通过，command-guard 42/42，doctor 正常（注册了 24 个 hook）。
+- **下一步**：Phase 4，请 owner 确认发布 0.51.1（含 6a6ae5b），然后 deva-vani 按顺序现场验证。
+
+
 ### 2026-11-12 — P-0136 Phase 2：把 Edit/Write 记入写日志，按路径链解释变更（0.51.1，未发布）
 
 - **新增两个 hook**，都是出错就放行，已登记在 `FAIL_OPEN_GC_IMPORTERS` 里：
