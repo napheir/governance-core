@@ -41,8 +41,6 @@ MANIFEST_REL = ".governance/state_seen.json"
 PENDING_REL = ".governance/pending_writes"
 PENDING_TTL_SECONDS = 24 * 3600
 SHOWN_ACK_SESSIONS = 2
-GATE_SEEN_REL = ".governance/notice_gate_seen.json"
-GATE_SEEN_KEEP = 50
 RECENT_DAYS = 7
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 VIAS = ("lib", "edit")
@@ -319,46 +317,6 @@ def list_acked(root: Path, agent: str, days: int = RECENT_DAYS) -> list:
         if "acked_at" in data and data["acked_at"] >= since:
             out.append(data)
     return sorted(out, key=lambda n: n["acked_at"], reverse=True)
-
-
-def alert_gate(project_root: Path, session_id: str) -> str | None:
-    """UserPromptSubmit: the text to block this session's first prompt with.
-
-    Returns None (let the prompt through) in a single-agent project, when
-    this agent has no un-acked alert, or when this session was already
-    gated. Otherwise records `session_id` in the clone-local
-    GATE_SEEN_REL (last GATE_SEEN_KEEP ids) and returns the summary (§5).
-    """
-    project_root = Path(project_root)
-    if not session_id:
-        return None
-    topo = topology(project_root)
-    if len(topo["agents"]) < 2:
-        return None
-    me = topo["self"]
-    alerts = [n for n in list_notices(shared_root(project_root), me)
-              if n["severity"] == "alert"]
-    if not alerts:
-        return None
-    seen_path = project_root / GATE_SEEN_REL
-    seen = (json.loads(seen_path.read_text(encoding="utf-8"))["sessions"]
-            if seen_path.is_file() else [])
-    if session_id in seen:
-        return None
-    _write_json_atomic(seen_path, {"schema": SCHEMA,
-                                   "sessions": (seen + [session_id])[-GATE_SEEN_KEEP:]})
-    lines = [f"[Alerts pending] {me}: {len(alerts)} un-acked alert(s) about your "
-             f"shared_state content:"]
-    for n in alerts[:10]:
-        paths = ", ".join(n["paths"][:3]) + (" ..." if len(n["paths"]) > 3 else "")
-        lines.append(f"  [ALERT] {n['id']}: {n['kind']} from {n['from']} -- {paths}"
-                     + (f" ({n['detail']})" if n["detail"] else ""))
-    if len(alerts) > 10:
-        lines.append(f"  ... and {len(alerts) - 10} more: python tools/notices.py list")
-    lines.append("Your message was held once in this session so that you see these. "
-                 "Resend it to continue. Once you have looked, tell the agent which "
-                 "alerts to ack.")
-    return "\n".join(lines)
 
 
 # --- manifest and partitions ------------------------------------------------------

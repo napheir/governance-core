@@ -1,6 +1,6 @@
 # Contract: Ownership of agent content in multi-agent projects
 
-**Version**: 1.1.0
+**Version**: 1.1.1
 **Status**: active
 **Owner**: core
 **Consumers**:
@@ -9,7 +9,7 @@
 - `tools/proposal_lib.py` (owner checks, actor, journal);
 - `governance_core/ownership.py` (journal, notices, last-seen manifest);
 - `hooks/own-write-capture.py`, `hooks/own-write-journal.py` (Edit/Write journal);
-- `hooks/foreign-change-notice.py` (SessionStart), `hooks/notice-gate.py` (UserPromptSubmit);
+- `hooks/foreign-change-notice.py` (SessionStart);
 - `tools/notices.py` (list / ack / recent);
 - `.claude/commands/{sync-repos,audit,publish-knowledge,proposal}.md`.
 
@@ -183,11 +183,7 @@ A journal line that merely ends at B does not explain the change.
      - `systemMessage` lists this agent's un-acked notices plus a broken-chain warning, for the owner's UI;
      - `hookSpecificOutput.additionalContext` carries the same text and tells the agent to report it to the owner first;
   3. adds one line to every clone's output with the project-wide count of un-acked notices per agent.
-- **At the first prompt of a session**, `hooks/notice-gate.py` (UserPromptSubmit) acts when this agent has un-acked alerts:
-  - It blocks that prompt once (`decision: "block"`), with a `reason` that summarises the alerts and asks the owner to resend. Claude Code shows the reason to the user and discards the prompt.
-  - It records the `session_id` in `<clone>/.governance/notice_gate_seen.json` (clone-local, gitignored, last 50 ids), so a session is blocked at most once.
-  - A resumed or compacted session keeps its `session_id`. An unattended run (`claude -p`) stops at that prompt, by design.
-  - Any error lets the prompt through.
+- Alerts are not acked until the owner says so, so they keep reappearing at every SessionStart until the owner has seen them.
 
 **Acknowledgement.**
 - `python tools/notices.py ack <id>` moves the notice to `notices/<agent>/acked/` and adds `{acked_by, acked_at}`.
@@ -200,6 +196,11 @@ A journal line that merely ends at B does not explain the change.
 SemVer. Minor = a new optional field or a new notice kind. Major = a change to the partition rule, the journal chain or the report schema (needs a `proposals/` entry).
 
 **Changes.**
+- **1.1.1** (P-0136 field check): the first-prompt alert gate (`hooks/notice-gate.py`) is withdrawn.
+  - A blocked prompt is discarded, and the first prompt of a session can be a cross-session or other automated message, so that message was lost.
+  - Claude Code also echoes the whole held prompt on screen.
+  - A redesigned delivery is pending.
+  - `.governance/notice_gate_seen.json` stays in the managed `.gitignore` block, so a leftover file stays ignored.
 - **1.1.0** (P-0136):
   - Edit/Write is journaled (`via`, `op` = `edit:<Tool>`) and covers every file-editing tool.
   - Changes are explained only by a per-path run of journal lines, and own writes check that run before the manifest moves.

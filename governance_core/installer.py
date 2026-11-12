@@ -642,6 +642,8 @@ GITIGNORE_RUNTIME_PATTERNS = (
     "/.governance/candidate-outbox/",
     "/.governance/state_seen.json",
     "/.governance/pending_writes/",
+    # Written by the 0.51.1 notice-gate (withdrawn in 0.51.2); kept so a
+    # leftover file stays ignored.
     "/.governance/notice_gate_seen.json",
 )
 # P-0132: the authorization code file. Ignored by default; a private repo

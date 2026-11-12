@@ -17,6 +17,25 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-12 — 撤回首条输入拦截（notice-gate），准备 0.51.2（未发布）
+
+- **出了什么问题**：deva-vani 升级到 0.51.1 之后，experience 有一条未确认的 alert。这时会话里收到的第一条"输入"其实是 core 发来的同伴消息，结果被拦下了。被拦的输入会被丢弃，所以 experience 的 agent 根本没收到这条消息，后来由 deva-vani 的 core 重发。
+  - Claude Code 确实会显示拦截原因，但还会把原消息整条回显出来，占了小半屏。owner 说："感觉有点乱……也许我们该撤回这个并做一些优化再重新上线"。
+- **撤回了什么**：
+  - 删掉 `hooks/notice-gate.py`、它在 manifest 里的注册、`FAIL_OPEN_GC_IMPORTERS` 里的条目、`ownership.alert_gate`，以及 5 个拦截测试；
+  - 新增 1 个测试，确认不再随包发布拦截 hook；
+  - 契约升为 1.1.1；
+  - `notice_gate_seen.json` 的忽略规则保留，这样残留的文件仍会被忽略；
+  - 在 hub 上已验证，upgrade 会自动删掉已安装的这个 hook，注册项也会清掉；
+  - 版本号升为 0.51.2。
+- **保留不变**：0.51.1 的其余改动都留着，包括 Edit/Write 记入日志、按路径链解释变更、info 通知在两个会话里显示过才确认、`list --recent`，以及 guard 覆盖所有改文件的工具。
+- **测试**：全部 537 个通过，command-guard 42/42，doctor 正常（注册了 23 个 hook）。
+- **待定**：送达方式重新设计，待 owner 决定。备选方案有三个：只拦真人输入、在会话标题上显示、把 alert 做成待办台事项。
+- **deva-vani 的回报**：
+  - 四个 clone 都已升到 0.51.1；
+  - experience 的 8fc9aa 和 content 的 a404d1 都是 0.51.1 之前自己 Edit 留下的老误报；
+  - 业务 clone 是通过 master 合并拿到升级文件的，以后在 `/upgrade` 里给多 clone 项目补一句说明。
+
 ### 2026-11-12 — 发布 v0.51.1（P-0136 + rotate_state 提醒），归档 P-0134
 
 - **发布**：owner 说"发布"。
@@ -54,25 +73,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   - 已有测试改为：info 不再在第一次显示时确认。
   - 全部 541 个测试通过，command-guard 42/42，doctor 正常（注册了 24 个 hook）。
 - **下一步**：Phase 4，请 owner 确认发布 0.51.1（含 6a6ae5b），然后 deva-vani 按顺序现场验证。
-
-### 2026-11-12 — P-0136 Phase 2：把 Edit/Write 记入写日志，按路径链解释变更（0.51.1，未发布）
-
-- **新增两个 hook**，都是出错就放行，已登记在 `FAIL_OPEN_GC_IMPORTERS` 里：
-  - `own-write-capture.py`（PreToolUse）：写入前把目标文件的 sha 记到 `.governance/pending_writes/<key>.json`。这个目录是 clone 本地的，已加进受管的 `.gitignore`。
-  - `own-write-journal.py`（PostToolUse）：写入后调用 `record_write(op="edit:<Tool>", via="edit")` 记一行日志。没有待记录的写入时，它不加载 gc 包就直接退出。
-- **`ownership.py` 的改动**：
-  - `_chain`：同一路径的日志行必须从上次看到的 sha 一路接到当前 sha。
-  - `scan` 改用这条规则判断变更能不能解释。
-  - `record_write` 增加 `via` 参数。agent 写自己的文件之前，先检查上次看到的 sha 能否接到 `sha_before`；接不上就先发 alert，然后才更新清单。
-  - 严重级别：只有 core 通过库写入才是 info；core 直接 Edit 别人的分区是 alert。
-  - `journal_records(rotated=True)` 也读已轮转出去的日志文件。
-- **`edit-write-guard`**：匹配范围扩到 `Edit|Write|MultiEdit|NotebookEdit`。NotebookEdit 读取 `notebook_path`，内容扫描也覆盖 MultiEdit 和 NotebookEdit。
-- **`tool_use_id`**：hook 文档里没有写这个字段，但 Claude Code 更新日志里有："Added `tool_use_id` field to `PreToolUseHookInput` and `PostToolUseHookInput` types"。另外做了 `session_id` 加路径哈希的备用键。
-- **测试**：
-  - `test_ownership_own_edits.py` 新增 13 个，`test_shared_state_partitions.py` 新增 1 个。
-  - 在 0.51.0 的代码上，13 个会失败；跨轮转日志那一个是防回归用的，新旧代码上都通过。
-  - 全部 532 个测试通过，command-guard 42/42，doctor 正常（注册了 23 个 hook）。
-- **单 agent 项目**（包括本 hub）：新逻辑全部不起作用，没有行为变化。
 
 ### 2026-11-10 — rotate_state 每次轮转都提示暂存 STATE_ARCHIVE.md（0.51.1，未发布）
 

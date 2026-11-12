@@ -5,6 +5,26 @@
 
 ---
 
+### 2026-11-12 — P-0136 Phase 2：把 Edit/Write 记入写日志，按路径链解释变更（0.51.1，未发布）
+
+- **新增两个 hook**，都是出错就放行，已登记在 `FAIL_OPEN_GC_IMPORTERS` 里：
+  - `own-write-capture.py`（PreToolUse）：写入前把目标文件的 sha 记到 `.governance/pending_writes/<key>.json`。这个目录是 clone 本地的，已加进受管的 `.gitignore`。
+  - `own-write-journal.py`（PostToolUse）：写入后调用 `record_write(op="edit:<Tool>", via="edit")` 记一行日志。没有待记录的写入时，它不加载 gc 包就直接退出。
+- **`ownership.py` 的改动**：
+  - `_chain`：同一路径的日志行必须从上次看到的 sha 一路接到当前 sha。
+  - `scan` 改用这条规则判断变更能不能解释。
+  - `record_write` 增加 `via` 参数。agent 写自己的文件之前，先检查上次看到的 sha 能否接到 `sha_before`；接不上就先发 alert，然后才更新清单。
+  - 严重级别：只有 core 通过库写入才是 info；core 直接 Edit 别人的分区是 alert。
+  - `journal_records(rotated=True)` 也读已轮转出去的日志文件。
+- **`edit-write-guard`**：匹配范围扩到 `Edit|Write|MultiEdit|NotebookEdit`。NotebookEdit 读取 `notebook_path`，内容扫描也覆盖 MultiEdit 和 NotebookEdit。
+- **`tool_use_id`**：hook 文档里没有写这个字段，但 Claude Code 更新日志里有："Added `tool_use_id` field to `PreToolUseHookInput` and `PostToolUseHookInput` types"。另外做了 `session_id` 加路径哈希的备用键。
+- **测试**：
+  - `test_ownership_own_edits.py` 新增 13 个，`test_shared_state_partitions.py` 新增 1 个。
+  - 在 0.51.0 的代码上，13 个会失败；跨轮转日志那一个是防回归用的，新旧代码上都通过。
+  - 全部 532 个测试通过，command-guard 42/42，doctor 正常（注册了 23 个 hook）。
+- **单 agent 项目**（包括本 hub）：新逻辑全部不起作用，没有行为变化。
+
+
 ### 2026-11-12 — P-0136 Phase 1：所有权契约 1.1.0（0.51.1，未发布）
 
 - **P-0136 已批准**：owner 说"批准P-0136"，按决策卡上的默认值执行，进入 in-progress。它是 P-0135 的后续，草稿留在 `shared_state/`，修复发布前不归档。

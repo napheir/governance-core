@@ -3,10 +3,11 @@
 0.51.0 acked an info notice the moment the SessionStart hook emitted it, and
 one owner never saw that message, so the notice was gone unseen. Now an info
 notice is acked only after two distinct sessions have shown it (a resume
-keeps the session id and does not count twice), acked notices can be
-reviewed with `notices.py list --recent`, and while alerts are un-acked the
-first prompt of each session is blocked once with a summary (notice-gate).
-contracts/shared_state_ownership.md §5 (1.1.0).
+keeps the session id and does not count twice), and acked notices can be
+reviewed with `notices.py list --recent`. The 0.51.1 first-prompt gate
+(notice-gate) was withdrawn in 0.51.2: the prompt it blocked could be a
+peer's cross-session message, which was then lost.
+contracts/shared_state_ownership.md §5 (1.1.1).
 
 Run from repo root:
     python -m pytest tools/test_ownership_delivery.py -q
@@ -30,7 +31,7 @@ _HOOKS = next(p for p in (_HERE.parent / "hooks", _HERE.parent / ".claude" / "ho
 sys.path.insert(0, str(_HERE))
 import notices  # noqa: E402
 
-_COPIED = ("_guard_common.py", "foreign-change-notice.py", "notice-gate.py")
+_COPIED = ("_guard_common.py", "foreign-change-notice.py")
 REL = "proposals/platform/p-0001-x.md"
 
 
@@ -88,10 +89,6 @@ def _hook(clone: Path, hook: str, payload: dict) -> dict | None:
 def _start(p: dict, session: str) -> dict | None:
     return _hook(p["platform"], "foreign-change-notice",
                  {"session_id": session, "source": "startup"})
-
-
-def _prompt(p: dict, session: str, agent: str = "platform") -> dict | None:
-    return _hook(p[agent], "notice-gate", {"session_id": session, "prompt": "hi"})
 
 
 def _info_ready(p: dict) -> None:
@@ -155,40 +152,11 @@ def test_recent_lists_acked_notices_within_days(project: dict, capsys) -> None:
     assert "no notices acked in the last 3 day(s)" in capsys.readouterr().out
 
 
-def test_gate_blocks_first_prompt_once_per_session(project: dict) -> None:
-    nid = _alert_ready(project)
-    out = _prompt(project, "s1")
-    assert out["decision"] == "block"
-    assert nid in out["reason"] and "Resend it to continue" in out["reason"]
-    assert _prompt(project, "s1") is None  # held once only
-    assert _prompt(project, "s2")["decision"] == "block"  # a new session
-    assert _prompt(project, "s1", agent="content") is None  # not content's alert
-
-
-def test_gate_passes_without_alerts_or_session(project: dict) -> None:
-    _info_ready(project)  # an info notice does not gate
-    assert _prompt(project, "s1") is None
-    _alert_ready(project)
-    assert _hook(project["platform"], "notice-gate", {}) is None  # no session id
-
-
-def test_gate_is_silent_in_single_agent_project(tmp_path: Path) -> None:
-    p = _project(tmp_path, agents=("core",))
-    assert _prompt(p, "s1", agent="core") is None
-    assert not (p["core"] / ownership.GATE_SEEN_REL).exists()
-
-
-def test_gate_fails_open_on_a_broken_seen_file(project: dict) -> None:
-    _alert_ready(project)
-    seen = project["platform"] / ownership.GATE_SEEN_REL
-    seen.write_text("not json", encoding="utf-8")
-    assert _prompt(project, "s1") is None
-
-
-def test_gate_keeps_only_recent_sessions(project: dict) -> None:
-    _alert_ready(project)
-    for i in range(ownership.GATE_SEEN_KEEP + 5):
-        ownership.alert_gate(project["platform"], f"s{i}")
-    seen = json.loads((project["platform"] / ownership.GATE_SEEN_REL)
-                      .read_text(encoding="utf-8"))["sessions"]
-    assert len(seen) == ownership.GATE_SEEN_KEEP and seen[-1] == f"s{ownership.GATE_SEEN_KEEP + 4}"
+def test_no_prompt_gate_is_shipped() -> None:
+    """0.51.2 withdrew notice-gate: a blocked prompt is discarded, and the
+    first prompt of a session can be a peer's cross-session message."""
+    manifest = json.loads((_HOOKS / "hooks_manifest.json").read_text(encoding="utf-8"))
+    assert "notice-gate.py" not in manifest["hooks"]
+    assert not any(h["event"] == "UserPromptSubmit" and "notice" in name
+                   for name, h in manifest["hooks"].items())
+    assert not (_HOOKS / "notice-gate.py").exists()

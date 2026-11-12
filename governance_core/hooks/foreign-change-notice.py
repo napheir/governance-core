@@ -12,8 +12,7 @@ contracts/shared_state_ownership.md §5).
 - Every clone also shows the project-wide count of un-acked notices, so the
   owner sees it in whichever session they open.
 - Alerts repeat until acked (python tools/notices.py ack <id>, only on the
-  owner's word); notice-gate.py also holds the first prompt of a session
-  once while any are un-acked. Info notices -- attributed lib writes by the
+  owner's word). Info notices -- attributed lib writes by the
   core agent -- are acked automatically once two distinct sessions
   (`session_id` from the hook input) have shown them (P-0136); a resume
   keeps the id and does not count twice.
