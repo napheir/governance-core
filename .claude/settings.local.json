@@ -30,6 +30,17 @@
         ]
       },
       {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "_managed": "governance-core",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/own-write-journal.py\"",
+            "timeout": 15
+          }
+        ]
+      },
+      {
         "matcher": "Read",
         "_managed": "governance-core",
         "hooks": [
@@ -102,11 +113,6 @@
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/edit-write-guard.py\"",
-            "timeout": 15
-          },
-          {
-            "type": "command",
             "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/sensitive-data-guard.py\"",
             "timeout": 15
           }
@@ -116,6 +122,16 @@
         "matcher": "Edit|Write|MultiEdit|NotebookEdit",
         "_managed": "governance-core",
         "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/edit-write-guard.py\"",
+            "timeout": 15
+          },
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/own-write-capture.py\"",
+            "timeout": 15
+          },
           {
             "type": "command",
             "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/proposal-classify-fast.py\"",
