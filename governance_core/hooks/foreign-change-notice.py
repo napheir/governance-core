@@ -12,8 +12,11 @@ contracts/shared_state_ownership.md §5).
 - Every clone also shows the project-wide count of un-acked notices, so the
   owner sees it in whichever session they open.
 - Alerts repeat until acked (python tools/notices.py ack <id>, only on the
-  owner's word). Info notices -- attributed lib writes by the core agent --
-  are acked automatically once shown.
+  owner's word); notice-gate.py also holds the first prompt of a session
+  once while any are un-acked. Info notices -- attributed lib writes by the
+  core agent -- are acked automatically once two distinct sessions
+  (`session_id` from the hook input) have shown them (P-0136); a resume
+  keeps the id and does not count twice.
 
 Single-agent projects: silent. Fails open: any error exits 0 without output
 (registered in runtime_import_audit.FAIL_OPEN_GC_IMPORTERS).
@@ -60,9 +63,12 @@ def _render(result: dict) -> tuple:
 
 def main() -> None:
     """Scan, persist, report; never break session start."""
+    session_id = ""
     try:
-        sys.stdin.buffer.read()
-    except Exception:  # noqa: BLE001
+        payload = json.loads(sys.stdin.buffer.read().decode("utf-8") or "{}")
+        if isinstance(payload, dict) and isinstance(payload.get("session_id"), str):
+            session_id = payload["session_id"]
+    except Exception:  # noqa: BLE001 - no id: show, mark nothing
         pass
     root = Path(__file__).resolve().parent.parent.parent
     try:
@@ -76,9 +82,10 @@ def main() -> None:
                                        "additionalContext": agent_text},
             }, ensure_ascii=False) + "\n")
         shared = ownership.shared_root(root)
-        for n in result["notices"]:
-            if n["severity"] == "info":
-                ownership.ack_notice(shared, result["agent"], n["id"], "shown")
+        if owner_text and session_id:
+            for n in result["notices"]:
+                if n["severity"] == "info":
+                    ownership.mark_shown(shared, result["agent"], n["id"], session_id)
     except Exception:  # noqa: BLE001 - never break session start
         sys.exit(0)
     sys.exit(0)

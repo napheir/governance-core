@@ -642,6 +642,7 @@ GITIGNORE_RUNTIME_PATTERNS = (
     "/.governance/candidate-outbox/",
     "/.governance/state_seen.json",
     "/.governance/pending_writes/",
+    "/.governance/notice_gate_seen.json",
 )
 # P-0132: the authorization code file. Ignored by default; a private repo
 # that wants every clone to receive it through git re-includes it with

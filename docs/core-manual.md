@@ -1030,7 +1030,7 @@ Two layers guard against command-line GitHub repository removal:
    doctor; gh-unavailable → treated as safe). To get to a safe state, re-auth to
    a scope set without `delete_repo`.
 
-## 15. Cross-agent write protection (P-0135, v0.51.0)
+## 15. Cross-agent write protection (P-0135, v0.51.0; P-0136, v0.51.1)
 
 Multi-agent projects only; every piece below is a no-op when `agents` has
 one entry. Contract: `contracts/shared_state_ownership.md`. All agents run as
@@ -1071,21 +1071,22 @@ python tools/check_scope.py --agent <name>    # inside a business clone: advisor
   frontmatter field is unprotected until it moves to a `{agent}` layout.
 
 **Notices.**
-- Every lib write appends to the hash-chained `shared_state/_journal.jsonl`.
-  Consumer libs record theirs with
-  `governance_core.ownership.record_write(project_root, op, rel_path, sha_before, sha_after)`.
-- At SessionStart, the `foreign-change-notice.py` hook compares the agent's
-  partitions with `.governance/state_seen.json` (clone-local, gitignored).
-  Every change the agent did not make becomes a notice before the manifest
-  moves, attributed through the journal or marked "actor unknown".
-- The owner sees the notices in the UI (`systemMessage`) and the agent sees
-  them in its context. Every clone also shows the project-wide count of
-  un-acked notices.
-- Severity:
-  - info: an attributed lib write by the core agent, acked once shown;
-  - alert: everything else, which repeats until acked.
+- **What gets journaled.** Every recorded write appends to the hash-chained `shared_state/_journal.jsonl`.
+  - Lib writes are recorded with `via: "lib"`. Consumer libs record theirs with
+    `governance_core.ownership.record_write(project_root, op, rel_path, sha_before, sha_after)`. `sha_before` must be the file's real sha just before the write.
+  - Since 0.51.1 (P-0136), Edit/Write of a partition file (also MultiEdit and NotebookEdit) is journaled by `own-write-capture.py` and `own-write-journal.py`, with `via: "edit"`. An agent's own body edit of its own proposal is therefore not news.
+  - Shell writes are not journaled.
+- **When a change counts as explained.** A run of journal lines for the path has to lead from the agent's last-seen sha to the current one. Anything else is an "actor unknown" alert, and so is a gap found just before an own write.
+- **At SessionStart**, the `foreign-change-notice.py` hook compares the agent's partitions with `.governance/state_seen.json` (clone-local, gitignored). It turns every change the agent did not make into a notice before the manifest moves.
+- **Who sees the notices.**
+  - The owner sees them in the UI (`systemMessage`), and the agent sees them in its context. Every clone also shows the project-wide count of un-acked notices.
+  - While alerts are un-acked, `notice-gate.py` (UserPromptSubmit) blocks the first prompt of each session once, with a summary. Resend the message to continue.
+- **Severity.**
+  - **info**: a lib write by the core agent. It is acked automatically after two distinct sessions have shown it. A resume or compact keeps the session id and does not count twice.
+  - **alert**: everything else, including a core Edit/Write of another agent's content. It repeats until acked.
 
 ```bash
 python tools/notices.py list [--all]
+python tools/notices.py list --recent [--days 7] [--all]   # acked notices, for review
 python tools/notices.py ack <id>      # only when the owner says so
 ```

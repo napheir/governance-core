@@ -3,13 +3,16 @@
 
 Usage:
     python tools/notices.py list [--agent X | --all]
+    python tools/notices.py list --recent [--days N] [--agent X | --all]
     python tools/notices.py ack <id> [--agent X]
 
 A notice tells an agent, and its owner, that someone else changed the
 agent's shared_state content or that core's branch audit found a scope
 violation (contracts/shared_state_ownership.md §5). Alerts repeat at every
 SessionStart until acked. **Ack an alert only when the owner says so.**
-An agent may ack its own notices; the core agent may ack any.
+An agent may ack its own notices; the core agent may ack any. `--recent`
+lists notices acked in the last N days (default 7), for review after the
+fact (P-0136).
 """
 from __future__ import annotations
 
@@ -34,6 +37,10 @@ def main(argv=None) -> int:
     p = sub.add_parser("list", help="un-acked notices")
     p.add_argument("--agent", default=None, help="default: this clone's agent")
     p.add_argument("--all", action="store_true", help="every agent")
+    p.add_argument("--recent", action="store_true",
+                   help="acked notices instead, newest first")
+    p.add_argument("--days", type=int, default=ownership.RECENT_DAYS,
+                   help=f"with --recent: look back N days (default {ownership.RECENT_DAYS})")
     p = sub.add_parser("ack", help="acknowledge one notice (owner's word only)")
     p.add_argument("id")
     p.add_argument("--agent", default=None, help="default: this clone's agent")
@@ -47,6 +54,19 @@ def main(argv=None) -> int:
         return 2
     shared = ownership.shared_root(root)
     me = topo["self"]
+    if args.cmd == "list" and args.recent:
+        agents = topo["agents"] if args.all else [args.agent or me]
+        total = 0
+        for agent in agents:
+            for n in ownership.list_acked(shared, agent, args.days):
+                total += 1
+                _out(f"[{n['severity']}] {agent} {n['id']}: {n['kind']} from "
+                     f"{n['from']} -- {', '.join(n['paths'])} "
+                     f"(acked {n['acked_at']} by {n['acked_by']})"
+                     + (f" ({n['detail']})" if n["detail"] else ""))
+        if not total:
+            _out(f"[OK] no notices acked in the last {args.days} day(s)")
+        return 0
     if args.cmd == "list":
         agents = topo["agents"] if args.all else [args.agent or me]
         total = 0

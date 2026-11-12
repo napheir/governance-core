@@ -118,6 +118,7 @@ scope (建议): 加 rules.allow.txt 一行 + Phase 0 走 /iterate-constitution
 `agents[].clone_dir`（单 agent 配置即唯一 agent），与检出的分支无关；身份无法解析时报错，需显式传 `--agent`。
 
 Agent 收到 scaffold 路径后，**填充各段内容**（直接 Edit 文件 body 部分，不动 frontmatter）。
+多 agent 项目里，这类 body Edit 会由 own-write hook 记入 shared_state 写日志，并记在本 agent 名下，所以不会被当成"别人改了你的内容"（P-0136）。用 shell 命令改则不会记入日志，照样会报警。
 
 > **P-0108 研究段**：
 > - `## Current State (read, not assumed)` —— 实读 point-of-change 现状并 cite ≥1

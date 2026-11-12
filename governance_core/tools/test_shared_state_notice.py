@@ -184,9 +184,8 @@ def test_hook_reaches_owner_and_agent(project: dict) -> None:
     assert "[ALERT]" in owner and "from unknown" in owner and "[info]" in owner
     assert "Report these to the owner" in out["hookSpecificOutput"]["additionalContext"]
     left = ownership.list_notices(project["shared"], "platform")
-    assert [n["severity"] for n in left] == ["alert"]  # info acked once shown
-    acked = list((project["shared"] / "notices" / "platform" / "acked").glob("*.json"))
-    assert json.loads(acked[0].read_text(encoding="utf-8"))["acked_by"] == "shown"
+    # P-0136: no session id in the input, so nothing counts as shown yet.
+    assert sorted(n["severity"] for n in left) == ["alert", "info"]
 
 
 def test_every_clone_sees_project_wide_count(project: dict) -> None:

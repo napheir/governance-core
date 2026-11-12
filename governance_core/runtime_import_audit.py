@@ -65,6 +65,10 @@ FAIL_OPEN_GC_IMPORTERS: frozenset[str] = frozenset({
     # Edit/Write. The allow/deny decision stays with edit-write-guard.
     "own-write-capture.py",
     "own-write-journal.py",
+    # P-0136: the alert gate imports governance_core.ownership inside
+    # main()'s try after a config-only multi-agent check; any failure lets
+    # the prompt through -- never traps the owner's prompt.
+    "notice-gate.py",
 })
 
 # Fail-CLOSED governance_core importers grandfathered pending a
