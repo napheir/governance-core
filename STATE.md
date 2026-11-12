@@ -17,6 +17,33 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-12 — 发布 v0.51.3；P-0137 Phase 1：sync_infra 改为只读检查（0.52.0，未发布）
+
+- **发布 0.51.3**：owner 说"发布"。
+  - 推送 db1a8cf..f73ed4f。
+  - GitHub Release v0.51.3（Latest），CI run 43178391700 成功。
+  - PyPI 和 simple 索引里都有 wheel 与 sdist。deva-vani 起初装不上，是索引延迟，已向他们说明。
+  - deva-vani 从 0.51.1 直接升到 0.51.3 的预演很干净，正在等他们的 owner 确认；之后报告标题现场验证的 (a)(b) 两步。
+- **P-0137 已批准**：owner 说"批准"，按决策卡上的默认值执行：
+  - allow 列表只提示，不自动改；
+  - `--execute` 直接报错退出（exit 2）；
+  - 保留 sync_infra 这个名字；
+  - 发布后先请 trade 跑一次检查。
+- **Phase 1：`sync_infra.py` 重写为只读检查。**
+  - 找 clone 的方式改为 core clone 的上级目录加 `clone_dir`，不再读 `install_root`。
+  - 检查项：
+    - FAIL：clone-missing、settings-missing、foreign-hook-ref、hook-unregistered；
+    - WARN：wide-allow、copy-drift（不计换行符差异）。
+  - 支持 `--json`。退出码：0 表示没有 FAIL，1 表示有 FAIL，2 表示检查跑不起来。`--execute` 一律拒绝。
+  - 新代码里没有 `.get(k, default)`。
+- **校准**：在多一层目录的布局里，0.51.3 的旧工具跳过了全部 2 个 clone，仍然报告"Total pending actions: 0"并返回 exit 0；新检查能找到这两个 clone。
+- **只读实测**：deva-vani 的 3 个 clone、auto-tax 的 1 个 clone 都通过（0 FAIL / 0 WARN）。
+- **测试**：
+  - 撤掉 `test_sync_infra_remove_local_copy.py`，新增 `test_sync_infra_check.py`（10 个）。
+  - 全部 549 个通过，command-guard 42/42，doctor 正常。
+  - 版本升到 0.52.0。
+- **下一步**：Phase 2 清理文档。包括 3 个 guard 的 FATAL 提示、`/wrap-up` 第 5 步、`/sync-infra`、`/iterate-constitution`、`/update-skill`，以及相关的 skill 和知识库文档。
+
 ### 2026-11-12 — 发布 v0.51.2；用会话标题提示未确认的 alert（0.51.3，未发布）
 
 - **发布 0.51.2**：owner 说"按卡片发布"。
@@ -62,24 +89,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   - 四个 clone 都已升到 0.51.1；
   - experience 的 8fc9aa 和 content 的 a404d1 都是 0.51.1 之前自己 Edit 留下的老误报；
   - 业务 clone 是通过 master 合并拿到升级文件的，以后在 `/upgrade` 里给多 clone 项目补一句说明。
-
-### 2026-11-12 — 发布 v0.51.1（P-0136 + rotate_state 提醒），归档 P-0134
-
-- **发布**：owner 说"发布"。
-  - 推送 ed08ddc..c71e30a。
-  - GitHub Release v0.51.1（Latest），release CI run 43171506437 成功。
-  - PyPI 上 0.51.1 可见，有 wheel 和 sdist。
-  - 发布前构建的 wheel 已确认：含 3 个新 hook，契约为 1.1.0，没有混入 `maintainer/`。
-- **发布说明**：只写行为变化和升级步骤，并提醒消费者的库要传入真实的 `sha_before`。
-- **通知 deva-vani**：发给其 core 会话 `agent-core-7d`，包括升级步骤和 4 步现场验证。第 4 步请他们的 owner 确认，被拦截时是否看到了原因文字。
-  - 原来的会话地址已经失效，改用 ListAgents 查到的新地址。
-  - 现场验证通过后，P-0135 和 P-0136 一起结案归档。
-- **归档**：owner 说"归档"。P-0134 已归档到 `proposals/_archive/2026/`。
-- **P-0133**：owner 恢复会话时又看到了 `[WARN]`。核对后发现这个会话的 PATH 里排第一的是全局 Python，没有 venv，说明它不是通过 `gchub` 启动的，警告属实。下一步要弄清 owner 是从哪种 shell 启动的。
-- **待办**：
-  - 起草 sync_infra 提案；
-  - 起草待办台提案（台账、每周回顾、底线），推送方式到时再定；
-  - P-0132（trade、auto-tax）。
 
 ### 2026-11-10 — rotate_state 每次轮转都提示暂存 STATE_ARCHIVE.md（0.51.1，未发布）
 

@@ -5,6 +5,25 @@
 
 ---
 
+### 2026-11-12 — 发布 v0.51.1（P-0136 + rotate_state 提醒），归档 P-0134
+
+- **发布**：owner 说"发布"。
+  - 推送 ed08ddc..c71e30a。
+  - GitHub Release v0.51.1（Latest），release CI run 43171506437 成功。
+  - PyPI 上 0.51.1 可见，有 wheel 和 sdist。
+  - 发布前构建的 wheel 已确认：含 3 个新 hook，契约为 1.1.0，没有混入 `maintainer/`。
+- **发布说明**：只写行为变化和升级步骤，并提醒消费者的库要传入真实的 `sha_before`。
+- **通知 deva-vani**：发给其 core 会话 `agent-core-7d`，包括升级步骤和 4 步现场验证。第 4 步请他们的 owner 确认，被拦截时是否看到了原因文字。
+  - 原来的会话地址已经失效，改用 ListAgents 查到的新地址。
+  - 现场验证通过后，P-0135 和 P-0136 一起结案归档。
+- **归档**：owner 说"归档"。P-0134 已归档到 `proposals/_archive/2026/`。
+- **P-0133**：owner 恢复会话时又看到了 `[WARN]`。核对后发现这个会话的 PATH 里排第一的是全局 Python，没有 venv，说明它不是通过 `gchub` 启动的，警告属实。下一步要弄清 owner 是从哪种 shell 启动的。
+- **待办**：
+  - 起草 sync_infra 提案；
+  - 起草待办台提案（台账、每周回顾、底线），推送方式到时再定；
+  - P-0132（trade、auto-tax）。
+
+
 ### 2026-11-12 — P-0136 Phase 3：确保 owner 看到所有权通知（0.51.1，未发布）
 
 - **info 通知**：`foreign-change-notice.py` 从 hook 输入里读取 `session_id`。
