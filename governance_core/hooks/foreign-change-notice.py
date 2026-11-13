@@ -12,9 +12,7 @@ contracts/shared_state_ownership.md §5).
 - Every clone also shows the project-wide count of un-acked notices, so the
   owner sees it in whichever session they open.
 - Alerts repeat until acked (python tools/notices.py ack <id>, only on the
-  owner's word). While any are un-acked, the session title reads
-  `[ALERT n] <agent>` (hookSpecificOutput.sessionTitle); notice-title.py
-  keeps it current on later prompts.
+  owner's word).
 - Info notices -- attributed lib writes by the core agent -- are acked
   automatically once two distinct sessions (`session_id` from the hook
   input) have shown them (P-0136); a resume keeps the id and does not count
@@ -77,17 +75,14 @@ def main() -> None:
         from governance_core import ownership
         result = ownership.scan(root)
         owner_text, agent_text = _render(result)
-        title = ownership.title_update(root, session_id)
-        out: dict = {}
         if owner_text:
-            out = {"systemMessage": owner_text,
-                   "hookSpecificOutput": {"hookEventName": "SessionStart",
-                                          "additionalContext": agent_text}}
-        if title is not None:
-            out.setdefault("hookSpecificOutput", {"hookEventName": "SessionStart"})
-            out["hookSpecificOutput"]["sessionTitle"] = title
-        if out:
-            sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
+            # Never set sessionTitle: the session name is also the peers'
+            # cross-session address (P-0136, withdrawn in 0.52.0).
+            sys.stdout.write(json.dumps({
+                "systemMessage": owner_text,
+                "hookSpecificOutput": {"hookEventName": "SessionStart",
+                                       "additionalContext": agent_text},
+            }, ensure_ascii=False) + "\n")
         shared = ownership.shared_root(root)
         if owner_text and session_id:
             for n in result["notices"]:

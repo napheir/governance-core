@@ -1080,10 +1080,9 @@ python tools/check_scope.py --agent <name>    # inside a business clone: advisor
 - **At SessionStart**, the `foreign-change-notice.py` hook compares the agent's partitions with `.governance/state_seen.json` (clone-local, gitignored). It turns every change the agent did not make into a notice before the manifest moves.
 - **Who sees the notices.**
   - The owner sees them in the UI (`systemMessage`), and the agent sees them in its context. Every clone also shows the project-wide count of un-acked notices.
-  - While alerts are un-acked, the session title (the chip on the prompt border) reads `[ALERT N] <agent>`. After they are acked, the next prompt sets it back to `<agent>`.
-    - It is set by `foreign-change-notice.py` at SessionStart and by `notice-title.py` (UserPromptSubmit), which never blocks or changes a prompt.
-    - Sessions that never had alerts keep their own title.
-    - This replaces 0.51.1's `notice-gate.py`, withdrawn in 0.51.2: blocking a prompt lost it when that prompt was a peer's cross-session message.
+  - No hook blocks a prompt or changes the session name. Two earlier attempts were withdrawn:
+    - 0.51.1's `notice-gate.py`, withdrawn in 0.51.2: blocking a prompt lost it when that prompt was a peer's cross-session message.
+    - 0.51.3's session-title indicator, withdrawn in 0.52.0: the session title is also the peers' cross-session address, so renaming it broke routing.
 - **Severity.**
   - **info**: a lib write by the core agent. It is acked automatically after two distinct sessions have shown it. A resume or compact keeps the session id and does not count twice.
   - **alert**: everything else, including a core Edit/Write of another agent's content. It repeats until acked.

@@ -642,8 +642,8 @@ GITIGNORE_RUNTIME_PATTERNS = (
     "/.governance/candidate-outbox/",
     "/.governance/state_seen.json",
     "/.governance/pending_writes/",
-    # Written by the 0.51.1 notice-gate (withdrawn in 0.51.2); kept so a
-    # leftover file stays ignored.
+    # Written by the 0.51.1 notice-gate (withdrawn in 0.51.2) and the 0.51.3
+    # notice-title (withdrawn in 0.52.0); kept so leftover files stay ignored.
     "/.governance/notice_gate_seen.json",
     "/.governance/notice_title.json",
 )

@@ -42,8 +42,6 @@ PENDING_REL = ".governance/pending_writes"
 PENDING_TTL_SECONDS = 24 * 3600
 SHOWN_ACK_SESSIONS = 2
 RECENT_DAYS = 7
-TITLE_STATE_REL = ".governance/notice_title.json"
-TITLE_STATE_KEEP = 50
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
 VIAS = ("lib", "edit")
 SCHEMA = 1
@@ -319,45 +317,6 @@ def list_acked(root: Path, agent: str, days: int = RECENT_DAYS) -> list:
         if "acked_at" in data and data["acked_at"] >= since:
             out.append(data)
     return sorted(out, key=lambda n: n["acked_at"], reverse=True)
-
-
-def alert_title(agent: str, count: int) -> str:
-    """Session title for `count` un-acked alerts: `[ALERT n] <agent>` or `<agent>`."""
-    return f"[ALERT {count}] {agent}" if count else agent
-
-
-def title_update(project_root: Path, session_id: str) -> str | None:
-    """The session title to set now, or None to leave the title alone (§5).
-
-    Returns a title only when this agent's un-acked alert count differs from
-    what this session's title last showed (0 if never set). A session that
-    never had alerts therefore keeps the title Claude Code or the owner gave
-    it, and a `/rename` survives until the count changes. Per-session counts
-    live in the clone-local TITLE_STATE_REL (last TITLE_STATE_KEEP sessions).
-    Single-agent projects and calls without a session id: None.
-    """
-    project_root = Path(project_root)
-    if not session_id:
-        return None
-    topo = topology(project_root)
-    if len(topo["agents"]) < 2:
-        return None
-    me = topo["self"]
-    count = sum(1 for n in list_notices(shared_root(project_root), me)
-                if n["severity"] == "alert")
-    path = project_root / TITLE_STATE_REL
-    sessions = (dict(json.loads(path.read_text(encoding="utf-8"))["sessions"])
-                if path.is_file() else {})
-    shown = sessions[session_id] if session_id in sessions else 0
-    if count == shown:
-        return None
-    if session_id in sessions:
-        del sessions[session_id]  # re-insert last: newest sessions are kept
-    sessions[session_id] = count
-    while len(sessions) > TITLE_STATE_KEEP:
-        sessions.pop(next(iter(sessions)))
-    _write_json_atomic(path, {"schema": SCHEMA, "sessions": sessions})
-    return alert_title(me, count)
 
 
 # --- manifest and partitions ------------------------------------------------------

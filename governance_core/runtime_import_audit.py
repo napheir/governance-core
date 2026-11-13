@@ -65,10 +65,6 @@ FAIL_OPEN_GC_IMPORTERS: frozenset[str] = frozenset({
     # Edit/Write. The allow/deny decision stays with edit-write-guard.
     "own-write-capture.py",
     "own-write-journal.py",
-    # P-0136: the session-title indicator imports governance_core.ownership
-    # inside main()'s try after a config-only multi-agent check; any failure
-    # exits 0 without output. It never blocks a prompt.
-    "notice-title.py",
 })
 
 # Fail-CLOSED governance_core importers grandfathered pending a

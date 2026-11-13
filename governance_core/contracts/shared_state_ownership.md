@@ -1,6 +1,6 @@
 # Contract: Ownership of agent content in multi-agent projects
 
-**Version**: 1.2.0
+**Version**: 1.2.1
 **Status**: active
 **Owner**: core
 **Consumers**:
@@ -9,7 +9,7 @@
 - `tools/proposal_lib.py` (owner checks, actor, journal);
 - `governance_core/ownership.py` (journal, notices, last-seen manifest);
 - `hooks/own-write-capture.py`, `hooks/own-write-journal.py` (Edit/Write journal);
-- `hooks/foreign-change-notice.py` (SessionStart), `hooks/notice-title.py` (UserPromptSubmit);
+- `hooks/foreign-change-notice.py` (SessionStart);
 - `tools/notices.py` (list / ack / recent);
 - `.claude/commands/{sync-repos,audit,publish-knowledge,proposal}.md`.
 
@@ -183,12 +183,10 @@ A journal line that merely ends at B does not explain the change.
      - `systemMessage` lists this agent's un-acked notices plus a broken-chain warning, for the owner's UI;
      - `hookSpecificOutput.additionalContext` carries the same text and tells the agent to report it to the owner first;
   3. adds one line to every clone's output with the project-wide count of un-acked notices per agent.
-- **Session title.** While this agent has N un-acked alerts, the session title reads `[ALERT N] <agent>`. When the count drops to 0, the title becomes `<agent>`.
-  - It is set through `hookSpecificOutput.sessionTitle`: by `foreign-change-notice.py` at SessionStart, and by `hooks/notice-title.py` on each prompt.
-  - A title is set only when the count differs from what this session's title last showed. A session that never had alerts keeps its own title, and a `/rename` survives until the count changes.
-  - Per-session counts live in `<clone>/.governance/notice_title.json` (clone-local, gitignored, last 50 sessions).
-  - `notice-title.py` never blocks a prompt and never adds context: every prompt, including a peer's cross-session message, goes through unchanged.
-- Alerts are not acked until the owner says so, so they keep reappearing at every SessionStart, and in the title, until the owner has seen them.
+- Alerts are not acked until the owner says so, so they keep reappearing at every SessionStart until the owner has seen them.
+- **No hook changes a prompt or the session name.**
+  - A blocked prompt is discarded, and the first prompt of a session can be a peer's cross-session message.
+  - The session title is also the name peers use to address the session.
 
 **Acknowledgement.**
 - `python tools/notices.py ack <id>` moves the notice to `notices/<agent>/acked/` and adds `{acked_by, acked_at}`.
@@ -201,6 +199,10 @@ A journal line that merely ends at B does not explain the change.
 SemVer. Minor = a new optional field or a new notice kind. Major = a change to the partition rule, the journal chain or the report schema (needs a `proposals/` entry).
 
 **Changes.**
+- **1.2.1** (P-0136 field check): the session-title indicator is withdrawn.
+  - In Claude Code the session title is also the cross-session address (the `ListAgents` name). Setting `[ALERT N] <agent>` renamed the session, and peers holding the old name could no longer reach it.
+  - `notice-title.py` is gone, and `foreign-change-notice.py` never sets `sessionTitle`.
+  - `.governance/notice_title.json` stays in the managed `.gitignore` block.
 - **1.2.0** (P-0136): the session title shows un-acked alerts (`[ALERT N] <agent>`), through SessionStart and the new non-blocking `notice-title.py`. Nothing is held or dropped.
 - **1.1.1** (P-0136 field check): the first-prompt alert gate (`hooks/notice-gate.py`) is withdrawn.
   - A blocked prompt is discarded, and the first prompt of a session can be a cross-session or other automated message, so that message was lost.

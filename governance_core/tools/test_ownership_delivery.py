@@ -6,10 +6,9 @@ notice is acked only after two distinct sessions have shown it (a resume
 keeps the session id and does not count twice), and acked notices can be
 reviewed with `notices.py list --recent`. The 0.51.1 first-prompt gate
 (notice-gate) was withdrawn in 0.51.2: the prompt it blocked could be a
-peer's cross-session message, which was then lost. Instead (0.51.3), while
-alerts are un-acked the session title reads `[ALERT n] <agent>`, set at
-SessionStart and kept current on prompts, and no prompt is ever held.
-contracts/shared_state_ownership.md §5 (1.2.0).
+peer's cross-session message, which was then lost. The 0.51.3 session-title
+indicator was withdrawn in 0.52.0: the title is also the peers' cross-session
+address. contracts/shared_state_ownership.md §5 (1.2.1).
 
 Run from repo root:
     python -m pytest tools/test_ownership_delivery.py -q
@@ -33,7 +32,7 @@ _HOOKS = next(p for p in (_HERE.parent / "hooks", _HERE.parent / ".claude" / "ho
 sys.path.insert(0, str(_HERE))
 import notices  # noqa: E402
 
-_COPIED = ("_guard_common.py", "foreign-change-notice.py", "notice-title.py")
+_COPIED = ("_guard_common.py", "foreign-change-notice.py")
 REL = "proposals/platform/p-0001-x.md"
 
 
@@ -154,71 +153,17 @@ def test_recent_lists_acked_notices_within_days(project: dict, capsys) -> None:
     assert "no notices acked in the last 3 day(s)" in capsys.readouterr().out
 
 
-def _prompt(p: dict, session: str, agent: str = "platform") -> dict | None:
-    return _hook(p[agent], "notice-title", {"session_id": session,
-                                            "prompt": "<cross-session-message>hi"})
-
-
-def _title(out: dict | None) -> str | None:
-    hso = out["hookSpecificOutput"] if out and "hookSpecificOutput" in out else {}
-    return hso["sessionTitle"] if "sessionTitle" in hso else None
-
-
-def test_no_prompt_is_ever_blocked(project: dict) -> None:
-    """0.51.2 withdrew notice-gate: a blocked prompt is discarded, and the
-    first prompt of a session can be a peer's cross-session message."""
+def test_no_prompt_hook_and_no_session_title(project: dict) -> None:
+    """0.51.2 withdrew notice-gate: a blocked prompt is discarded, and a
+    session's first prompt can be a peer's cross-session message. 0.52.0
+    withdrew the 0.51.3 title indicator: the session title is also the
+    peers' cross-session address, so changing it broke message routing."""
     manifest = json.loads((_HOOKS / "hooks_manifest.json").read_text(encoding="utf-8"))
-    assert "notice-gate.py" not in manifest["hooks"]
-    assert not (_HOOKS / "notice-gate.py").exists()
+    for gone in ("notice-gate.py", "notice-title.py"):
+        assert gone not in manifest["hooks"] and not (_HOOKS / gone).exists()
+    assert not any(h["event"] == "UserPromptSubmit" and "notice" in name
+                   for name, h in manifest["hooks"].items())
     _alert_ready(project)
-    out = _prompt(project, "s1")
-    assert set(out) == {"hookSpecificOutput"}
-    assert set(out["hookSpecificOutput"]) == {"hookEventName", "sessionTitle"}
-
-
-def test_session_start_titles_alerts_once(project: dict) -> None:
-    _alert_ready(project)
-    assert _title(_start(project, "s1")) == "[ALERT 1] platform"
-    assert _title(_start(project, "s1")) is None  # resume: title already says so
-
-
-def test_prompt_clears_the_title_after_ack(project: dict) -> None:
-    nid = _alert_ready(project)
-    _start(project, "s1")
-    ownership.ack_notice(project["shared"], "platform", nid, "platform")
-    assert _title(_prompt(project, "s1")) == "platform"
-    assert _prompt(project, "s1") is None
-
-
-def test_new_alert_mid_session_updates_the_title(project: dict) -> None:
-    _alert_ready(project)
-    _start(project, "s1")
-    other = "proposals/platform/p-0002-y.md"
-    _put(project, other, "v1\n")
-    ownership.record_write(project["content"], "edit", other, None,
-                           ownership.file_sha(project["shared"] / other))
-    assert _title(_prompt(project, "s1")) == "[ALERT 2] platform"
-
-
-def test_sessions_without_alerts_keep_their_title(project: dict) -> None:
-    _info_ready(project)  # info only: shown, never titled
     out = _start(project, "s1")
-    assert "[info]" in out["systemMessage"] and _title(out) is None
-    assert _prompt(project, "s1") is None
-    assert _prompt(project, "s2", agent="content") is None
-
-
-def test_title_is_silent_in_single_agent_project(tmp_path: Path) -> None:
-    p = _project(tmp_path, agents=("core",))
-    assert _prompt(p, "s1", agent="core") is None
-    assert not (p["core"] / ownership.TITLE_STATE_REL).exists()
-
-
-def test_title_state_keeps_recent_sessions(project: dict) -> None:
-    _alert_ready(project)
-    for i in range(ownership.TITLE_STATE_KEEP + 5):
-        ownership.title_update(project["platform"], f"s{i}")
-    sessions = json.loads((project["platform"] / ownership.TITLE_STATE_REL)
-                          .read_text(encoding="utf-8"))["sessions"]
-    assert len(sessions) == ownership.TITLE_STATE_KEEP
-    assert list(sessions)[-1] == f"s{ownership.TITLE_STATE_KEEP + 4}"
+    assert "[ALERT]" in out["systemMessage"]
+    assert "sessionTitle" not in out["hookSpecificOutput"]

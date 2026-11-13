@@ -24,7 +24,6 @@
     "renewal-reminder.py":      {"event": "SessionStart",    "matcher": null},
     "foreign-change-notice.py": {"event": "SessionStart",    "matcher": null},
     "own-write-capture.py":     {"event": "PreToolUse",      "matcher": "Edit|Write|MultiEdit|NotebookEdit"},
-    "own-write-journal.py":     {"event": "PostToolUse",     "matcher": "Edit|Write|MultiEdit|NotebookEdit"},
-    "notice-title.py":          {"event": "UserPromptSubmit", "matcher": null}
+    "own-write-journal.py":     {"event": "PostToolUse",     "matcher": "Edit|Write|MultiEdit|NotebookEdit"}
   }
 }
