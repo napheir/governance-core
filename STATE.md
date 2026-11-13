@@ -17,6 +17,23 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-13 — 发布 v0.52.0（P-0137 + 撤回标题提示）
+
+- **发布**：owner 说"发布"。
+  - 推送 f73ed4f..e84d887。
+  - GitHub Release v0.52.0（Latest），CI run 43353850530 成功。
+  - PyPI 上 0.52.0 有 wheel 和 sdist。
+- **通知 deva-vani**（会话 agent-core-a2）：请他们升级，然后在 core 跑 `python tools/sync_infra.py` 并回报结果，这是 P-0137 的消费者检查。
+  - 发布时只读查看了他们的通知：platform 5 条未确认；experience 1 条未确认、1 条已确认；content 0 条未确认、3 条已确认。
+  - owner 说"没有显示了"。
+- **P-0133**：owner 用的是 WezTerm 里的 Git Bash，`gchub` 别名就在那里。
+  - 这个会话是用普通的 `claude` 恢复的，所以出现了 `[WARN]`。
+  - 下次用 `gchub -c` 或 `gchub --resume` 恢复，确认不再出现 `[WARN]`，然后就可以结案。
+- **仍在进行**：
+  - P-0136：等现场验证第 1–3 步；
+  - P-0137 Phase 3：等各消费者跑检查；
+  - P-0135：和 P-0136 一起结案。
+
 ### 2026-11-13 — 撤回会话标题提示（并入 0.52.0，未发布）
 
 - **现场发现**（deva-vani 升到 0.51.3 后）：
