@@ -1030,7 +1030,7 @@ Two layers guard against command-line GitHub repository removal:
    doctor; gh-unavailable → treated as safe). To get to a safe state, re-auth to
    a scope set without `delete_repo`.
 
-## 15. Cross-agent write protection (P-0135, v0.51.0; P-0136, v0.51.1)
+## 15. Cross-agent write protection (P-0135, v0.51.0; P-0136, v0.51.1; P-0138, v0.52.1)
 
 Multi-agent projects only; every piece below is a no-op when `agents` has
 one entry. Contract: `contracts/shared_state_ownership.md`. All agents run as
@@ -1075,7 +1075,10 @@ python tools/check_scope.py --agent <name>    # inside a business clone: advisor
   - Lib writes are recorded with `via: "lib"`. Consumer libs record theirs with
     `governance_core.ownership.record_write(project_root, op, rel_path, sha_before, sha_after)`. `sha_before` must be the file's real sha just before the write.
   - Since 0.51.1 (P-0136), Edit/Write of a partition file (also MultiEdit and NotebookEdit) is journaled by `own-write-capture.py` and `own-write-journal.py`, with `via: "edit"`. An agent's own body edit of its own proposal is therefore not news.
-  - Shell writes are not journaled.
+  - Since 0.52.1 (P-0138), Bash writes are journaled too, with `via: "bash"`.
+    - The targets are the ones scope-guard parses (the same `_guard_common.shell_write_targets`), so an own `sed -i`, redirect, `mv` or `rm` on an own todo is not news.
+    - `own-write-journal-failure.py` covers commands that fail.
+    - Writes from scripts, `$VAR` paths, globs and background commands are not parsed, so they still surface as "actor unknown".
 - **When a change counts as explained.** A run of journal lines for the path has to lead from the agent's last-seen sha to the current one. Anything else is an "actor unknown" alert, and so is a gap found just before an own write.
 - **At SessionStart**, the `foreign-change-notice.py` hook compares the agent's partitions with `.governance/state_seen.json` (clone-local, gitignored). It turns every change the agent did not make into a notice before the manifest moves.
 - **Who sees the notices.**

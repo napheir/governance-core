@@ -23,7 +23,8 @@
     "update-reminder.py":       {"event": "SessionStart",    "matcher": null},
     "renewal-reminder.py":      {"event": "SessionStart",    "matcher": null},
     "foreign-change-notice.py": {"event": "SessionStart",    "matcher": null},
-    "own-write-capture.py":     {"event": "PreToolUse",      "matcher": "Edit|Write|MultiEdit|NotebookEdit"},
-    "own-write-journal.py":     {"event": "PostToolUse",     "matcher": "Edit|Write|MultiEdit|NotebookEdit"}
+    "own-write-capture.py":     {"event": "PreToolUse",      "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash"},
+    "own-write-journal.py":     {"event": "PostToolUse",     "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash"},
+    "own-write-journal-failure.py": {"event": "PostToolUseFailure", "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash"}
   }
 }

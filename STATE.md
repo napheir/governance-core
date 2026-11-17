@@ -17,6 +17,21 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-17 — P-0138 Phase 1：shell 写入也记入日志（0.52.1，未发布）
+
+- **owner 说"批准P-0138"**，三个默认值照卡执行：所有分区目标都记；命令失败也记；版本 0.52.1。
+- **改动**：
+  - 解析 shell 写入目标的代码从 scope-guard 移到 `_guard_common.shell_write_targets`。拦截和记日志用同一个函数，scope-guard 的行为不变（`test_shared_state_partitions.py` 46 个照过）。
+  - `ownership.py`：VIAS 加 `bash`；新增 `shell_targets`；`capture_before` 和 `journal_edit` 处理 Bash。
+  - `own-write-capture.py`：Bash 命令里没有 shared_state 目标时，不导入包直接退出。
+  - 新 hook `own-write-journal-failure.py`（PostToolUseFailure），已登记为 fail-open importer。
+  - manifest：两个 own-write hook 的 matcher 加 Bash，并加入新 hook。
+  - 合同 `shared_state_ownership.md` 升到 1.3.0；core-manual §15；版本 0.52.1。
+- **核实**：本机 Claude Code 2.1.286 有 PostToolUseFailure 事件，查的是二进制，公开 changelog 里没写。按 settings 文档，不认识这个事件的旧版客户端只跳过这一条。
+- **和批准时不同的一处（已请 owner 裁定）**：目标是已存在的目录时（`mv a.md done/`），会记录目录下第一层的文件。更深层的仍然会报警。
+- **测试**：新测试 15 个，全套 558 通过，command-guard 42/42，doctor OK（hooks=25、hooks_registered=24），wheel 干净。
+- **待办**：owner 确认后发布；然后请 deva-vani 重放这次的现场情形。
+
 ### 2026-11-17 — P-0137 结案归档；起草 P-0138
 
 - **deva-vani 的现场报告**（会话 agent-core-2a，2026-11-16）：

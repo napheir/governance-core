@@ -25,6 +25,7 @@ resolves _REPO_ROOT relative to its own clone).
 """
 import json
 import os
+import re
 import sys
 
 # Role token for the agent named by config core_agent_name (governance
@@ -313,6 +314,78 @@ def shared_state_access(target: str, role: str, repo_root: str = "") -> tuple:
                                 for p in partition_patterns(name, root)):
             return "foreign", rel
     return "other", rel
+
+
+# Commands whose path arguments are written (all of them), and those that
+# write only their last argument. `sed` writes its files only with -i.
+WRITES_ALL_ARGS = {"mv", "rm", "rmdir", "touch", "mkdir", "ln", "tee",
+                   "truncate", "unlink", "chmod"}
+WRITES_LAST_ARG = {"cp", "install"}
+SHELL_SEPARATORS = {";", "&&", "||", "|", "&", "|&"}
+SHELL_REDIRECTS = {">", ">>", ">|", "&>", "&>>", ">&"}
+
+
+def shell_segments(command: str) -> list:
+    """Split `command` into simple commands (token lists), quotes honoured."""
+    import shlex
+    try:
+        lex = shlex.shlex(command, posix=True, punctuation_chars=True)
+        lex.whitespace_split = True
+        tokens = list(lex)
+    except ValueError:  # unbalanced quotes: fall back to a plain split
+        tokens = command.split()
+    segments, cur = [], []
+    for tok in tokens:
+        if tok in SHELL_SEPARATORS:
+            segments.append(cur)
+            cur = []
+        else:
+            cur.append(tok)
+    segments.append(cur)
+    return [s for s in segments if s]
+
+
+def shell_write_targets(command: str, cwd: str) -> list:
+    """Absolute paths a shell `command` would write (redirects + write
+    commands), resolved against `cwd` and any `cd` before them (P-0135).
+
+    Heuristic by design: writes from scripts or $VARS are not seen here --
+    the SessionStart change detection covers those. One implementation for
+    scope-guard (block decision) and the own-write journal hooks (P-0138).
+    """
+    targets = []
+    here = cwd
+    for seg in shell_segments(command):
+        words = []
+        i = 0
+        while i < len(seg):
+            if seg[i] in SHELL_REDIRECTS and i + 1 < len(seg):
+                targets.append((here, seg[i + 1]))
+                i += 2
+                continue
+            words.append(seg[i])
+            i += 1
+        while words and re.match(r"^[A-Za-z_][A-Za-z0-9_]*=", words[0]):
+            words.pop(0)
+        if not words:
+            continue
+        name = os.path.basename(words[0])
+        args = [w for w in words[1:] if not w.startswith("-")]
+        if name == "cd":
+            if args:
+                here = os.path.join(here, native_path(os.path.expanduser(args[0])))
+            continue
+        if name in WRITES_ALL_ARGS:
+            targets += [(here, a) for a in args]
+        elif name in WRITES_LAST_ARG:
+            targets += [(here, a) for a in args[-1:]]
+        elif name == "sed" and any(w.startswith("-i") or w == "--in-place"
+                                   for w in words[1:]):
+            targets += [(here, a) for a in args[1:]]
+        elif name == "dd":
+            targets += [(here, w[3:]) for w in words[1:] if w.startswith("of=")]
+    return [os.path.normpath(os.path.join(base, native_path(os.path.expanduser(t))))
+            for base, t in targets]
 
 
 def block(guard_name: str, reason: str, detail: str) -> None:

@@ -30,7 +30,7 @@
         ]
       },
       {
-        "matcher": "Edit|Write|MultiEdit|NotebookEdit",
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
         "_managed": "governance-core",
         "hooks": [
           {
@@ -58,6 +58,19 @@
           {
             "type": "command",
             "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/skill-usage-tracker.py\"",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "_managed": "governance-core",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/own-write-journal-failure.py\"",
             "timeout": 15
           }
         ]
@@ -129,12 +142,18 @@
           },
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/own-write-capture.py\"",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/proposal-classify-fast.py\"",
             "timeout": 15
-          },
+          }
+        ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "_managed": "governance-core",
+        "hooks": [
           {
             "type": "command",
-            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/proposal-classify-fast.py\"",
+            "command": "python \"${CLAUDE_PROJECT_DIR}/.claude/hooks/own-write-capture.py\"",
             "timeout": 15
           }
         ]

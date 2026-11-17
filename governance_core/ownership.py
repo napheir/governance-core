@@ -43,7 +43,8 @@ PENDING_TTL_SECONDS = 24 * 3600
 SHOWN_ACK_SESSIONS = 2
 RECENT_DAYS = 7
 EDIT_TOOLS = ("Edit", "Write", "MultiEdit", "NotebookEdit")
-VIAS = ("lib", "edit")
+SHELL_TOOL = "Bash"
+VIAS = ("lib", "edit", "bash")
 SCHEMA = 1
 
 
@@ -366,8 +367,8 @@ def record_write(project_root: Path, op: str, rel_path: str,
                  via: str = "lib") -> None:
     """Record a write of shared_state path `rel_path` by this clone's agent.
 
-    `via` is "lib" for a lib call and "edit" for an Edit/Write journaled by
-    the own-write hooks. Appends a journal line.
+    `via` is "lib" for a lib call, "edit" for an Edit/Write and "bash" for a
+    shell write, both journaled by the own-write hooks. Appends a journal line.
     - If the actor owns the path: a change from the actor's last-seen sha to
       `sha_before` that no journal run explains becomes an alert first, so
       the write cannot absorb it; then the last-seen manifest moves.
@@ -411,11 +412,23 @@ def record_write(project_root: Path, op: str, rel_path: str,
         save_manifest(project_root, seen)
 
 
-# --- Edit/Write journal (own-write hooks) -----------------------------------------
+# --- Edit/Write and shell journal (own-write hooks) -------------------------------
 
 def _field(data: Any, key: str) -> Any:
     """data[key] when `data` is a dict holding `key`, else None."""
     return data[key] if isinstance(data, dict) and key in data else None
+
+
+def _call_key(payload: dict, text: str) -> str | None:
+    """File-name-safe pending key of a tool call: `tool_use_id`, or without
+    one `<session_id>-<sha1 of text>`; None when neither is in the input."""
+    key = _field(payload, "tool_use_id")
+    if not isinstance(key, str) or not key:
+        session = _field(payload, "session_id")
+        if not isinstance(session, str) or not session:
+            return None
+        key = f"{session}-{hashlib.sha1(text.encode('utf-8')).hexdigest()[:16]}"
+    return "".join(c if c.isalnum() or c in "-_" else "_" for c in key)
 
 
 def edit_target(payload: dict) -> tuple | None:
@@ -435,14 +448,61 @@ def edit_target(payload: dict) -> tuple | None:
     cwd = _field(payload, "cwd")
     if not path.is_absolute() and isinstance(cwd, str) and cwd:
         path = Path(cwd) / path
-    key = _field(payload, "tool_use_id")
-    if not isinstance(key, str) or not key:
-        session = _field(payload, "session_id")
-        if not isinstance(session, str) or not session:
-            return None
-        key = f"{session}-{hashlib.sha1(str(path).encode('utf-8')).hexdigest()[:16]}"
-    safe = "".join(c if c.isalnum() or c in "-_" else "_" for c in key)
-    return safe, tool, path
+    key = _call_key(payload, str(path))
+    return None if key is None else (key, tool, path)
+
+
+def _sha_if_file(path: Path) -> str | None:
+    """file_sha() for a regular file; None for a directory or a missing path."""
+    return None if Path(path).is_dir() else file_sha(path)
+
+
+def _child_files(folder: Path, rel_dir: str) -> dict:
+    """{rel: path} of the regular files directly inside `folder`, whose
+    shared_state rel is `rel_dir`."""
+    if not folder.is_dir():
+        return {}
+    return {f"{rel_dir}/{c.name}": c for c in folder.iterdir() if c.is_file()}
+
+
+def shell_targets(project_root: Path, payload: dict) -> tuple | None:
+    """(key, files, dirs) for a Bash call that may write partition files.
+
+    Targets come from `_guard_common.shell_write_targets`, the parser that
+    scope-guard blocks on. `files` maps each target's shared_state rel to its
+    path. A target that is an existing directory (`mv a.md done/`) goes into
+    `dirs` (rel -> path) and adds its direct child files to `files`.
+    None when the call is not Bash, runs in the background (PostToolUse fires
+    at launch, before it writes), names nothing in some agent's partition, or
+    cannot be keyed.
+    """
+    if _field(payload, "tool_name") != SHELL_TOOL:
+        return None
+    tool_input = _field(payload, "tool_input")
+    command = _field(tool_input, "command")
+    if not isinstance(command, str) or not command.strip():
+        return None
+    if _field(tool_input, "run_in_background") is True:
+        return None
+    cwd = _field(payload, "cwd")
+    if not isinstance(cwd, str) or not cwd:
+        cwd = str(project_root)
+    agents = topology(project_root)["agents"]
+    files, dirs = {}, {}
+    for target in _guard_common(project_root).shell_write_targets(command, cwd):
+        path = Path(target)
+        rel = shared_rel(project_root, path)
+        if not rel or owner_of(project_root, rel, agents) is None:
+            continue
+        if path.is_dir():
+            dirs[rel] = path
+            files.update(_child_files(path, rel))
+        else:
+            files[rel] = path
+    if not files and not dirs:
+        return None
+    key = _call_key(payload, command)
+    return None if key is None else (key, files, dirs)
 
 
 def _prune_pending(folder: Path) -> None:
@@ -459,46 +519,91 @@ def _prune_pending(folder: Path) -> None:
 
 
 def capture_before(project_root: Path, payload: dict) -> None:
-    """PreToolUse: store the sha of a partition file about to be edited.
+    """PreToolUse: store the shas of partition files a tool call may write.
 
-    Writes `<clone>/.governance/pending_writes/<key>.json` = {path,
-    sha_before, ts}. Only files in some agent's partition, only in a
-    multi-agent project.
+    Writes `<clone>/.governance/pending_writes/<key>.json`:
+    - Edit/Write family: {path, sha_before, ts};
+    - Bash: {tool: "Bash", files: {rel: sha_before}, dirs: [rel], ts} for the
+      targets shell_targets() finds. Paths are fixed now, because the
+      session's cwd may differ by PostToolUse.
+    Only files in some agent's partition, only in a multi-agent project.
     """
     project_root = Path(project_root)
-    target = edit_target(payload)
-    if target is None:
+    tool = _field(payload, "tool_name")
+    if tool not in EDIT_TOOLS and tool != SHELL_TOOL:
         return
-    key, _, path = target
     topo = topology(project_root)
     if len(topo["agents"]) < 2:
         return
-    rel = shared_rel(project_root, path)
-    if rel is None or owner_of(project_root, rel, topo["agents"]) is None:
-        return
+    if tool == SHELL_TOOL:
+        target = shell_targets(project_root, payload)
+        if target is None:
+            return
+        key, files, dirs = target
+        record = {"tool": SHELL_TOOL,
+                  "files": {rel: _sha_if_file(p) for rel, p in files.items()},
+                  "dirs": sorted(dirs), "ts": _now()}
+    else:
+        target = edit_target(payload)
+        if target is None:
+            return
+        key, _, path = target
+        rel = shared_rel(project_root, path)
+        if rel is None or owner_of(project_root, rel, topo["agents"]) is None:
+            return
+        record = {"path": rel, "sha_before": file_sha(path), "ts": _now()}
     folder = project_root / PENDING_REL
     _prune_pending(folder)
-    _write_json_atomic(folder / f"{key}.json",
-                       {"path": rel, "sha_before": file_sha(path), "ts": _now()})
+    _write_json_atomic(folder / f"{key}.json", record)
+
+
+def _journal_shell(project_root: Path, data: dict) -> None:
+    """Journal every captured Bash target whose sha changed (op/via "bash").
+
+    Files that appeared directly inside a captured directory count as
+    created (sha_before null).
+    """
+    root = shared_root(project_root)
+    before = dict(data["files"])
+    for rel_dir in data["dirs"]:
+        for rel in _child_files(root / rel_dir, rel_dir):
+            if rel not in before:
+                before[rel] = None
+    for rel in sorted(before):
+        after = _sha_if_file(root / rel)
+        if after != before[rel]:
+            record_write(project_root, "bash", rel, before[rel], after, via="bash")
 
 
 def journal_edit(project_root: Path, payload: dict) -> None:
-    """PostToolUse: journal the edit captured by capture_before().
+    """PostToolUse / PostToolUseFailure: journal what capture_before() saw.
 
-    Reads and removes the pending capture, then records the write with
-    `op` = "edit:<Tool>" and via "edit". Nothing is journaled without a
-    capture or when the sha did not change.
+    Reads and removes the pending capture, then records each changed file:
+    `op` = "edit:<Tool>" with via "edit", or `op` = "bash" with via "bash".
+    Nothing is journaled without a capture or when no sha changed.
     """
     project_root = Path(project_root)
-    target = edit_target(payload)
-    if target is None:
+    tool = _field(payload, "tool_name")
+    if tool == SHELL_TOOL:
+        command = _field(_field(payload, "tool_input"), "command")
+        key = _call_key(payload, command) if isinstance(command, str) else None
+        path = None
+    else:
+        target = edit_target(payload)
+        if target is None:
+            return
+        key, tool, path = target
+    if key is None:
         return
-    key, tool, path = target
     pending = project_root / PENDING_REL / f"{key}.json"
     if not pending.is_file():
         return
     data = json.loads(pending.read_text(encoding="utf-8"))
     pending.unlink()
+    if tool == SHELL_TOOL:
+        if "tool" in data and data["tool"] == SHELL_TOOL:
+            _journal_shell(project_root, data)
+        return
     rel = shared_rel(project_root, path)
     sha_after = file_sha(path)
     if rel != data["path"] or sha_after == data["sha_before"]:

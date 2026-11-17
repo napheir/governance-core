@@ -65,6 +65,9 @@ FAIL_OPEN_GC_IMPORTERS: frozenset[str] = frozenset({
     # Edit/Write. The allow/deny decision stays with edit-write-guard.
     "own-write-capture.py",
     "own-write-journal.py",
+    # P-0138: the PostToolUseFailure twin of own-write-journal.py; same
+    # guarded import inside main()'s try, same silent exit 0 on any failure.
+    "own-write-journal-failure.py",
 })
 
 # Fail-CLOSED governance_core importers grandfathered pending a

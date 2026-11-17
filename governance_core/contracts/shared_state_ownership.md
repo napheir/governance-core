@@ -1,6 +1,6 @@
 # Contract: Ownership of agent content in multi-agent projects
 
-**Version**: 1.2.1
+**Version**: 1.3.0
 **Status**: active
 **Owner**: core
 **Consumers**:
@@ -8,7 +8,7 @@
 - `hooks/edit-write-guard.py`, `hooks/scope-guard.py`, `hooks/_guard_common.py` (partitions);
 - `tools/proposal_lib.py` (owner checks, actor, journal);
 - `governance_core/ownership.py` (journal, notices, last-seen manifest);
-- `hooks/own-write-capture.py`, `hooks/own-write-journal.py` (Edit/Write journal);
+- `hooks/own-write-capture.py`, `hooks/own-write-journal.py`, `hooks/own-write-journal-failure.py` (Edit/Write and shell journal);
 - `hooks/foreign-change-notice.py` (SessionStart);
 - `tools/notices.py` (list / ack / recent);
 - `.claude/commands/{sync-repos,audit,publish-knowledge,proposal}.md`.
@@ -103,7 +103,7 @@ In a multi-agent project each agent works in its own clone and shares one `share
 ```json
 {"ts": "2026-11-06T09:00:00Z", "actor": "core", "op": "transition",
  "path": "proposals/content/p-0005-x.md", "sha_before": "<sha256|null>",
- "sha_after": "<sha256|null>", "via": "lib|edit",
+ "sha_after": "<sha256|null>", "via": "lib|edit|bash",
  "prev": "<sha256 of the previous line|null>"}
 ```
 
@@ -111,8 +111,9 @@ In a multi-agent project each agent works in its own clone and shares one `share
 - **Hashes.**
   - `sha_*` is the sha256 of the file bytes, null when absent.
   - `sha_before` must be the sha of the file immediately before this write. Detection relies on it (see "Explained changes" below).
-- **How the write was made.** `via` is `lib` for a lib call and `edit` for an Edit/Write journaled by the hooks below. A missing `via` (1.0.0 lines) means `lib`.
-  - Hook-journaled lines have `op` = `edit:<ToolName>`, e.g. `edit:Edit`.
+- **How the write was made.** `via` is `lib` for a lib call, `edit` for an Edit/Write and `bash` for a shell write, both journaled by the hooks below. A missing `via` (1.0.0 lines) means `lib`.
+  - Hook-journaled lines have `op` = `edit:<ToolName>`, e.g. `edit:Edit`, or `op` = `bash`.
+  - Readers treat any `via` other than `lib` like `edit` (§5), so a 1.2 reader handles a `bash` line as an attributed alert.
 - **Hash chain.** `prev` chains the lines: an edit or truncation breaks the chain, and readers report a broken chain.
 - **Rotation.** At 5 MB the file is renamed to `_journal.<n>.jsonl`. The first line of the new file carries the old file's last-line hash as `prev`. Readers that explain changes read the rotated files too.
 - **Public API** for gc libs and consumer libs: `governance_core.ownership.record_write(project_root, op, rel_path, sha_before, sha_after, via="lib")`.
@@ -121,13 +122,21 @@ In a multi-agent project each agent works in its own clone and shares one `share
   - If another agent owns the path, it also writes that agent's foreign-write notice (§5).
   - `governance_core.ownership.file_sha(path)` returns the sha256, or None if the file is absent.
 
-**Edit/Write journal.** In a multi-agent project, an Edit/Write (§2) of a shared_state file is journaled by two fail-open hooks:
-- `hooks/own-write-capture.py` (PreToolUse) stores the file's current sha in `<clone>/.governance/pending_writes/<key>.json` as `{"path", "sha_before", "ts"}`.
-  - `<key>` is the hook input's `tool_use_id`. Without one, it is `<session_id>-<sha1 of path>`.
+**Edit/Write and shell journal.** In a multi-agent project, an Edit/Write or a Bash command (§2) that writes a file in some agent's partition is journaled by fail-open hooks:
+- `hooks/own-write-capture.py` (PreToolUse) stores the current shas in `<clone>/.governance/pending_writes/<key>.json`:
+  - Edit/Write family: `{"path", "sha_before", "ts"}`;
+  - Bash: `{"tool": "Bash", "files": {"<rel>": "<sha256|null>"}, "dirs": ["<rel>"], "ts"}`.
+    - The targets are the ones `_guard_common.shell_write_targets` parses, the same function scope-guard blocks on: redirects, `mv rm rmdir touch mkdir ln tee truncate unlink chmod`, the last argument of `cp`/`install`, `sed -i`, `dd of=`.
+    - A target that is an existing directory goes into `dirs`, and its direct child files into `files`. Files that appear directly inside it count as created.
+    - A command with no target under shared_state is skipped before the package is imported. A background command (`run_in_background`) is not captured.
+  - `<key>` is the hook input's `tool_use_id`. Without one, it is `<session_id>-<sha1 of the path or command>`.
   - The file is clone-local and gitignored. A pending file older than 24 hours is removed.
-- `hooks/own-write-journal.py` (PostToolUse) reads and removes the pending file, then calls `record_write(op="edit:<Tool>", ..., via="edit")`.
-  - It journals nothing when the pending file is missing or the sha did not change. A missing pending file therefore surfaces later as an unexplained change.
-- Bash writes are not journaled. A shell write to an agent's own partition shows up as an unexplained change.
+- `hooks/own-write-journal.py` (PostToolUse) and `hooks/own-write-journal-failure.py` (PostToolUseFailure) read and remove the pending file. They call `record_write(op="edit:<Tool>", ..., via="edit")`, or `record_write(op="bash", ..., via="bash")` once per Bash target whose sha changed.
+  - They journal nothing when the pending file is missing or no sha changed. A missing pending file therefore surfaces later as an unexplained change.
+- **Known limits.** These stay unexplained changes, so they still alert:
+  - writes the parser does not see: scripts, `$VAR` paths, globs, files below a directory's direct children;
+  - background commands.
+  - A shell write is attributed to the whole command: a change to a captured target between the capture and the end of the command is recorded as the actor's.
 
 **Explained changes.** A change of path P from sha A to sha B is explained only when a run of journal lines for P, oldest first, leads from A to B:
 - the first line has `sha_before` = A;
@@ -143,7 +152,7 @@ A journal line that merely ends at B does not explain the change.
 ```
 
 - It covers the agent's own partitions.
-- It is updated when this agent's own write is recorded (lib or Edit/Write), after the gap check above.
+- It is updated when this agent's own write is recorded (lib, Edit/Write or shell), after the gap check above.
 - It is rewritten at the end of the agent's SessionStart, after foreign changes have been turned into notices (§5).
 
 ## 5. Notices and how they reach the owner
@@ -165,14 +174,14 @@ A journal line that merely ends at B does not explain the change.
   - scope violations;
   - changes that are not explained (§4), whose actor is unknown;
   - any write by a non-core agent into another agent's partition;
-  - a core Edit/Write (`via: "edit"`) into another agent's partition, which bypasses the libs' checks.
+  - a core Edit/Write or shell write (`via: "edit"` or `"bash"`) into another agent's partition, which bypasses the libs' checks.
 
   An alert repeats until the owner acks it.
 
 **What writes a notice.**
 - **scope-violation.** Core's branch audit (§1), when run with `--notify`, writes one per affected owner (each agent in `owners`) and one to the audited agent.
 - **foreign-write**, three sources:
-  - a recorded write (lib or Edit/Write) by agent B to agent A's partition, attributed to B;
+  - a recorded write (lib, Edit/Write or shell) by agent B to agent A's partition, attributed to B;
   - at A's SessionStart, any file in A's partitions whose sha differs from A's last-seen manifest by a change that is not explained (§4). `from` is `unknown`. The detail names the first journaled write that followed the gap, if any;
   - an own write by A whose `sha_before` is not explained from A's last-seen sha (§4). The alert is written before the manifest moves, so the earlier change is not absorbed.
 
@@ -199,6 +208,10 @@ A journal line that merely ends at B does not explain the change.
 SemVer. Minor = a new optional field or a new notice kind. Major = a change to the partition rule, the journal chain or the report schema (needs a `proposals/` entry).
 
 **Changes.**
+- **1.3.0** (P-0138): shell writes are journaled.
+  - Bash targets that scope-guard's parser finds are captured before the command and journaled after it (`via: "bash"`, `op: "bash"`), on PostToolUse and on PostToolUseFailure.
+  - The parser moved into `_guard_common` (`shell_write_targets`), so blocking and journaling read a command the same way.
+  - Before, an agent's own `sed -i` or redirect on its own partition file surfaced as an actor-unknown alert.
 - **1.2.1** (P-0136 field check): the session-title indicator is withdrawn.
   - In Claude Code the session title is also the cross-session address (the `ListAgents` name). Setting `[ALERT N] <agent>` renamed the session, and peers holding the old name could no longer reach it.
   - `notice-title.py` is gone, and `foreign-change-notice.py` never sets `sessionTitle`.

@@ -1,11 +1,13 @@
 """Claude Code PostToolUse hook: own-write-journal.py
 
-Journals an Edit/Write of a shared_state partition file, attributed to this
-clone's agent (P-0136, contracts/shared_state_ownership.md §4 "Edit/Write
-journal").
+Journals an Edit/Write or a Bash write of shared_state partition files,
+attributed to this clone's agent (P-0136, P-0138;
+contracts/shared_state_ownership.md §4 "Edit/Write and shell journal").
 
 - Reads the capture own-write-capture.py stored before the tool ran, then
-  calls ownership.record_write(op="edit:<Tool>", via="edit").
+  calls ownership.record_write: op "edit:<Tool>" with via "edit", or op
+  "bash" with via "bash" for each Bash target whose sha changed.
+- own-write-journal-failure.py does the same on PostToolUseFailure.
 - An agent's own edit then moves its last-seen manifest silently, unless the
   file had changed beforehand in a way no journal run explains: that still
   becomes an alert. An edit of another agent's partition notifies its owner.
