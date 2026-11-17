@@ -1,6 +1,6 @@
 # Contract: Proposal Gate & Check Grammar
 
-**Version**: 1.1.0
+**Version**: 1.2.0
 **Status**: active
 **Owner**: core
 **Consumers**: all agents (write Approval Criteria + execution-class phase gates
@@ -99,6 +99,14 @@ disagree (mirrors Current State / Design & Contract Checks 13 / 14). Exemptions
 Proposals created before the cutover date are grandfathered (the gate grammar
 did not exist).
 
+**Owner decision card (P-0139), WARN only.** `decision_card_adequacy(body)`
+passes when a `## Decision Card` section exists, is not the `<...>` placeholder,
+and has 1 to 8 lines (blank and `>` guidance lines not counted). `transition`
+to `pending` (submit) and to `approved` prints `[WARN] P-NNNN: decision-card
+gate -- <reason>` on stderr when it fails, and never blocks. `--allow-no-card`
+silences it (justify in `--note`). Substance is the owner's call; the card's
+content is defined by the shipped skill `owner-decision-card`.
+
 ## 5. Workflow Execution declaration (opt-in — `orchestration: workflow`)
 
 A proposal whose frontmatter carries `orchestration: workflow` (frontmatter
@@ -164,6 +172,9 @@ whether the scale or cost is right. That stays the approver's call.
 
 ## 7. Versioning
 
+- **1.2.0** (2026-11-17, P-0139): §4 owner decision card WARN on submit and
+  approve (`decision_card_adequacy`, `--allow-no-card`); the scaffold opens
+  with `## Decision Card`.
 - **1.1.0** (2026-11-06, P-0134): §5 Workflow Execution declaration,
   `workflow_declaration_adequacy`, audit Check 22, runner prints the declaration.
 

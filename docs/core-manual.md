@@ -189,7 +189,8 @@ should find nothing outside tests and the one-shot proposal migration tool.
 Version bump in `pyproject.toml` + `governance_core/__init__.py`, commit, then
 draft & publish a GitHub Release — `.github/workflows/release.yml` builds and
 publishes to PyPI via Trusted Publisher (P-0064). Releasing is an outward-facing
-action: do it only with explicit human approval.
+action: do it only with explicit human approval. Ask for it with a decision card
+(§17).
 
 ## 7. Topology-aware skills (P-0068)
 
@@ -1116,3 +1117,19 @@ python tools/sync_infra.py --project-root ../other-project/agent-core   # read-o
 ```
 
 `/wrap-up` Step 5 runs it. Every FAIL is fixed as printed before the checklist says "Infra 已检查".
+
+## 17. Owner decision card (P-0139, v0.53.0)
+
+Every gc project ships the habit of asking its owner to decide with a short card.
+
+- **The guide.** `skills/owner-decision-card.md` (`theme: universal`) defines it:
+  - a card of at most 8 lines, in the owner's language: what changes, cost, risk, how to undo, how the owner would notice, defaults picked for them;
+  - a "waiting on you" list at the end of every message that leaves something open;
+  - delegated defaults recorded in the approve `--note`.
+- **Recall.** `constitution-reminder.py` adds one sentence to its per-prompt line. The SessionStart menu shows only the top 10 universal skills by usage, so the guide alone would not be seen.
+- **Proposals.**
+  - The scaffold opens with `## Decision Card`.
+  - `transition --to pending` and `--to approved` print `[WARN] ... decision-card gate` when the card is missing, still the placeholder, or over 8 lines. They never block.
+  - `--allow-no-card` silences the WARN. Contract: `proposal_gate_schema.md` 1.2.0.
+- **Elsewhere.** `/upgrade` step 4 and release confirmations (§6) use the card.
+- No config key: it is always on.

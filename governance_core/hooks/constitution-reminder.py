@@ -4,7 +4,8 @@ Claude Code UserPromptSubmit hook: constitution-reminder.py
 
 Injects a brief constitutional reminder on every user message.
 This is a system-level enforcement that prevents mid-conversation
-drift from Article 0 (ritual) and Article 14 (phase wrap-up).
+drift from Article 0 (ritual) and Article 14 (phase wrap-up), and
+points to the owner decision card (P-0139).
 
 Exit code: always 0 (informational only, never blocks).
 """
@@ -22,7 +23,9 @@ def main():
     print(
         "[Constitution] "
         "Art.0: first line must be the ritual. "
-        "Art.14: run /wrap-up after each phase commit."
+        "Art.14: run /wrap-up after each phase commit. "
+        "When asking the owner to decide: decision card first "
+        "(skill owner-decision-card); end with what waits on the owner."
     )
     sys.exit(0)
 

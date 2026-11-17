@@ -106,7 +106,7 @@ scope (建议): 加 rules.allow.txt 一行 + Phase 0 走 /iterate-constitution
 1. lib 内部 filelock 内扫所有 in-flight + archive + legacy 文件，求 max NNNN + 1
 2. 写 v2 scaffold 到 `shared_state/proposals/<agent>/p-NNNN-<slug>.md`
 3. frontmatter: `id` / `agent` / `status: draft` / `created` / `owner`
-4. body 段序：Trigger / **Current State (read, not assumed)** / Scope /
+4. body 段序：**Decision Card**（P-0139，给 owner 先读）/ Trigger / **Current State (read, not assumed)** / Scope /
    **Design & Contract** / Non-Goals / **Open Questions** / Alternatives & Rationale /
    Guardrails / Phases（含 Phase 0 governance bootstrap slot）/ Approval Criteria
    （checklist 形式）/ Validation Plan / Rollback / Risks / State Log
@@ -153,11 +153,15 @@ Agent 收到 scaffold 路径后，**填充各段内容**（直接 Edit 文件 bo
 
 语义：**draft → pending = "请 user 看"**。此后 proposal 进入 session-context.py 的 pending 列表，user 会在 SessionStart 时看见。
 
+**决策卡（P-0139）**：submit 前先把文件顶部的 `## Decision Card` 填好（不超过 8 行，用 owner 的语言；格式见 skill `owner-decision-card`）。请 owner 审时，消息开头就给这张卡，结尾列"等你处理"。缺卡、仍是占位符或超过 8 行时，lib 打印 WARN，但不会阻断；确实不需要卡时可用 `--allow-no-card`，并在 `--note` 写明理由。
+
 ### `approve <id>`
 
 **安全约束**：本 turn 用户消息必须含明确批准信号（`approved` / `通过` / `批准` / `ok 实施` / `可以实施` / `同意` / `同意该 proposal`）。否则拒绝并提示。
 
 调 `python tools/proposal_lib.py transition --id P-NNNN --to approved --note "<approval signal excerpt>"`。
+
+owner 只说了"按你的建议"之类的话时，`--note` 里要写明交给 agent 定的默认值（即决策卡上"替你选的默认"那一行），日后能查到 owner 实际同意了什么（P-0139）。approve 时同样会检查决策卡，只 WARN。
 
 **Approve 时的 form 门**（lib 内强制，FORM-only，substance 是 approver 判断）：
 ① Current State（P-0108，所有提案，BLOCK）；② Design & Contract（P-0124，仅复杂提案，

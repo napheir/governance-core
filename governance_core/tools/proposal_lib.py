@@ -601,6 +601,15 @@ def _v2_scaffold(proposal_id: str, title: str, agent: str,
         fm["orchestration"] = orchestration
     body = f"""# Proposal {proposal_id}: {title}
 
+## Decision Card
+
+> For the owner, read first: at most 8 lines in the owner's language -- what
+> changes, the cost, the risk, how to undo it, how the owner would notice a
+> problem, and the defaults you picked for them (skill owner-decision-card).
+> Replace the placeholder before submit.
+
+<decision card>
+
 ## Trigger
 
 <User request and why proposal governance applies.>
@@ -1029,6 +1038,34 @@ def _is_complex_proposal(body: str) -> bool:
 # transitional approve WARN and audit Check 15. Grammar: proposal_gate_schema.md.
 # ---------------------------------------------------------------------------
 
+# P-0139: the owner decision card -- a short owner-facing summary at the top
+# of every proposal (skill owner-decision-card). Form-only WARN on submit and
+# approve; the owner judges the substance.
+_DECISION_CARD_HEADING = "## Decision Card"
+DECISION_CARD_MAX_LINES = 8
+_CARD_PLACEHOLDER_RE = re.compile(r"^\s*<[^>]*>\s*$")
+
+
+def decision_card_adequacy(body: str) -> tuple[bool, str]:
+    """Form-only: the `## Decision Card` section exists, is filled in, and
+    has 1..DECISION_CARD_MAX_LINES lines (blank and `>` guidance lines are
+    not counted). Shared predicate behind the submit/approve WARN (P-0139).
+    """
+    if not any(line.strip().startswith(_DECISION_CARD_HEADING)
+               for line in body.splitlines()):
+        return False, "no '## Decision Card' section"
+    lines = [ln for ln in _extract_section(body, _DECISION_CARD_HEADING).splitlines()
+             if ln.strip() and not ln.lstrip().startswith(">")]
+    if not lines:
+        return False, "the decision card is empty"
+    if all(_CARD_PLACEHOLDER_RE.match(ln) for ln in lines):
+        return False, "the decision card is still the placeholder"
+    if len(lines) > DECISION_CARD_MAX_LINES:
+        return False, (f"the decision card has {len(lines)} lines; "
+                       f"at most {DECISION_CARD_MAX_LINES}")
+    return True, "ok"
+
+
 _APPROVAL_CRITERIA_HEADING = "## Approval Criteria"
 _CHECK_ITEM_RE = re.compile(r"^\s*-\s*\[[ xX]\]")
 _CHECK_TOKEN_RE = re.compile(r"(?:cmd|agent-rubric|human-verify):")
@@ -1444,11 +1481,14 @@ def transition_proposal(
     allow_thin_spec: bool = False,
     allow_unsigned_criteria: bool = False,
     allow_uncalibrated_gate: bool = False,
+    allow_no_card: bool = False,
 ) -> tuple[Path, str, str]:
     """Atomic state transition with State Log append.
 
     Returns (path, prev_status, new_status). Caller (skill) is responsible
-    for checking user authorization signal for approve/reject.
+    for checking user authorization signal for approve/reject. On submit
+    (pending) and approve, a missing or malformed decision card prints a
+    WARN and never blocks (P-0139; `allow_no_card` silences it).
 
     Filelock held during read-modify-write of the proposal file.
     """
@@ -1476,6 +1516,17 @@ def transition_proposal(
 
         today = _today()
         fm["status"] = new_status
+
+        # P-0139: owner decision card. WARN only (never blocks), on submit and
+        # approve -- the two moments the owner is asked to read the proposal.
+        if new_status in ("pending", "approved") and not allow_no_card:
+            ok, reason = decision_card_adequacy(body)
+            if not ok:
+                sys.stderr.write(
+                    f"[WARN] {proposal_id}: decision-card gate -- {reason}. "
+                    f"Put an owner-facing card of at most {DECISION_CARD_MAX_LINES} "
+                    f"lines under '## Decision Card' (skill owner-decision-card); "
+                    f"--allow-no-card to silence.\n")
 
         if new_status == "approved":
             # P-0108 G1 level-D: hard research gate. Block approve when the
@@ -1989,6 +2040,7 @@ def _cmd_transition(args):
         allow_thin_spec=args.allow_thin_spec,
         allow_unsigned_criteria=args.allow_unsigned_criteria,
         allow_uncalibrated_gate=args.allow_uncalibrated_gate,
+        allow_no_card=args.allow_no_card,
     )
     print(f"[OK] {args.id}: {prev} → {new}")
     print(f"     path: {path.relative_to(REPO_ROOT.parent)}")
@@ -2366,6 +2418,9 @@ def main(argv=None) -> int:
     p.add_argument("--allow-uncalibrated-gate", action="store_true",
                    help="Override the P-0119 calibration gate on --to approved "
                         "for an execution-class proposal (justify in --note)")
+    p.add_argument("--allow-no-card", action="store_true",
+                   help="Silence the P-0139 decision-card WARN on --to pending / "
+                        "approved (justify in --note)")
     p.set_defaults(func=_cmd_transition)
 
     p = sub.add_parser("run", help="Execute an approved execution-class "

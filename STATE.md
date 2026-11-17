@@ -17,6 +17,27 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-17 — 发布 v0.52.1（P-0138）；P-0139 Phase 1：决策卡成为 gc 自带能力（0.53.0，未发布）
+
+- **发布 0.52.1**：owner 说"确认发布"。
+  - 推送 b35b5ec..951b6a6。
+  - GitHub Release v0.52.1（Latest），CI run 44003631124 成功。
+  - PyPI 上 0.52.1 有 wheel 和 sdist。
+  - deva-vani 正在 0.52.0 上做 P-0136 现场验证，验证完再升级。
+- **P-0138 目录处理**：owner 说"保留"。
+- **P-0139**：owner 说"批准"，默认值照卡执行：始终开启、不加配置项；只警告不拦截；加每次提醒；0.53.0。
+  - 新增通用 skill `skills/owner-decision-card.md`（theme: universal）。
+  - `constitution-reminder.py` 每次提醒加一句，指向这份 skill。
+  - `proposal_lib`：
+    - 提案模板开头加"决策卡"一节；
+    - 新增 `decision_card_adequacy`；
+    - submit/approve 时缺卡、仍是占位符或超过 8 行只警告；
+    - `--allow-no-card` 可关掉警告。
+  - `/proposal`、`/upgrade` 第 4 步、core-manual §6 和 §17 都已更新；合同 `proposal_gate_schema.md` 升到 1.2.0；版本 0.53.0。
+  - 测试：新测试 11 个，全套 569 通过，command-guard 42/42，doctor OK，audit_knowledge 健康，wheel 干净。
+  - P-0139 自己也加上了"决策卡"一节，检查通过。
+- **待办**：0.53.0 发布要 owner 确认；P-0136 现场验证结果在等 deva-vani。
+
 ### 2026-11-17 — P-0138 Phase 1：shell 写入也记入日志（0.52.1，未发布）
 
 - **owner 说"批准P-0138"**，三个默认值照卡执行：所有分区目标都记；命令失败也记；版本 0.52.1。
