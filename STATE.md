@@ -17,6 +17,27 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-17 — P-0137 结案归档；起草 P-0138
+
+- **deva-vani 的现场报告**（会话 agent-core-2a，2026-11-16）：
+  - 四个 clone 都升到 0.52.0；从 core 跑 sync_infra，3 个 clone 都是 0 FAIL、0 WARN。
+  - 合并 master 之前报了 15 条 copy-drift WARN，每个 clone 5 条，正是 Phase 2 改过的文件。按检查给的修复路线合并后清零，算是检查在现场第一次真抓到问题。
+  - 每个 clone 的 doctor 都是 hooks=24、hooks_registered=23，和 hub 一致。
+- **P-0137**：owner 说"可以结案"。
+  - 原定要三家消费者都报告；auto-tax 和 trade 还没升级，由 0.52.0 的 /wrap-up 第 5 步兜底：它会跑检查，FAIL 不修好就不能勾"Infra 已检查"。
+  - "升级后跑检查并报告"已并入 P-0132 给 auto-tax 和 trade 的升级请求。
+  - reconcile：0e1a3f8 和 2793803 合起来覆盖了全部 scope 文件，没有实质偏离。
+  - 已归档到 `proposals/_archive/2026/`。
+- **通知**：deva-vani 现有 7 条未确认（platform 6，experience 1），都是误报。其中 6 条早于 0.51.1；第 7 条是 agent 自己写自己的文件。确认要由 owner 在 deva-vani 那边亲口说。
+- **P-0138**：owner 说"起草"。这是 P-0136 的后续，和 P-0136 一样不公开，已提交（pending），等 owner 审。
+- **owner 的问题**：deva-vani 那边为什么看不到决策卡？
+  - 原因：这个偏好只存在 hub 项目的 auto-memory 里。memory 按项目分开存，deva-vani 的四个 clone 是四个独立的项目。
+  - 建议：由 owner 把这条偏好写进用户级 `~/.claude/CLAUDE.md`，所有项目都会读到。文本已备好，在 `artifacts/owner_prefs/user_claude_md.md`。
+- **仍在进行**：
+  - P-0136：等现场验证第 1–3 步；
+  - P-0135：和 P-0136 一起结案；
+  - P-0133：等用 `gchub -c` 恢复会话后确认。
+
 ### 2026-11-13 — 发布 v0.52.0（P-0137 + 撤回标题提示）
 
 - **发布**：owner 说"发布"。
@@ -141,57 +162,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - **涉及文件**：`governance_core/tools/rotate_state.py`、`test_rotate_state_archive.py`。新增 2 个测试，新测试在 HEAD 版本上失败、在新版本上通过。版本升到 0.51.1。
 - **测试**：tools 513 个加 maintainer 5 个，共 518 个通过；command-guard 42/42；doctor OK。
 - **待 owner 批准**：P-0135 info 通知的确认方式修改。批准后也放进 0.51.1。
-
-### 2026-11-06 — 发布 v0.51.0（含 0.50.0：P-0134 + P-0135）
-
-- owner「现在发布」。推送 eb7edf8..152f8a1，GitHub Release v0.51.0，release CI run 42196326998 success，
-  PyPI 0.51.0 可见（wheel + sdist）。发布前构建的 wheel 已确认包含 ownership.py、foreign-change-notice.py、notices.py 和契约，没有混入 `maintainer/`。
-- 发布说明只写新增的保护机制和多 agent 项目的升级顺序，不写漏洞利用细节。
-  升级顺序：先把平铺的集合改成按 agent 分区，再 `pip -U`，紧接着在每个 clone 跑 upgrade，最后在 core 跑一次 `/audit`。
-- 已通知 deva-vani 按这个顺序升级，并请他们把 core 的分支审计结果和他们手工审计的结果对照后回报。这是 P-0135 结案条件之一。
-- 仍在进行：
-  - P-0135：还差 owner 在界面上确认看到了通知，以及 deva-vani 的对照结果；提案留在 `shared_state/`，暂不归档。
-  - P-0132：trade 和 auto-tax 等他们有空时再升级。
-  - P-0133：还差 owner 验证两种启动方式。
-  - P-0134：已实施，等 owner 决定是否归档。
-- 全局 Python 仍是 0.49.1，各消费者用 `/upgrade` 自行升级。
-
-### 2026-11-06 — P-0135 Phase 3：把别人改了你的内容告诉你和你的 owner（0.51.0，未发布）
-
-- 新增 `governance_core/ownership.py`，提供三类存储和一个公共接口：
-  - **写日志**：`_journal.jsonl` 只追加、带哈希链，超过 5 MB 轮转，链跨文件延续。
-  - **通知**：`notices/<agent>/<id>.json`，分 info 和 alert；确认后移到 `acked/`。
-  - **已见清单**：`.governance/state_seen.json`，存在各 clone 本地。
-  - **公共接口** `record_write(project_root, op, rel_path, sha_before, sha_after)`：
-    写入方是路径的属主时只更新它自己的清单；写入方不是属主时给属主发通知，core 发 info，其他人发 alert。
-- `scan()` 在会话启动时运行：属于本 agent 的分区里，凡是不是它自己改的变化都先存成通知，再更新清单。
-  能在日志里找到写入方就记名，找不到就标"来源不明"。第一次运行只建基线，不产生通知。单 agent 项目什么都不做。
-- 新 SessionStart hook `foreign-change-notice.py`：
-  - 内容同时发给 owner 界面（`systemMessage`）和 agent（`additionalContext`，要求它先向 owner 报告）。
-  - 每个 clone 都会显示全项目还没确认的通知数量，日志链断了会报警。
-  - info 显示一次后自动确认。
-  - 已登记到 `FAIL_OPEN_GC_IMPORTERS` 和 hooks_manifest。
-- `tools/notices.py list/ack`：agent 只能确认自己的通知，core 可以确认任何通知；alert 只有 owner 发话才确认。
-  proposal_lib 的 create / transition / link / handoff / orchestrate / archive 都会写日志；日志写失败只警告，这次改动会在属主那边显示为"来源不明"。
-- `check_scope --notify` 给被审计的 agent 和每个文件属主各发一条 scope-violation alert；`/sync-repos` 和 `/audit` 改为带 `--notify`。
-- `.gitignore` 受管块里加上 `state_seen.json`；`_journal*`（含锁文件）列为只能经库写入。core-manual 新增 §15。
-- 测试：新增 `test_shared_state_notice.py`（14 个）、分支审计 `--notify` 用例（1 个）。HEAD 上收集阶段就失败（还没有 ownership 模块）。
-  全量（venv）pytest 516 passed，含 `__main__` 的 28 个全过；upgrade 无 drift；doctor exit 0；wheel 含新文件，`maintainer/` 未混入。
-
-### 2026-11-06 — P-0135 Phase 2：shared_state 按 agent 分区（0.51.0，未发布）
-
-- `_guard_common`：新增 `shared_state_root()`，从 config `shared_state_root` 读取，不再写死 `<clone>/../shared_state`；
-  还新增了 `native_path()`（把 Git Bash 的 `/c/...` 写法转成 Windows 路径）、`partition_patterns()`、`shared_state_access()`。
-  后者把一个写入目标判为 `outside` / `own` / `lib-only` / `foreign` / `other` 之一，在 Windows 上不区分大小写。
-- edit-write-guard：原先 shared_state 下一律放行，现改为 `_check_shared_state()`，只放行写入自己的分区。
-- scope-guard：新增 Layer 4，拆解 shell 命令（shlex，识别引号、分隔符和 `cd`），找出重定向、`cp`、`mv`、`rm`、`touch`、`mkdir`、`ln`、`tee`、`sed -i`、`dd of=` 的写入目标，
-  目标不是自己的分区就拦截。读文件、写自己的分区、`python tools/...` 不受影响。
-- proposal_lib：
-  - transition / link / set_handoff_to / set_orchestration 必须由属主或 core 发起（`_require_owner_or_core`）。
-  - archive 的 `--force-agent` 只有 core 能用；`create --agent` 填别的 agent 时只有 core 可以。
-  - State Log 每行末尾加 `by <actor>`。
-- 文档：`/proposal`（三处强制说明、反模式）、art_04b（写权限的执行方式），说法都改为与实现一致。
-- 测试：新增 `test_shared_state_partitions.py`，45 个，guard 以子进程运行，覆盖分区判定、Git Bash 路径和大小写、Edit/Write、shell 写法、proposal_lib 属主检查。
-  反向校准（HEAD）：新加的拦截全部 FAIL 或 ERROR；放行的用例（自己的分区、读文件、core）在 HEAD 上同样 PASS，说明没有误拦。
-  全量（venv）pytest 501 passed，含 `__main__` 的 28 个全过；upgrade 无 drift，doctor exit 0。
-- 注意：在包源目录 `governance_core/tools/` 下直接跑 proposal 测试会因为找不到 config 而失败；要在自治层 `tools/` 下跑（memory 已记）。
