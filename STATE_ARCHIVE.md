@@ -5,6 +5,28 @@
 
 ---
 
+### 2026-11-17 — P-0137 结案归档；起草 P-0138
+
+- **deva-vani 的现场报告**（会话 agent-core-2a，2026-11-16）：
+  - 四个 clone 都升到 0.52.0；从 core 跑 sync_infra，3 个 clone 都是 0 FAIL、0 WARN。
+  - 合并 master 之前报了 15 条 copy-drift WARN，每个 clone 5 条，正是 Phase 2 改过的文件。按检查给的修复路线合并后清零，算是检查在现场第一次真抓到问题。
+  - 每个 clone 的 doctor 都是 hooks=24、hooks_registered=23，和 hub 一致。
+- **P-0137**：owner 说"可以结案"。
+  - 原定要三家消费者都报告；auto-tax 和 trade 还没升级，由 0.52.0 的 /wrap-up 第 5 步兜底：它会跑检查，FAIL 不修好就不能勾"Infra 已检查"。
+  - "升级后跑检查并报告"已并入 P-0132 给 auto-tax 和 trade 的升级请求。
+  - reconcile：0e1a3f8 和 2793803 合起来覆盖了全部 scope 文件，没有实质偏离。
+  - 已归档到 `proposals/_archive/2026/`。
+- **通知**：deva-vani 现有 7 条未确认（platform 6，experience 1），都是误报。其中 6 条早于 0.51.1；第 7 条是 agent 自己写自己的文件。确认要由 owner 在 deva-vani 那边亲口说。
+- **P-0138**：owner 说"起草"。这是 P-0136 的后续，和 P-0136 一样不公开，已提交（pending），等 owner 审。
+- **owner 的问题**：deva-vani 那边为什么看不到决策卡？
+  - 原因：这个偏好只存在 hub 项目的 auto-memory 里。memory 按项目分开存，deva-vani 的四个 clone 是四个独立的项目。
+  - 建议：由 owner 把这条偏好写进用户级 `~/.claude/CLAUDE.md`，所有项目都会读到。文本已备好，在 `artifacts/owner_prefs/user_claude_md.md`。
+- **仍在进行**：
+  - P-0136：等现场验证第 1–3 步；
+  - P-0135：和 P-0136 一起结案；
+  - P-0133：等用 `gchub -c` 恢复会话后确认。
+
+
 ### 2026-11-06 — 发布 v0.51.0（含 0.50.0：P-0134 + P-0135）
 
 - owner「现在发布」。推送 eb7edf8..152f8a1，GitHub Release v0.51.0，release CI run 42196326998 success，
