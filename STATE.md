@@ -17,6 +17,26 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-17 — 发布 v0.53.0（P-0139 决策卡）
+
+- **发布**：owner 说"发布 0.53.0"。
+  - 推送 951b6a6..d9e4256。
+  - GitHub Release v0.53.0（Latest），CI run 44006532167 成功。
+  - PyPI 的 simple 索引已有 0.53.0 的 wheel 和 sdist；JSON API 还停在 0.52.1，是 CDN 延迟。
+- **通知 deva-vani**（会话 agent-core-14）：按 owner 的要求，请他们在自己的会话里取得 owner 亲口确认，再确认那 7 条误报告警。我这边转达的消息不能算作确认。
+  - 他们回复：7 条早已确认，都有 owner 的原话。platform 6 条于 11-16 在 platform 会话里确认；experience 1 条于 11-17 在 core 会话里确认（owner 说"两条 alert 确认 ack"）。
+  - 同一句话也确认了 P-0136 第 3 步探针产生的告警 9c47aa。
+  - 现在 platform 和 experience 都没有未确认的通知。
+- **P-0136 现场验证**：
+  - 第 3 步通过：告警写着"before edit:Edit by content; actor unknown"，和预期一致。
+  - 第 1、2 步在等两个新开的 content 会话。
+- 他们要等 P-0136 现场验证结束，再一次升级到 0.53.0（已包含 0.52.1）；之后我再发 P-0138 的重放步骤。
+- **仍在进行**：
+  - P-0136 现场验证（deva-vani）；
+  - P-0138 第 2 阶段（重放）；
+  - P-0139 第 2 阶段（owner 在 deva-vani 看到决策卡）；
+  - P-0133（`gchub -c` 确认）。
+
 ### 2026-11-17 — 发布 v0.52.1（P-0138）；P-0139 Phase 1：决策卡成为 gc 自带能力（0.53.0，未发布）
 
 - **发布 0.52.1**：owner 说"确认发布"。
@@ -52,27 +72,6 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - **和批准时不同的一处（已请 owner 裁定）**：目标是已存在的目录时（`mv a.md done/`），会记录目录下第一层的文件。更深层的仍然会报警。
 - **测试**：新测试 15 个，全套 558 通过，command-guard 42/42，doctor OK（hooks=25、hooks_registered=24），wheel 干净。
 - **待办**：owner 确认后发布；然后请 deva-vani 重放这次的现场情形。
-
-### 2026-11-17 — P-0137 结案归档；起草 P-0138
-
-- **deva-vani 的现场报告**（会话 agent-core-2a，2026-11-16）：
-  - 四个 clone 都升到 0.52.0；从 core 跑 sync_infra，3 个 clone 都是 0 FAIL、0 WARN。
-  - 合并 master 之前报了 15 条 copy-drift WARN，每个 clone 5 条，正是 Phase 2 改过的文件。按检查给的修复路线合并后清零，算是检查在现场第一次真抓到问题。
-  - 每个 clone 的 doctor 都是 hooks=24、hooks_registered=23，和 hub 一致。
-- **P-0137**：owner 说"可以结案"。
-  - 原定要三家消费者都报告；auto-tax 和 trade 还没升级，由 0.52.0 的 /wrap-up 第 5 步兜底：它会跑检查，FAIL 不修好就不能勾"Infra 已检查"。
-  - "升级后跑检查并报告"已并入 P-0132 给 auto-tax 和 trade 的升级请求。
-  - reconcile：0e1a3f8 和 2793803 合起来覆盖了全部 scope 文件，没有实质偏离。
-  - 已归档到 `proposals/_archive/2026/`。
-- **通知**：deva-vani 现有 7 条未确认（platform 6，experience 1），都是误报。其中 6 条早于 0.51.1；第 7 条是 agent 自己写自己的文件。确认要由 owner 在 deva-vani 那边亲口说。
-- **P-0138**：owner 说"起草"。这是 P-0136 的后续，和 P-0136 一样不公开，已提交（pending），等 owner 审。
-- **owner 的问题**：deva-vani 那边为什么看不到决策卡？
-  - 原因：这个偏好只存在 hub 项目的 auto-memory 里。memory 按项目分开存，deva-vani 的四个 clone 是四个独立的项目。
-  - 建议：由 owner 把这条偏好写进用户级 `~/.claude/CLAUDE.md`，所有项目都会读到。文本已备好，在 `artifacts/owner_prefs/user_claude_md.md`。
-- **仍在进行**：
-  - P-0136：等现场验证第 1–3 步；
-  - P-0135：和 P-0136 一起结案；
-  - P-0133：等用 `gchub -c` 恢复会话后确认。
 
 ### 2026-11-13 — 发布 v0.52.0（P-0137 + 撤回标题提示）
 
