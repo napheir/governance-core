@@ -17,6 +17,17 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-18 — P-0136 现场验证通过（deva-vani，0.52.0）
+
+- deva-vani 的 core 会话（agent-core-ee）报告第 1–3 步全部通过。我只读核对了他们的文件，结果一致：
+  - 第 1 步：两条 info 通知（dea220、b593e0）的 `shown` 各有两个不同的会话 id，都以 `shown-2` 确认。期间两次 resume 没有被多算一次。
+  - 第 2 步：content 改自己的 P-0047 被记为 `via edit`，没有产生通知。
+  - 第 3 步：11-17 已通过。第 4 步测的是 0.51.2 已撤回的拦截，不再适用。
+- deva-vani 现在没有任何未确认的通知。结果已写进 P-0136。
+- 已回复他们：owner 看过预览后升级到 0.53.0，然后在新开的 platform 会话里做 P-0138 重放（`sed -i` 再 Edit，预期没有新告警），并反馈 owner 有没有看到决策卡。
+- 按 P-0138 的退出条件，重放通过后，P-0135、P-0136、P-0138 一起完成并归档。归档会公开，需要 owner 同意。
+- **仍在进行**：P-0138 第 2 阶段（重放）；P-0139 第 2 阶段；P-0133（`gchub -c` 确认）。
+
 ### 2026-11-17 — 发布 v0.53.0（P-0139 决策卡）
 
 - **发布**：owner 说"发布 0.53.0"。
@@ -185,15 +196,3 @@ an initial copy; `rotate_state.py` ships in `tools/`).
   - 全部 543 个通过，command-guard 42/42，doctor 正常（注册了 24 个 hook）。
   - 单 agent 项目里，标题 hook 约 141 毫秒退出。
 - **现场验证**：experience 的 8fc9aa 和 content 的 a404d1 先保留不确认。升级后标题应显示 `[ALERT 1] <agent>`，确认后应改回原名。
-
-### 2026-11-10 — rotate_state 每次轮转都提示暂存 STATE_ARCHIVE.md（0.51.1，未发布）
-
-- **问题**（deva-vani 反馈）：忙的时候，每天最多保留 3 条的上限会把当天较早的条目轮转进已跟踪的 `STATE_ARCHIVE.md`，而输出里没有任何提示。
-  agent 只暂存了 STATE.md，被轮转的条目就从 git 里丢了。他们 content e71465c 和 core 646f7cf 各出过一次，都已补提交，内容没有丢。本仓库的 1aee998 也出过同样的事。
-- **修复**：以前只在新建归档文件时警告，现在每次真正轮转都打印 `[WARN] <path> changed (N entries moved in): stage it together with STATE.md`。
-  新建归档时打印的是 `created ... (untracked, ...)`。dry-run，或没有条目可轮转时，不打印。
-- **不改** `/wrap-up`：第 2 步从 0.48.4 起已经写明要一起暂存。
-- **未处理**：条目轮转出去后，里面的待办就不会再出现在 SessionStart 摘要里。deva-vani 目前手工把待办挪进最新条目。是否在上游解决，等 owner 决定。
-- **涉及文件**：`governance_core/tools/rotate_state.py`、`test_rotate_state_archive.py`。新增 2 个测试，新测试在 HEAD 版本上失败、在新版本上通过。版本升到 0.51.1。
-- **测试**：tools 513 个加 maintainer 5 个，共 518 个通过；command-guard 42/42；doctor OK。
-- **待 owner 批准**：P-0135 info 通知的确认方式修改。批准后也放进 0.51.1。
