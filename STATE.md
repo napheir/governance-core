@@ -17,6 +17,17 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-19 — P-0139 结案归档；P-0140 批准
+
+- **P-0139**：owner 在本会话亲口确认决策卡"好用"。按实施提交 d9e4256 标为 implemented，并归档到 `proposals/_archive/2026/`。对照检查：范围内的文件都改到了，范围外只多了版本号和 STATE。
+- **P-0140**：owner 说"批准 P-0140"，按决策卡的默认执行：
+  - OQ1：角色文件只许 core 改；
+  - OQ2：hook 被改报 FAIL；
+  - OQ3：MCP 工具调用这次不处理；
+  - OQ4：嵌套的 `.claude/` 一律拦；
+  - 以 0.54.0 发布。
+- **P-0133**：之前我说"恢复会话时没有出现 [WARN]，所以检查通过"，这是错的。本会话的 PATH 前面没有 `.venv/Scripts`，所以不是用 gchub 启动的；在本会话里手动运行检查，确实会报 WARN。gchub 只定义在 Git Bash 的 `~/.bashrc` 里。
+
 ### 2026-11-19 — deva-vani 升到 0.53.0；起草 P-0140（待批）
 
 - deva-vani 四个 clone 都已升到 0.53.0（四个 clone 都有 owner-decision-card 指南）。
