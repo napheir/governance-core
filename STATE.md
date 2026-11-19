@@ -17,6 +17,18 @@ an initial copy; `rotate_state.py` ships in `tools/`).
 - 改动摘要 / 涉及文件 / 关键决策 / 测试结果
 -->
 
+### 2026-11-19 — deva-vani 升到 0.53.0；起草 P-0140（待批）
+
+- deva-vani 四个 clone 都已升到 0.53.0（四个 clone 都有 owner-decision-card 指南）。
+- **P-0139 第 2 阶段**：那边的 core 会话转达 owner 的反馈，决策卡"好用"。已记入 P-0139。按本项目规则，转达不算确认，退出条件等 owner 在本会话亲口确认。
+- **P-0140**（待批，在 shared_state）：业务 agent 可写的文件中，有些会决定 Claude Code 执行什么。提案把这些文件也归为只有 core 能改。由 deva-vani core 提出，本会话用文档和探针核实。细节在提案里，修复发布前不公开。
+- P-0138 的重放还没做：deva-vani 的日志里还没有 `via: bash` 的记录。
+- **仍在进行**：
+  - P-0138 第 2 阶段（重放）；
+  - P-0139 第 2 阶段（owner 确认）；
+  - P-0140 审批；
+  - P-0133（owner 确认两种启动方式）。
+
 ### 2026-11-18 — P-0136 现场验证通过（deva-vani，0.52.0）
 
 - deva-vani 的 core 会话（agent-core-ee）报告第 1–3 步全部通过。我只读核对了他们的文件，结果一致：
